@@ -25,6 +25,7 @@ pub struct Secrets {
     pub master_key: Vec<u8>,
 }
 
+/// Function to deserialize hex -> Vec<u8> this is used in case of non KMS decryption
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -39,6 +40,7 @@ where
     Ok(bytes)
 }
 
+/// Get the origin directory of the project
 pub fn workspace_path() -> PathBuf {
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let path = PathBuf::from(manifest_dir);
@@ -49,10 +51,12 @@ pub fn workspace_path() -> PathBuf {
 }
 
 impl Config {
+    /// Function to build the configuration by picking it from default locations
     pub fn new() -> Result<Self, config::ConfigError> {
         Self::new_with_config_path(None)
     }
 
+    /// Function to build the configuration by picking it from default locations
     pub fn new_with_config_path(
         explicit_config_path: Option<PathBuf>,
     ) -> Result<Self, config::ConfigError> {

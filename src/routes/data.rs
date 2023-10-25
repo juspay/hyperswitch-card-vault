@@ -16,6 +16,10 @@ use crate::{
 mod transformers;
 mod types;
 
+
+/// 
+/// Function for creating the server that is specifically handling the cards api
+///
 pub fn serve() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/add", post(add_card))
@@ -23,6 +27,8 @@ pub fn serve() -> axum::Router<AppState> {
         .route("/retrieve", get(retrieve_card))
 }
 
+
+/// `/data/add` handling the requirement of storing cards
 pub async fn add_card(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::StoreCardRequest>,
@@ -53,6 +59,7 @@ pub async fn add_card(
     Ok(Json(card.into()))
 }
 
+/// `/data/delete` handling the requirement of deleting cards
 pub async fn delete_card(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::DeleteCardRequest>,
@@ -89,6 +96,7 @@ pub async fn delete_card(
     }))
 }
 
+/// `/data/retrieve` handling the requirement of retrieving cards
 pub async fn retrieve_card(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::RetrieveCardRequest>,

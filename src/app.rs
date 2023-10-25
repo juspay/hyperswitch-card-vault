@@ -5,6 +5,12 @@ use hyper::server::conn;
 
 use crate::{config, error, routes, storage};
 
+///
+/// AppState:
+///
+///
+/// The state that is passed
+///
 #[derive(Clone)]
 pub struct AppState {
     pub db: storage::Storage,
