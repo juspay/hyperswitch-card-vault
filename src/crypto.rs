@@ -1,11 +1,8 @@
-use axum::{response::IntoResponse, body::BoxBody};
-
-pub trait Encryption<I, O: serde::Serialize + serde::de::DeserializeOwned> {
-    type Key;
-    type Error;
-    fn encrypt(input: I, key: Self::Key) -> Result<O, Self::Error>;
-    fn decrypt(input: O, key: Self::Key) -> Result<I, Self::Error>;
+pub trait Encryption<I, O> {
+    type ReturnType<T>;
+    fn encrypt(&self, input: I) -> Self::ReturnType<O>;
+    fn decrypt(&self, input: O) -> Self::ReturnType<I>;
 }
 
+pub mod aes;
 pub mod jw;
-

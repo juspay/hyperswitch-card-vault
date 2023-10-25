@@ -1,9 +1,7 @@
 use crate::error;
 use josekit::{jwe, jws};
 
-pub struct JWEncryption;
-
-pub struct LockerKey {
+pub struct JWEncryption {
     private_key: String,
     public_key: String,
 }
@@ -74,33 +72,31 @@ impl JweBody {
 }
 
 impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
-    type Key = LockerKey;
+    type ReturnType<T> = Result<T, error::CryptoError>;
 
-    type Error = error::CryptoError;
-
-    fn encrypt(input: Vec<u8>, key: Self::Key) -> Result<Vec<u8>, Self::Error> {
+    fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
         let payload = input;
-        let jws_encoded = jws_sign_payload(&payload, key.private_key.as_bytes())?;
+        let jws_encoded = jws_sign_payload(&payload, self.private_key.as_bytes())?;
         let jws_body = JwsBody::from_str(&jws_encoded).ok_or(error::CryptoError::InvalidData(
             "JWS encoded data is incomplete",
         ))?;
         let jws_payload = serde_json::to_vec(&jws_body)?;
-        let jwe_encrypted = encrypt_jwe(&jws_payload, key.public_key)?;
+        let jwe_encrypted = encrypt_jwe(&jws_payload, self.public_key.clone())?;
         let jwe_body = JweBody::from_str(&jwe_encrypted)
             .ok_or(error::CryptoError::InvalidData("JWE data incomplete"))?;
         Ok(serde_json::to_vec(&jwe_body)?)
     }
 
-    fn decrypt(input: Vec<u8>, key: Self::Key) -> Result<Vec<u8>, Self::Error> {
+    fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
         let jwe_body: JweBody = serde_json::from_slice(&input)?;
         let jwe_encoded = jwe_body.get_dotted_jwe();
         let algo = jwe::RSA_OAEP;
-        let jwe_decrypted = decrypt_jwe(&jwe_encoded, key.private_key, algo)?;
+        let jwe_decrypted = decrypt_jwe(&jwe_encoded, self.private_key.clone(), algo)?;
         let jws_parsed = JwsBody::from_str(&jwe_decrypted).ok_or(
             error::CryptoError::InvalidData("Failed while extracting jws body"),
         )?;
         let jws_encoded = jws_parsed.get_dotted_jws();
-        let output = verify_sign(jws_encoded, key.public_key)?;
+        let output = verify_sign(jws_encoded, self.public_key.clone())?;
         Ok(output.as_bytes().to_vec())
     }
 }
@@ -158,8 +154,8 @@ mod tests {
 
     // Keys used for tests
     // Can be generated using the following commands:
-    // `openssl genrsa -out private_key.pem 2048`
-    // `openssl rsa -in private_key.pem -pubout -out public_key.pem`
+    // `openssl genrsa -out private_self.pem 2048`
+    // `openssl rsa -in private_key.pem -pubout -out public_self.pem`
     const ENCRYPTION_KEY: &str = "\
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwa6siKaSYqD1o4J3AbHq

@@ -1,14 +1,17 @@
 use axum::routing;
+use error_stack::ResultExt;
+use futures_util::TryFutureExt;
 use hyper::server::conn;
 
-use crate::{config, db, error};
+use crate::{config, error, routes, storage};
 
 #[derive(Clone)]
-struct AppState {
-    db: db::Pool,
+pub struct AppState {
+    pub db: storage::Storage,
+    pub config: config::Config,
 }
 
-pub fn application_builder<I, S, State>(
+pub async fn application_builder(
     config: config::Config,
 ) -> Result<
     hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
@@ -16,17 +19,30 @@ pub fn application_builder<I, S, State>(
 >
 where
 {
-    let socket_addr =
-        std::net::SocketAddr::new(config.server.host.parse()?, config.server.port);
+    let socket_addr = std::net::SocketAddr::new(config.server.host.parse()?, config.server.port);
 
-    let router = axum::Router::new().with_state(AppState::new(config));
+    let router = axum::Router::new()
+        .nest("/tenant", routes::tenant::serve())
+        .nest("/data", routes::data::serve())
+        .with_state(
+            AppState::new(config)
+                .map_err(|_| error::ConfigurationError::DatabaseError)
+                .await?,
+        )
+        .route("/health", routing::get(routes::health::health));
 
     let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
     Ok(server)
 }
 
 impl AppState {
-    fn new(config: config::Config) -> Self {
-        todo!()
+    async fn new(config: config::Config) -> error_stack::Result<Self, error::ConfigurationError> {
+        Ok(Self {
+            db: storage::Storage::new(config.database.url.to_owned())
+                .await
+                .change_context(error::ConfigurationError::DatabaseError)?,
+
+            config,
+        })
     }
 }
