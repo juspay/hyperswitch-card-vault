@@ -12,6 +12,7 @@ use super::types::StorageDecryption;
 use super::types::StorageEncryption;
 use super::{schema, types, CustomResult, LockerInterface, MerchantInterface, Storage};
 
+
 #[async_trait::async_trait]
 impl MerchantInterface for Storage {
     type Algorithm = GcmAes256;

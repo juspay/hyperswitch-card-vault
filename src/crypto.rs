@@ -1,3 +1,8 @@
+///
+/// Encryption
+///
+/// A trait to be used internally for maintaining and managing encryption algorithms
+///
 pub trait Encryption<I, O> {
     type ReturnType<T>;
     fn encrypt(&self, input: I) -> Self::ReturnType<O>;
