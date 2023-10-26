@@ -5,6 +5,14 @@ use hyper::server::conn;
 
 use crate::{config, error, routes, storage};
 
+#[cfg(feature = "kms")]
+use crate::crypto::{
+    kms::{self, Base64Encoded, KmsData, Raw},
+    Encryption,
+};
+#[cfg(feature = "kms")]
+use std::marker::PhantomData;
+
 ///
 /// AppState:
 ///
@@ -43,6 +51,25 @@ where
 
 impl AppState {
     async fn new(config: config::Config) -> error_stack::Result<Self, error::ConfigurationError> {
+        #[cfg(feature = "kms")]
+        {
+            let master_key_kms_input: KmsData<Base64Encoded> = KmsData {
+                data: String::from_utf8(config.secrets.master_key.clone())
+                    .expect("Failed while converting bytes to String"),
+                decode_op: PhantomData,
+            };
+
+            #[allow(clippy::expect_used)]
+            let kms_decrypted_master_key: KmsData<Raw> = kms::get_kms_client(&config.kms)
+                .await
+                .decrypt(master_key_kms_input)
+                .await
+                .expect("Failed while performing KMS decryption");
+
+            let mut config = config.clone();
+            config.secrets.master_key = kms_decrypted_master_key.data;
+        }
+
         Ok(Self {
             db: storage::Storage::new(config.database.url.to_owned())
                 .await

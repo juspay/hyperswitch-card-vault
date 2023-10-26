@@ -8,3 +8,7 @@ url = "postgres://sam:damn@localhost/locker"
 [secrets]
 tenant = "hyperswitch"
 master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"
+
+[kms]
+region = "us-west-2"
+key_id = "abc"
