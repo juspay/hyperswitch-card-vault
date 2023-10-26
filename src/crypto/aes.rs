@@ -2,7 +2,6 @@ use crate::error;
 use error_stack::ResultExt;
 use ring::aead::{self, BoundKey};
 
-
 ///
 /// GcmAes256
 ///
@@ -171,7 +170,7 @@ mod tests {
         };
 
         let decoded = algorithm1
-            .decrypt(message.clone().into())
+            .decrypt(message.clone())
             .expect("Decoded message");
 
         assert_eq!(

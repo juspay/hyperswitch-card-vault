@@ -53,6 +53,7 @@ pub(super) struct LockerInner {
     customer_id: String,
     enc_data: Encrypted,
     created_at: time::PrimitiveDateTime,
+    hash_id: String,
 }
 
 #[derive(Debug)]
@@ -63,6 +64,7 @@ pub struct Locker {
     pub customer_id: String,
     pub enc_data: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
+    pub hash_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +74,7 @@ pub struct LockerNew {
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Secret<Vec<u8>>,
+    pub hash_id: String,
 }
 
 #[derive(Debug, Insertable)]
@@ -82,6 +85,23 @@ pub(super) struct LockerNewInner {
     merchant_id: String,
     customer_id: String,
     enc_data: Encrypted,
+    hash_id: String,
+}
+
+#[derive(Debug, Identifiable, Queryable)]
+#[diesel(table_name = schema::hash_table)]
+pub struct HashTable {
+    pub id: i32,
+    pub hash_id: String,
+    pub data_hash: String,
+    pub created_at: time::PrimitiveDateTime,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = schema::hash_table)]
+pub(super) struct HashTableNew {
+    pub hash_id: String,
+    pub data_hash: String,
 }
 
 #[derive(Debug, AsExpression)]
@@ -218,6 +238,7 @@ impl StorageDecryption for LockerInner {
             customer_id: self.customer_id,
             enc_data: algo.decrypt(self.enc_data.into_inner().expose())?.into(),
             created_at: self.created_at,
+            hash_id: self.hash_id,
         })
     }
 }
@@ -237,6 +258,7 @@ impl StorageEncryption for LockerNew {
             merchant_id: self.merchant_id,
             customer_id: self.customer_id,
             enc_data: algo.encrypt(self.enc_data.expose())?.into(),
+            hash_id: self.hash_id,
         })
     }
 }

@@ -1,6 +1,17 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    hash_table (hash_id) {
+        id -> Int4,
+        #[max_length = 255]
+        hash_id -> Varchar,
+        #[max_length = 255]
+        data_hash -> Varchar,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     locker (tenant_id, merchant_id, customer_id, locker_id) {
         id -> Int4,
         #[max_length = 255]
@@ -13,6 +24,8 @@ diesel::table! {
         customer_id -> Varchar,
         enc_data -> Bytea,
         created_at -> Timestamp,
+        #[max_length = 255]
+        hash_id -> Varchar,
     }
 }
 
@@ -28,4 +41,4 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(locker, merchant,);
+diesel::allow_tables_to_appear_in_same_query!(hash_table, locker, merchant,);
