@@ -71,8 +71,8 @@ impl ring::aead::NonceSequence for NonceSequence {
 }
 
 impl super::Encryption<Vec<u8>, Vec<u8>> for GcmAes256 {
-    type ReturnType<T> = error_stack::Result<T, error::CryptoError>;
-    fn encrypt(&self, mut input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
+    type ReturnType<'b, T> = error_stack::Result<T, error::CryptoError>;
+    fn encrypt(&self, mut input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let nonce_sequence =
             NonceSequence::new().change_context(error::CryptoError::EncryptionError)?;
         let current_nonce = nonce_sequence.current();
@@ -87,7 +87,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for GcmAes256 {
         Ok(input)
     }
 
-    fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
+    fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let key = aead::UnboundKey::new(&aead::AES_256_GCM, &self.secret)
             .change_context(error::CryptoError::DecryptionError)?;
 
