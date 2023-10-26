@@ -8,17 +8,15 @@ use crate::{
 
 use super::types;
 
-impl TryFrom<(super::types::StoreCardRequest, String)> for storage::types::LockerNew {
+impl TryFrom<(super::types::StoreCardRequest, String, String)> for storage::types::LockerNew {
     type Error = error::ApiError;
 
     fn try_from(
-        (value, tenant_id): (super::types::StoreCardRequest, String),
+        (value, tenant_id, hash_id): (super::types::StoreCardRequest, String, String),
     ) -> Result<Self, Self::Error> {
-        let data = match (value.card, value.enc_card_data) {
-            (None, None) => Err(error::ApiError::StoreDataFailed)
-                .attach_printable("Failed while constructing database state"),
-            (None, Some(data)) => Ok(types::StoredData::EncData(data)),
-            (Some(card), _) => Ok(types::StoredData::CardData(card)),
+        let data = match value.data {
+            types::Data::Card(card) => Ok(types::StoredData::CardData(card)),
+            types::Data::EncData(data) => Ok(types::StoredData::EncData(data)),
         }
         .and_then(|inner| {
             serde_json::to_vec(&inner).change_context(error::ApiError::StoreDataFailed)
@@ -34,6 +32,7 @@ impl TryFrom<(super::types::StoreCardRequest, String)> for storage::types::Locke
             merchant_id: value.merchant_id,
             customer_id: value.merchant_customer_id,
             enc_data: data.into(),
+            hash_id,
         })
     }
 }
