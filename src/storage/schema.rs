@@ -5,8 +5,7 @@ diesel::table! {
         id -> Int4,
         #[max_length = 255]
         hash_id -> Varchar,
-        #[max_length = 255]
-        data_hash -> Varchar,
+        data_hash -> Bytea,
         created_at -> Timestamp,
     }
 }
@@ -41,4 +40,8 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(hash_table, locker, merchant,);
+diesel::allow_tables_to_appear_in_same_query!(
+    hash_table,
+    locker,
+    merchant,
+);

@@ -93,7 +93,7 @@ pub(super) struct LockerNewInner {
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
-    pub data_hash: String,
+    pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
 }
 
@@ -101,7 +101,7 @@ pub struct HashTable {
 #[diesel(table_name = schema::hash_table)]
 pub(super) struct HashTableNew {
     pub hash_id: String,
-    pub data_hash: String,
+    pub data_hash: Vec<u8>,
 }
 
 #[derive(Debug, AsExpression)]

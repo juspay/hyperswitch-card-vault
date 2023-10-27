@@ -8,7 +8,7 @@ use masking::ExposeInterface;
 
 use crate::{
     app::AppState,
-    crypto::aes::GcmAes256,
+    crypto::{aes::GcmAes256, sha::Sha512, Encode},
     error::{self, LogReport},
     storage::{HashInterface, LockerInterface, MerchantInterface},
 };
@@ -45,11 +45,13 @@ pub async fn add_card(
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
 
-    let hash_data = "x".to_string();
+    let hash_data = serde_json::to_vec(&request.data).change_context(error::ApiError::StoreDataFailed).and_then(|data| {
+        (Sha512).encode(data).change_context(error::ApiError::StoreDataFailed)
+    }).report_unwrap()?;
 
     let optional_hash_table = state
         .db
-        .find_by_data_hash(&hash_data)
+        .find_by_data_hash(hash_data.clone())
         .await
         .change_context(error::ApiError::StoreDataFailed)
         .report_unwrap()?;

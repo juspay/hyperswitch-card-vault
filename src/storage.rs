@@ -129,10 +129,10 @@ pub trait LockerInterface {
 pub trait HashInterface {
     async fn find_by_data_hash(
         &self,
-        data_hash: &str,
+        data_hash: Vec<u8>,
     ) -> CustomResult<Option<types::HashTable>, error::StorageError>;
     async fn insert_hash(
         &self,
-        data_hash: String,
+        data_hash: Vec<u8>,
     ) -> CustomResult<types::HashTable, error::StorageError>;
 }

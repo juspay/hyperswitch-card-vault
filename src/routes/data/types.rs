@@ -52,8 +52,12 @@ pub struct StoreCardRequest {
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
 pub enum Data {
-    Card(Card),
-    EncData(String),
+    Card{
+        card: Card
+    },
+    EncData {
+        enc_card_data: String
+    },
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
