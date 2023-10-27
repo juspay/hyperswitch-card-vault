@@ -1,6 +1,5 @@
 use crate::error;
 
-
 pub struct Sha512;
 
 impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
