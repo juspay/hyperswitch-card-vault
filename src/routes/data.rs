@@ -45,9 +45,14 @@ pub async fn add_card(
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
 
-    let hash_data = serde_json::to_vec(&request.data).change_context(error::ApiError::StoreDataFailed).and_then(|data| {
-        (Sha512).encode(data).change_context(error::ApiError::StoreDataFailed)
-    }).report_unwrap()?;
+    let hash_data = serde_json::to_vec(&request.data)
+        .change_context(error::ApiError::StoreDataFailed)
+        .and_then(|data| {
+            (Sha512)
+                .encode(data)
+                .change_context(error::ApiError::StoreDataFailed)
+        })
+        .report_unwrap()?;
 
     let optional_hash_table = state
         .db
