@@ -199,11 +199,8 @@ impl<U: Decoder<Error = error_stack::Report<KmsError>>>
                     String::from_utf8(blob.into_inner())
                         .change_context(KmsError::Utf8DecodingFailed)
                 })?;
-            let decoded_output = consts::BASE64_ENGINE
-                .decode(output)
-                .change_context(KmsError::Base64DecodingFailed)?;
 
-            KmsData::encode(decoded_output)
+            KmsData::encode(output.into_bytes())
         })
     }
 }
