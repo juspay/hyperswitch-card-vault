@@ -4,3 +4,4 @@ pub mod crypto;
 pub mod error;
 pub mod routes;
 pub mod storage;
+pub mod middleware;

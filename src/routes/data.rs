@@ -1,7 +1,7 @@
 use axum::{
     extract,
     routing::{get, post},
-    Json,
+    Json, middleware,
 };
 use error_stack::ResultExt;
 use masking::ExposeInterface;
@@ -11,20 +11,22 @@ use crate::{
     crypto::aes::GcmAes256,
     error::{self, LogReport},
     storage::{LockerInterface, MerchantInterface},
+    middleware::middleware
 };
 
 mod transformers;
-mod types;
+pub mod types;
 
 
 /// 
 /// Function for creating the server that is specifically handling the cards api
 ///
-pub fn serve() -> axum::Router<AppState> {
+pub fn serve(state: AppState) -> axum::Router<AppState> {
     axum::Router::new()
         .route("/add", post(add_card))
         .route("/delete", post(delete_card))
         .route("/retrieve", get(retrieve_card))
+        .layer(middleware::from_fn_with_state(state, middleware))
 }
 
 

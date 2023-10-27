@@ -5,8 +5,14 @@ pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
+    pub locker_key: LockerKeys,
 }
 
+#[derive(Clone, serde::Deserialize)]
+pub struct LockerKeys {
+    pub locker_private_key: String,
+    pub tenant_public_key: String,
+}
 #[derive(Clone, serde::Deserialize)]
 pub struct Server {
     pub host: String,
