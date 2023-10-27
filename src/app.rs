@@ -26,14 +26,15 @@ pub async fn application_builder(
 where
 {
     let socket_addr = std::net::SocketAddr::new(config.server.host.parse()?, config.server.port);
+    let state = AppState::new(config)
+    .map_err(|_| error::ConfigurationError::DatabaseError)
+    .await?;
 
     let router = axum::Router::new()
         .nest("/tenant", routes::tenant::serve())
-        .nest("/data", routes::data::serve())
+        .nest("/data", routes::data::serve(state.clone()))
         .with_state(
-            AppState::new(config)
-                .map_err(|_| error::ConfigurationError::DatabaseError)
-                .await?,
+            state
         )
         .route("/health", routing::get(routes::health::health));
 
@@ -42,7 +43,7 @@ where
 }
 
 impl AppState {
-    async fn new(config: config::Config) -> error_stack::Result<Self, error::ConfigurationError> {
+    pub async fn new(config: config::Config) -> error_stack::Result<Self, error::ConfigurationError> {
         Ok(Self {
             db: storage::Storage::new(config.database.url.to_owned())
                 .await
