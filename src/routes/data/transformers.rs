@@ -15,8 +15,8 @@ impl TryFrom<(super::types::StoreCardRequest, String, String)> for storage::type
         (value, tenant_id, hash_id): (super::types::StoreCardRequest, String, String),
     ) -> Result<Self, Self::Error> {
         let data = match value.data {
-            types::Data::Card(card) => Ok(types::StoredData::CardData(card)),
-            types::Data::EncData(data) => Ok(types::StoredData::EncData(data)),
+            types::Data::Card { card } => Ok(types::StoredData::CardData(card)),
+            types::Data::EncData { enc_card_data } => Ok(types::StoredData::EncData(enc_card_data)),
         }
         .and_then(|inner| {
             serde_json::to_vec(&inner).change_context(error::ApiError::StoreDataFailed)

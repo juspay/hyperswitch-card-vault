@@ -244,7 +244,7 @@ impl LockerInterface for Storage {
 impl super::HashInterface for Storage {
     async fn find_by_data_hash(
         &self,
-        data_hash: &str,
+        data_hash: Vec<u8>,
     ) -> CustomResult<Option<types::HashTable>, error::StorageError> {
         let mut conn = self.get_conn().await?;
 
@@ -265,9 +265,9 @@ impl super::HashInterface for Storage {
     }
     async fn insert_hash(
         &self,
-        data_hash: String,
+        data_hash: Vec<u8>,
     ) -> CustomResult<types::HashTable, error::StorageError> {
-        let output = self.find_by_data_hash(&data_hash).await?;
+        let output = self.find_by_data_hash(data_hash.clone()).await?;
         match output {
             Some(inner) => Ok(inner),
             None => {
