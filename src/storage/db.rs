@@ -166,13 +166,6 @@ impl LockerInterface for Storage {
                 error => Err(error).change_context(error::StorageError::FindError),
             },
         }
-        // .map_err(error_stack::Report::from)
-        // .change_context(error::StorageError::FindError)
-        // .and_then(|inner: types::LockerInner| {
-        //     inner
-        //         .decrypt(key)
-        //         .change_context(error::StorageError::DecryptionError)
-        // })
     }
 
     async fn insert_or_get_from_locker(
@@ -260,8 +253,6 @@ impl super::HashInterface for Storage {
                 error => Err(error).change_context(error::StorageError::FindError),
             },
         }
-        // .map_err(error_stack::Report::from)
-        // .change_context(error::StorageError::FindError)
     }
     async fn insert_hash(
         &self,
