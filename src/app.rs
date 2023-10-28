@@ -53,6 +53,8 @@ impl AppState {
     async fn new(config: config::Config) -> error_stack::Result<Self, error::ConfigurationError> {
         #[cfg(feature = "kms")]
         {
+            let kms_client = kms::get_kms_client(&config.kms).await;
+
             let master_key_kms_input: KmsData<Base64Encoded> = KmsData {
                 data: String::from_utf8(config.secrets.master_key.clone())
                     .expect("Failed while converting bytes to String"),
@@ -60,8 +62,7 @@ impl AppState {
             };
 
             #[allow(clippy::expect_used)]
-            let kms_decrypted_master_key: KmsData<Raw> = kms::get_kms_client(&config.kms)
-                .await
+            let kms_decrypted_master_key: KmsData<Raw> = kms_client
                 .decrypt(master_key_kms_input)
                 .await
                 .expect("Failed while performing KMS decryption");
