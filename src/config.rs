@@ -5,13 +5,6 @@ pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
-    pub locker_key: LockerKeys,
-}
-
-#[derive(Clone, serde::Deserialize)]
-pub struct LockerKeys {
-    pub locker_private_key: String,
-    pub tenant_public_key: String,
 }
 #[derive(Clone, serde::Deserialize)]
 pub struct Server {
@@ -29,6 +22,8 @@ pub struct Secrets {
     pub tenant: String,
     #[serde(deserialize_with = "deserialize_hex")]
     pub master_key: Vec<u8>,
+    pub locker_private_key: String,
+    pub tenant_public_key: String,
 }
 
 /// Function to deserialize hex -> Vec<u8> this is used in case of non KMS decryption

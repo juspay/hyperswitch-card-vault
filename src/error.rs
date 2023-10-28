@@ -55,7 +55,7 @@ pub enum ApiError {
     #[error("failed while retrieving stored data")]
     RetrieveDataFailed,
     #[error("middleware error occurred: {0}")]
-    MiddlewareError(String),
+    MiddlewareError(&'static str),
 }
 
 impl axum::response::IntoResponse for ApiError {
