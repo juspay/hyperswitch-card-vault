@@ -26,7 +26,7 @@ pub struct AppState {
 }
 
 pub async fn application_builder(
-    config: config::Config,
+    config: &mut config::Config,
 ) -> Result<
     hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
     error::ConfigurationError,
@@ -50,7 +50,9 @@ where
 }
 
 impl AppState {
-    async fn new(config: config::Config) -> error_stack::Result<Self, error::ConfigurationError> {
+    async fn new(
+        config: &mut config::Config,
+    ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[cfg(feature = "kms")]
         {
             let kms_client = kms::get_kms_client(&config.kms).await;
@@ -67,7 +69,6 @@ impl AppState {
                 .await
                 .expect("Failed while performing KMS decryption");
 
-            let mut config = config.clone();
             config.secrets.master_key = kms_decrypted_master_key.data;
         }
 
@@ -76,7 +77,7 @@ impl AppState {
                 .await
                 .change_context(error::ConfigurationError::DatabaseError)?,
 
-            config,
+            config: config.clone(),
         })
     }
 }

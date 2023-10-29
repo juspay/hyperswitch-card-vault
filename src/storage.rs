@@ -49,9 +49,9 @@ impl Storage {
     }
 }
 
-/// 
+///
 /// MerchantInterface:
-/// 
+///
 /// Interface providing functional to interface with the merchant table in database
 #[async_trait::async_trait]
 pub trait MerchantInterface {
@@ -82,7 +82,6 @@ pub trait MerchantInterface {
     ) -> CustomResult<types::Merchant, error::StorageError>;
 }
 
-
 ///
 /// LockerInterface:
 ///
@@ -100,7 +99,6 @@ pub trait LockerInterface {
         key: &Self::Algorithm,
     ) -> CustomResult<types::Locker, error::StorageError>;
 
-
     /// Insert payment data from locker table by decrypting with `dek`
     async fn insert_or_get_from_locker(
         &self,
@@ -116,4 +114,25 @@ pub trait LockerInterface {
         merchant_id: String,
         customer_id: String,
     ) -> CustomResult<usize, error::StorageError>;
+
+    async fn find_by_hash_id_merchant_id_customer_id(
+        &self,
+        hash_id: String,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
+        key: &Self::Algorithm,
+    ) -> CustomResult<Option<types::Locker>, error::StorageError>;
+}
+
+#[async_trait::async_trait]
+pub trait HashInterface {
+    async fn find_by_data_hash(
+        &self,
+        data_hash: Vec<u8>,
+    ) -> CustomResult<Option<types::HashTable>, error::StorageError>;
+    async fn insert_hash(
+        &self,
+        data_hash: Vec<u8>,
+    ) -> CustomResult<types::HashTable, error::StorageError>;
 }
