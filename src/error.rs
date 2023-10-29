@@ -54,6 +54,8 @@ pub enum ApiError {
     DeleteDataFailed,
     #[error("failed while retrieving stored data")]
     RetrieveDataFailed,
+    #[error("failed to decrypt two custodian keys")]
+    DecryptingKeysFailed(&'static str),
 }
 
 impl axum::response::IntoResponse for ApiError {

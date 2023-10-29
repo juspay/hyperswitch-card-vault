@@ -1,9 +1,12 @@
 use axum::routing;
 use error_stack::ResultExt;
-use futures_util::TryFutureExt;
 use hyper::server::conn;
+use tokio::sync::{mpsc::Sender, RwLock};
 
-use crate::{config, error, routes, storage};
+use crate::{
+    config, error, routes,
+    storage::{self},
+};
 
 #[cfg(feature = "kms")]
 use crate::crypto::{
@@ -12,6 +15,7 @@ use crate::crypto::{
 };
 #[cfg(feature = "kms")]
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 ///
 /// AppState:
@@ -25,24 +29,57 @@ pub struct AppState {
     pub config: config::Config,
 }
 
-pub async fn application_builder(
-    config: &mut config::Config,
+#[derive(Default, Debug)]
+pub struct Keys {
+    pub key1: Option<String>,
+    pub key2: Option<String>,
+}
+
+pub type SharedState = (
+    Arc<RwLock<AppState>>,
+    Arc<RwLock<Keys>>,
+    tokio::sync::mpsc::Sender<()>,
+);
+
+pub async fn server1_builder(
+    state: Arc<RwLock<AppState>>,
+    server_tx: Sender<()>,
 ) -> Result<
     hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
     error::ConfigurationError,
 >
 where
 {
-    let socket_addr = std::net::SocketAddr::new(config.server.host.parse()?, config.server.port);
+    let keys = Arc::new(RwLock::new(Keys::default()));
+    let socket_addr = std::net::SocketAddr::new(
+        state.read().await.config.server.host.parse()?,
+        state.read().await.config.server.port,
+    );
+    let shared_state: SharedState = (state, keys, server_tx);
 
+    let router = axum::Router::new()
+        .nest("/custodian", routes::key_custodian::serve())
+        .with_state(shared_state)
+        .route("/health", routing::get(routes::health::health));
+
+    let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
+    Ok(server)
+}
+
+pub async fn server2_builder(
+    state: &AppState,
+) -> Result<
+    hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
+    error::ConfigurationError,
+>
+where
+{
+    let socket_addr =
+        std::net::SocketAddr::new(state.config.server.host.parse()?, state.config.server.port);
     let router = axum::Router::new()
         .nest("/tenant", routes::tenant::serve())
         .nest("/data", routes::data::serve())
-        .with_state(
-            AppState::new(config)
-                .map_err(|_| error::ConfigurationError::DatabaseError)
-                .await?,
-        )
+        .with_state(state.clone())
         .route("/health", routing::get(routes::health::health));
 
     let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
@@ -50,7 +87,7 @@ where
 }
 
 impl AppState {
-    async fn new(
+    pub async fn new(
         config: &mut config::Config,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[cfg(feature = "kms")]
