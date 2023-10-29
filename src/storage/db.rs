@@ -12,7 +12,6 @@ use super::types::StorageDecryption;
 use super::types::StorageEncryption;
 use super::{schema, types, CustomResult, LockerInterface, MerchantInterface, Storage};
 
-
 #[async_trait::async_trait]
 impl MerchantInterface for Storage {
     type Algorithm = GcmAes256;
@@ -134,6 +133,41 @@ impl LockerInterface for Storage {
                     .change_context(error::StorageError::DecryptionError)
             })
     }
+
+    async fn find_by_hash_id_merchant_id_customer_id(
+        &self,
+        hash_id: String,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
+        key: &Self::Algorithm,
+    ) -> CustomResult<Option<types::Locker>, error::StorageError> {
+        let mut conn = self.get_conn().await?;
+
+        let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
+            .filter(
+                schema::locker::hash_id
+                    .eq(hash_id)
+                    .and(schema::locker::tenant_id.eq(tenant_id))
+                    .and(schema::locker::merchant_id.eq(merchant_id))
+                    .and(schema::locker::customer_id.eq(customer_id)),
+            )
+            .get_result(&mut conn)
+            .await;
+
+        match output {
+            Ok(inner) => Ok(Some(
+                inner
+                    .decrypt(key)
+                    .change_context(error::StorageError::DecryptionError)?,
+            )),
+            Err(err) => match err {
+                diesel::result::Error::NotFound => Ok(None),
+                error => Err(error).change_context(error::StorageError::FindError),
+            },
+        }
+    }
+
     async fn insert_or_get_from_locker(
         &self,
         new: types::LockerNew,
@@ -196,5 +230,51 @@ impl LockerInterface for Storage {
             .await
             .map_err(error_stack::Report::from)
             .change_context(error::StorageError::FindError)
+    }
+}
+
+#[async_trait::async_trait]
+impl super::HashInterface for Storage {
+    async fn find_by_data_hash(
+        &self,
+        data_hash: Vec<u8>,
+    ) -> CustomResult<Option<types::HashTable>, error::StorageError> {
+        let mut conn = self.get_conn().await?;
+
+        let output: Result<_, diesel::result::Error> = types::HashTable::table()
+            .filter(schema::hash_table::data_hash.eq(data_hash))
+            .get_result(&mut conn)
+            .await;
+
+        match output {
+            Ok(inner) => Ok(Some(inner)),
+            Err(inner_err) => match inner_err {
+                diesel::result::Error::NotFound => Ok(None),
+                error => Err(error).change_context(error::StorageError::FindError),
+            },
+        }
+    }
+    async fn insert_hash(
+        &self,
+        data_hash: Vec<u8>,
+    ) -> CustomResult<types::HashTable, error::StorageError> {
+        let output = self.find_by_data_hash(data_hash.clone()).await?;
+        match output {
+            Some(inner) => Ok(inner),
+            None => {
+                let mut conn = self.get_conn().await?;
+                let query =
+                    diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
+                        hash_id: uuid::Uuid::new_v4().to_string(),
+                        data_hash,
+                    });
+
+                query
+                    .get_result(&mut conn)
+                    .await
+                    .map_err(error_stack::Report::from)
+                    .change_context(error::StorageError::FindError)
+            }
+        }
     }
 }

@@ -11,6 +11,11 @@ pub trait Encryption<I, O> {
     fn decrypt(&self, input: O) -> Self::ReturnType<'_, I>;
 }
 
+pub trait Encode<I, O> {
+    type ReturnType<T>;
+    fn encode(&self, input: I) -> Self::ReturnType<O>;
+}
+
 pub mod aes;
 pub mod jw;
 #[cfg(feature = "kms")]
@@ -22,3 +27,4 @@ pub mod consts {
     pub(crate) const BASE64_ENGINE: base64::engine::GeneralPurpose =
         base64::engine::general_purpose::STANDARD;
 }
+pub mod sha;
