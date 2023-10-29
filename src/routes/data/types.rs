@@ -41,9 +41,19 @@ pub struct StoreCardRequest {
     pub merchant_id: String,
     pub merchant_customer_id: String,
     pub requestor_card_reference: Option<String>,
-    pub card: Option<Card>,
-    pub enc_card_data: Option<String>,
+    // pub card: Option<Card>,
+    // pub enc_card_data: Option<String>,
+    #[serde(flatten)]
+    pub data: Data,
     pub dedup: Option<Dedup>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum Data {
+    Card { card: Card },
+    EncData { enc_card_data: String },
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
