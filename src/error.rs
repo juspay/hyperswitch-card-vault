@@ -56,6 +56,8 @@ pub enum ApiError {
     RetrieveDataFailed,
     #[error("failed to decrypt two custodian keys")]
     DecryptingKeysFailed(&'static str),
+    #[error("middleware error occurred: {0}")]
+    MiddlewareError(&'static str),
 }
 
 impl axum::response::IntoResponse for ApiError {
@@ -102,11 +104,13 @@ where
     E2: Send + Sync + std::error::Error + Clone + 'static,
     E1: From<E2>,
 {
+    #[track_caller]
     fn report_unwrap(self) -> Result<T, E1> {
         let output = match self {
             Ok(inner_val) => Ok(inner_val),
             Err(inner_err) => {
                 let new_error: E1 = (inner_err.current_context().clone()).into();
+                eprintln!("stuff broke: {:#?}", inner_err);
                 Err(inner_err.change_context(new_error))
             }
         };

@@ -3,6 +3,10 @@ use axum::{
     routing::{get, post},
     Json,
 };
+
+#[cfg(feature = "middleware")]
+use axum::middleware;
+
 use error_stack::ResultExt;
 use masking::ExposeInterface;
 
@@ -13,17 +17,29 @@ use crate::{
     storage::{HashInterface, LockerInterface, MerchantInterface},
 };
 
+#[cfg(feature = "middleware")]
+use crate::middleware;
+
 mod transformers;
 pub mod types;
 
 ///
 /// Function for creating the server that is specifically handling the cards api
 ///
-pub fn serve() -> axum::Router<AppState> {
-    axum::Router::new()
+pub fn serve(#[cfg(feature = "middleware")] state: AppState) -> axum::Router<AppState> {
+    let router = axum::Router::new()
         .route("/add", post(add_card))
         .route("/delete", post(delete_card))
-        .route("/retrieve", get(retrieve_card))
+        .route("/retrieve", get(retrieve_card));
+
+    #[cfg(feature = "middleware")]
+    {
+        router = router.layer(middleware::from_fn_with_state(
+            state,
+            middleware::middleware,
+        ))
+    }
+    router
 }
 
 /// `/data/add` handling the requirement of storing cards
