@@ -36,8 +36,13 @@ where
     D: serde::Deserializer<'de>,
 {
     let deserialized_str: String = serde::Deserialize::deserialize(deserializer)?;
+    #[cfg(not(feature = "kms"))]
+    let deserialized_str = hex::decode(deserialized_str)
+        .map_err(|_| serde::de::Error::custom("error while parsing hex"))?;
+    #[cfg(feature = "kms")]
+    let deserialized_str = deserialized_str.into_bytes();
 
-    Ok(deserialized_str.into_bytes())
+    Ok(deserialized_str)
 }
 
 /// Get the origin directory of the project
