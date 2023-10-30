@@ -41,9 +41,7 @@ pub async fn middleware(
     .report_unwrap()?;
 
     let jws_verified = verify_sign(jwe_decrypted, &state.config.secrets.tenant_public_key)
-        .change_context(error::ApiError::MiddlewareError(
-            "Jws verification failed",
-        ))
+        .change_context(error::ApiError::MiddlewareError("Jws verification failed"))
         .report_unwrap()?;
 
     let next_layer_payload = Request::from_parts(parts, Body::from(jws_verified));

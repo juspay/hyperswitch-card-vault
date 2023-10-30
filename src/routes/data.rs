@@ -1,24 +1,23 @@
 use axum::{
-    extract,
+    extract, middleware,
     routing::{get, post},
-    Json, middleware,
+    Json,
 };
 use error_stack::ResultExt;
 use masking::ExposeInterface;
 
 use crate::{
     app::AppState,
-    crypto::aes::GcmAes256,
+    crypto::{aes::GcmAes256, sha::Sha512, Encode},
     error::{self, LogReport},
-    storage::{LockerInterface, MerchantInterface},
-    middleware::middleware
+    middleware::middleware,
+    storage::{HashInterface, LockerInterface, MerchantInterface},
 };
 
 mod transformers;
 pub mod types;
 
-
-/// 
+///
 /// Function for creating the server that is specifically handling the cards api
 ///
 pub fn serve(state: AppState) -> axum::Router<AppState> {
@@ -28,7 +27,6 @@ pub fn serve(state: AppState) -> axum::Router<AppState> {
         .route("/retrieve", get(retrieve_card))
         .layer(middleware::from_fn_with_state(state, middleware))
 }
-
 
 /// `/data/add` handling the requirement of storing cards
 pub async fn add_card(
@@ -46,19 +44,74 @@ pub async fn add_card(
         .await
         .change_context(error::ApiError::StoreDataFailed)
         .report_unwrap()?;
+
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
 
-    let card = state
+    let hash_data = serde_json::to_vec(&request.data)
+        .change_context(error::ApiError::StoreDataFailed)
+        .and_then(|data| {
+            (Sha512)
+                .encode(data)
+                .change_context(error::ApiError::StoreDataFailed)
+        })
+        .report_unwrap()?;
+
+    let optional_hash_table = state
         .db
-        .insert_or_get_from_locker(
-            (request, state.config.secrets.tenant).try_into()?,
-            &merchant_dek,
-        )
+        .find_by_data_hash(hash_data.clone())
         .await
         .change_context(error::ApiError::StoreDataFailed)
         .report_unwrap()?;
 
-    Ok(Json(card.into()))
+    let output = match optional_hash_table {
+        Some(hash_table) => {
+            let stored_data = state
+                .db
+                .find_by_hash_id_merchant_id_customer_id(
+                    hash_table.hash_id.to_string(),
+                    state.config.secrets.tenant.to_string(),
+                    request.merchant_id.to_string(),
+                    request.merchant_customer_id.to_string(),
+                    &merchant_dek,
+                )
+                .await
+                .change_context(error::ApiError::StoreDataFailed)
+                .report_unwrap()?;
+
+            match stored_data {
+                Some(data) => data,
+                None => state
+                    .db
+                    .insert_or_get_from_locker(
+                        (request, state.config.secrets.tenant, hash_table.hash_id).try_into()?,
+                        &merchant_dek,
+                    )
+                    .await
+                    .change_context(error::ApiError::StoreDataFailed)
+                    .report_unwrap()?,
+            }
+        }
+        None => {
+            let hash_table = state
+                .db
+                .insert_hash(hash_data)
+                .await
+                .change_context(error::ApiError::StoreDataFailed)
+                .report_unwrap()?;
+
+            state
+                .db
+                .insert_or_get_from_locker(
+                    (request, state.config.secrets.tenant, hash_table.hash_id).try_into()?,
+                    &merchant_dek,
+                )
+                .await
+                .change_context(error::ApiError::StoreDataFailed)
+                .report_unwrap()?
+        }
+    };
+
+    Ok(Json(output.into()))
 }
 
 /// `/data/delete` handling the requirement of deleting cards
