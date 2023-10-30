@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[cfg(feature = "middleware")]
-use crate::middleware;
+use crate::middleware as custom_middleware;
 
 mod transformers;
 pub mod types;
@@ -34,11 +34,12 @@ pub fn serve(#[cfg(feature = "middleware")] state: AppState) -> axum::Router<App
 
     #[cfg(feature = "middleware")]
     {
-        router = router.layer(middleware::from_fn_with_state(
+        router.layer(middleware::from_fn_with_state(
             state,
-            middleware::middleware,
+            custom_middleware::middleware,
         ))
     }
+    #[cfg(not(feature = "middleware"))]
     router
 }
 
