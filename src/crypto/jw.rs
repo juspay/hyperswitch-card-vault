@@ -72,9 +72,9 @@ impl JweBody {
 }
 
 impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
-    type ReturnType<T> = Result<T, error::CryptoError>;
+    type ReturnType<'a, T> = Result<T, error::CryptoError>;
 
-    fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
+    fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let payload = input;
         let jws_encoded = jws_sign_payload(&payload, self.private_key.as_bytes())?;
         let jws_body = JwsBody::from_str(&jws_encoded).ok_or(error::CryptoError::InvalidData(
@@ -87,7 +87,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
         Ok(serde_json::to_vec(&jwe_body)?)
     }
 
-    fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
+    fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let jwe_body: JweBody = serde_json::from_slice(&input)?;
         let jwe_encoded = jwe_body.get_dotted_jwe();
         let algo = jwe::RSA_OAEP;
@@ -101,7 +101,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
     }
 }
 
-fn jws_sign_payload(
+pub fn jws_sign_payload(
     payload: &[u8],
     private_key: impl AsRef<[u8]>,
 ) -> Result<String, error::CryptoError> {
