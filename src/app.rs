@@ -5,6 +5,14 @@ use hyper::server::conn;
 
 use crate::{config, error, routes, storage};
 
+#[cfg(feature = "kms")]
+use crate::crypto::{
+    kms::{self, Base64Encoded, KmsData, Raw},
+    Encryption,
+};
+#[cfg(feature = "kms")]
+use std::marker::PhantomData;
+
 ///
 /// AppState:
 ///
@@ -18,7 +26,7 @@ pub struct AppState {
 }
 
 pub async fn application_builder(
-    config: config::Config,
+    config: &mut config::Config,
 ) -> Result<
     hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
     error::ConfigurationError,
@@ -42,13 +50,34 @@ where
 }
 
 impl AppState {
-    async fn new(config: config::Config) -> error_stack::Result<Self, error::ConfigurationError> {
+    async fn new(
+        config: &mut config::Config,
+    ) -> error_stack::Result<Self, error::ConfigurationError> {
+        #[cfg(feature = "kms")]
+        {
+            let kms_client = kms::get_kms_client(&config.kms).await;
+
+            let master_key_kms_input: KmsData<Base64Encoded> = KmsData {
+                data: String::from_utf8(config.secrets.master_key.clone())
+                    .expect("Failed while converting bytes to String"),
+                decode_op: PhantomData,
+            };
+
+            #[allow(clippy::expect_used)]
+            let kms_decrypted_master_key: KmsData<Raw> = kms_client
+                .decrypt(master_key_kms_input)
+                .await
+                .expect("Failed while performing KMS decryption");
+
+            config.secrets.master_key = kms_decrypted_master_key.data;
+        }
+
         Ok(Self {
             db: storage::Storage::new(config.database.url.to_owned())
                 .await
                 .change_context(error::ConfigurationError::DatabaseError)?,
 
-            config,
+            config: config.clone(),
         })
     }
 }
