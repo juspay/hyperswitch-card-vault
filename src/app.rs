@@ -56,6 +56,8 @@ pub async fn server1_builder(
 >
 where
 {
+    crate::logger::debug!(startup_config=?state.read().await.config);
+
     let keys = Arc::new(RwLock::new(Keys::default()));
     let socket_addr = std::net::SocketAddr::new(
         state.read().await.config.server.host.parse()?,
