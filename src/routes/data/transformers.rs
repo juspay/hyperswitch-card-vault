@@ -8,11 +8,11 @@ use crate::{
 
 use super::types;
 
-impl TryFrom<(super::types::StoreCardRequest, String, String)> for storage::types::LockerNew {
+impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)> for storage::types::LockerNew<'a> {
     type Error = error::ApiError;
 
     fn try_from(
-        (value, tenant_id, hash_id): (super::types::StoreCardRequest, String, String),
+        (value, tenant_id, hash_id): (super::types::StoreCardRequest, &'a str, &'a str),
     ) -> Result<Self, Self::Error> {
         let data = match value.data {
             types::Data::Card { card } => Ok(types::StoredData::CardData(card)),
@@ -28,11 +28,11 @@ impl TryFrom<(super::types::StoreCardRequest, String, String)> for storage::type
                 .requestor_card_reference
                 .unwrap_or_else(generate_uuid)
                 .into(),
-            tenant_id,
+            tenant_id: &tenant_id,
             merchant_id: value.merchant_id,
             customer_id: value.merchant_customer_id,
             enc_data: data.into(),
-            hash_id,
+            hash_id: &hash_id,
         })
     }
 }
@@ -75,6 +75,8 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
     }
 }
 
+
+/// Generate UUID v4 as strings to be used in storage layer
 pub fn generate_uuid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
