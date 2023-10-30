@@ -1,10 +1,11 @@
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
 use axum::{extract::State, routing::post, Json};
 use error_stack::ResultExt;
+use tokio::sync::RwLock;
 
 use crate::{
-    app::{Keys, SharedState},
+    app::{AppState, Keys, SharedState},
     crypto::{aes::GcmAes256, Encryption},
     error::{self, LogReport},
 };
@@ -48,21 +49,14 @@ pub async fn decrypt(
             key1: Some(inner_key1),
             key2: Some(inner_key2),
         } => {
-            let final_key = format!("{}{}", inner_key1, inner_key2);
-            let aes_decrypted_key =
-                GcmAes256::new(state.read().await.config.secrets.master_key.clone())
-                    .decrypt(final_key.into_bytes())
-                    .change_context(error::ApiError::DecryptingKeysFailed(
-                        "AES decryption failed",
-                    ))
-                    .report_unwrap()?;
-
-            let master_key = String::from_utf8(aes_decrypted_key)
-                .change_context(error::ApiError::DecryptingKeysFailed(
-                    "Failed while parsing utf-8",
-                ))
-                .report_unwrap()?;
-            state.write().await.config.secrets.master_key = master_key.into_bytes();
+            match aes_decrypt_custodian_key(state, inner_key1.clone(), inner_key2.clone()).await {
+                value @ Ok(_) => value,
+                error @ Err(_) => {
+                    keys.write().await.key1 = None;
+                    keys.write().await.key2 = None;
+                    error
+                }
+            }?;
 
             let _ = tx.send(()).await;
             Ok("Decryption successful")
@@ -71,4 +65,26 @@ pub async fn decrypt(
             "Both the custodain keys are not present",
         )),
     }
+}
+
+async fn aes_decrypt_custodian_key(
+    state: Arc<RwLock<AppState>>,
+    inner_key1: String,
+    inner_key2: String,
+) -> Result<(), error::ApiError> {
+    let final_key = format!("{}{}", inner_key1, inner_key2);
+    let aes_decrypted_key = GcmAes256::new(state.read().await.config.secrets.master_key.clone())
+        .decrypt(final_key.into_bytes())
+        .change_context(error::ApiError::DecryptingKeysFailed(
+            "AES decryption failed",
+        ))
+        .report_unwrap()?;
+
+    let master_key = String::from_utf8(aes_decrypted_key)
+        .change_context(error::ApiError::DecryptingKeysFailed(
+            "Failed while parsing utf-8",
+        ))
+        .report_unwrap()?;
+    state.write().await.config.secrets.master_key = master_key.into_bytes();
+    Ok(())
 }

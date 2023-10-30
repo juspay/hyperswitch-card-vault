@@ -1,7 +1,11 @@
 use axum::routing;
 use error_stack::ResultExt;
 use hyper::server::conn;
+#[cfg(feature = "key_custodian")]
 use tokio::sync::{mpsc::Sender, RwLock};
+
+#[cfg(feature = "key_custodian")]
+use std::sync::Arc;
 
 use crate::{
     config, error, routes,
@@ -15,7 +19,6 @@ use crate::crypto::{
 };
 #[cfg(feature = "kms")]
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 ///
 /// AppState:
@@ -29,18 +32,21 @@ pub struct AppState {
     pub config: config::Config,
 }
 
+#[cfg(feature = "key_custodian")]
 #[derive(Default, Debug)]
 pub struct Keys {
     pub key1: Option<String>,
     pub key2: Option<String>,
 }
 
+#[cfg(feature = "key_custodian")]
 pub type SharedState = (
     Arc<RwLock<AppState>>,
     Arc<RwLock<Keys>>,
     tokio::sync::mpsc::Sender<()>,
 );
 
+#[cfg(feature = "key_custodian")]
 pub async fn server1_builder(
     state: Arc<RwLock<AppState>>,
     server_tx: Sender<()>,
