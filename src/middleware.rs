@@ -69,8 +69,6 @@ pub async fn middleware(
     .report_unwrap()?;
 
     Ok(Response::new(
-        jwe_encrypted
-            .map_err(|err| axum::Error::new(err))
-            .boxed_unsync(),
+        jwe_encrypted.map_err(axum::Error::new).boxed_unsync(),
     ))
 }

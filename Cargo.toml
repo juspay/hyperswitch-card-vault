@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["kms"]
+default = ["kms", "middleware"]
 kms = ["dep:aws-config", "dep:aws-sdk-kms"]
+middleware = []
 
 [dependencies]
 aws-config = { version = "0.55.3", optional = true }
