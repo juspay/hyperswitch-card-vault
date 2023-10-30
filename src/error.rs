@@ -72,6 +72,15 @@ impl axum::response::IntoResponse for ApiError {
                 )),
             )
                 .into_response(),
+            ApiError::DecryptingKeysFailed(_) => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new(
+                    "TE_00",
+                    "Failed while decrypting two custodian keys".to_string(),
+                    None,
+                )),
+            )
+                .into_response(),
             _ => hyper::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
