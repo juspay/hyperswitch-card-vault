@@ -196,7 +196,7 @@ impl LockerInterface for Storage {
                 ) => {
                     self.find_by_locker_id_merchant_id_customer_id(
                         cloned_new.locker_id,
-                        &cloned_new.tenant_id,
+                        cloned_new.tenant_id,
                         &cloned_new.merchant_id,
                         &cloned_new.customer_id,
                         key,

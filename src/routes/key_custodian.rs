@@ -10,7 +10,6 @@ use crate::{
     error::{self, LogReport},
 };
 
-
 /// Final key payload after decryption is successful
 #[derive(serde::Deserialize)]
 pub struct KeyPayload {
