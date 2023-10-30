@@ -44,7 +44,7 @@ pub enum StorageError {
     EncryptionError,
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Copy, Clone, thiserror::Error)]
 pub enum ApiError {
     #[error("failed while making merchant create")]
     TenentCreateError,
@@ -109,8 +109,8 @@ pub trait LogReport<T, E> {
 
 impl<T, E1, E2> LogReport<T, E1> for Result<T, Report<E2>>
 where
-    E1: Send + Sync + std::error::Error + Clone + 'static,
-    E2: Send + Sync + std::error::Error + Clone + 'static,
+    E1: Send + Sync + std::error::Error + Copy + 'static,
+    E2: Send + Sync + std::error::Error + Copy + 'static,
     E1: From<E2>,
 {
     #[track_caller]
@@ -118,12 +118,12 @@ where
         let output = match self {
             Ok(inner_val) => Ok(inner_val),
             Err(inner_err) => {
-                let new_error: E1 = (inner_err.current_context().clone()).into();
+                let new_error: E1 = (*inner_err.current_context()).into();
                 eprintln!("stuff broke: {:#?}", inner_err);
                 Err(inner_err.change_context(new_error))
             }
         };
 
-        output.map_err(|err| (err.current_context().clone()))
+        output.map_err(|err| (*err.current_context()))
     }
 }

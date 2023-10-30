@@ -18,8 +18,8 @@ impl MerchantInterface for Storage {
 
     async fn find_by_merchant_id(
         &self,
-        merchant_id: String,
-        tenant_id: String,
+        merchant_id: &str,
+        tenant_id: &str,
         key: &GcmAes256,
     ) -> CustomResult<types::Merchant, error::StorageError> {
         let mut conn = self.get_conn().await?;
@@ -27,8 +27,8 @@ impl MerchantInterface for Storage {
             types::MerchantInner::table()
                 .filter(
                     schema::merchant::merchant_id
-                        .eq(merchant_id.clone())
-                        .and(schema::merchant::tenant_id.eq(tenant_id.clone())),
+                        .eq(merchant_id)
+                        .and(schema::merchant::tenant_id.eq(tenant_id)),
                 )
                 .get_result(&mut conn)
                 .await;
@@ -43,8 +43,8 @@ impl MerchantInterface for Storage {
 
     async fn find_or_create_by_merchant_id(
         &self,
-        merchant_id: String,
-        tenant_id: String,
+        merchant_id: &str,
+        tenant_id: &str,
         key: &GcmAes256,
     ) -> CustomResult<types::Merchant, error::StorageError> {
         let mut conn = self.get_conn().await?;
@@ -53,8 +53,8 @@ impl MerchantInterface for Storage {
             types::MerchantInner::table()
                 .filter(
                     schema::merchant::merchant_id
-                        .eq(merchant_id.clone())
-                        .and(schema::merchant::tenant_id.eq(tenant_id.clone())),
+                        .eq(merchant_id)
+                        .and(schema::merchant::tenant_id.eq(tenant_id)),
                 )
                 .get_result(&mut conn)
                 .await;
@@ -80,7 +80,7 @@ impl MerchantInterface for Storage {
     }
     async fn insert_merchant(
         &self,
-        new: types::MerchantNew,
+        new: types::MerchantNew<'_>,
         key: &GcmAes256,
     ) -> CustomResult<types::Merchant, error::StorageError> {
         let mut conn = self.get_conn().await?;
@@ -108,9 +108,9 @@ impl LockerInterface for Storage {
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
-        tenant_id: String,
-        merchant_id: String,
-        customer_id: String,
+        tenant_id: &str,
+        merchant_id: &str,
+        customer_id: &str,
         key: &Self::Algorithm,
     ) -> CustomResult<types::Locker, error::StorageError> {
         let mut conn = self.get_conn().await?;
@@ -136,10 +136,10 @@ impl LockerInterface for Storage {
 
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
-        hash_id: String,
-        tenant_id: String,
-        merchant_id: String,
-        customer_id: String,
+        hash_id: &str,
+        tenant_id: &str,
+        merchant_id: &str,
+        customer_id: &str,
         key: &Self::Algorithm,
     ) -> CustomResult<Option<types::Locker>, error::StorageError> {
         let mut conn = self.get_conn().await?;
@@ -170,7 +170,7 @@ impl LockerInterface for Storage {
 
     async fn insert_or_get_from_locker(
         &self,
-        new: types::LockerNew,
+        new: types::LockerNew<'_>,
         key: &Self::Algorithm,
     ) -> CustomResult<types::Locker, error::StorageError> {
         let mut conn = self.get_conn().await?;
@@ -196,9 +196,9 @@ impl LockerInterface for Storage {
                 ) => {
                     self.find_by_locker_id_merchant_id_customer_id(
                         cloned_new.locker_id,
-                        cloned_new.tenant_id,
-                        cloned_new.merchant_id,
-                        cloned_new.customer_id,
+                        &cloned_new.tenant_id,
+                        &cloned_new.merchant_id,
+                        &cloned_new.customer_id,
                         key,
                     )
                     .await
@@ -211,9 +211,9 @@ impl LockerInterface for Storage {
     async fn delete_from_locker(
         &self,
         locker_id: Secret<String>,
-        tenant_id: String,
-        merchant_id: String,
-        customer_id: String,
+        tenant_id: &str,
+        merchant_id: &str,
+        customer_id: &str,
     ) -> CustomResult<usize, error::StorageError> {
         let mut conn = self.get_conn().await?;
 
@@ -237,7 +237,7 @@ impl LockerInterface for Storage {
 impl super::HashInterface for Storage {
     async fn find_by_data_hash(
         &self,
-        data_hash: Vec<u8>,
+        data_hash: &[u8],
     ) -> CustomResult<Option<types::HashTable>, error::StorageError> {
         let mut conn = self.get_conn().await?;
 
@@ -258,7 +258,7 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: Vec<u8>,
     ) -> CustomResult<types::HashTable, error::StorageError> {
-        let output = self.find_by_data_hash(data_hash.clone()).await?;
+        let output = self.find_by_data_hash(&data_hash).await?;
         match output {
             Some(inner) => Ok(inner),
             None => {
