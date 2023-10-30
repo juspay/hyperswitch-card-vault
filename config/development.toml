@@ -8,6 +8,7 @@ url = "postgres://sam:damn@localhost/locker"
 [secrets]
 tenant = "hyperswitch"
 master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"
+
 tenant_public_key = """
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Z/K0JWds8iHhWCa+rj0
@@ -48,3 +49,7 @@ Sau7H1Bhzy5G7rwt05LNpU6nFcAGVaZtzl4/+FYfYIulubYjuSEh72yuBHHyvi1/
 4Zql8DXhF5kkKx75cMcIxZ/ceiRiQyjzYv3LoTTADHHjzsiBEiQY
 -----END RSA PRIVATE KEY-----
 """
+
+[kms]
+region = "us-west-2"
+key_id = "abc"
