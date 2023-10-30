@@ -1,28 +1,30 @@
+use super::logger::config::Log;
 #[cfg(feature = "kms")]
 use crate::crypto::kms;
 
 use std::path::PathBuf;
 
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
     #[cfg(feature = "kms")]
     pub kms: kms::KmsConfig,
+    pub log: Log,
 }
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Server {
     pub host: String,
     pub port: u16,
 }
 
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Database {
     pub url: String,
 }
 
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Secrets {
     pub tenant: String,
     #[serde(deserialize_with = "deserialize_hex")]
