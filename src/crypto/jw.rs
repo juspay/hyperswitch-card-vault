@@ -101,7 +101,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
     }
 }
 
-fn jws_sign_payload(
+pub fn jws_sign_payload(
     payload: &[u8],
     private_key: impl AsRef<[u8]>,
 ) -> Result<String, error::CryptoError> {
