@@ -11,7 +11,6 @@ pub struct Config {
     #[cfg(feature = "kms")]
     pub kms: kms::KmsConfig,
 }
-
 #[derive(Clone, serde::Deserialize)]
 pub struct Server {
     pub host: String,
@@ -28,6 +27,8 @@ pub struct Secrets {
     pub tenant: String,
     #[serde(deserialize_with = "deserialize_hex")]
     pub master_key: Vec<u8>,
+    pub locker_private_key: String,
+    pub tenant_public_key: String,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>

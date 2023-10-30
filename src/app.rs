@@ -78,7 +78,13 @@ where
         std::net::SocketAddr::new(state.config.server.host.parse()?, state.config.server.port);
     let router = axum::Router::new()
         .nest("/tenant", routes::tenant::serve())
-        .nest("/data", routes::data::serve())
+        .nest(
+            "/data",
+            routes::data::serve(
+                #[cfg(feature = "middleware")]
+                state.clone(),
+            ),
+        )
         .with_state(state.clone())
         .route("/health", routing::get(routes::health::health));
 
