@@ -54,6 +54,10 @@ pub enum ApiError {
     DeleteDataFailed,
     #[error("failed while retrieving stored data")]
     RetrieveDataFailed,
+    #[error("failed to decrypt two custodian keys")]
+    DecryptingKeysFailed(&'static str),
+    #[error("middleware error occurred: {0}")]
+    MiddlewareError(&'static str),
 }
 
 impl axum::response::IntoResponse for ApiError {
@@ -64,6 +68,15 @@ impl axum::response::IntoResponse for ApiError {
                 axum::Json(ApiErrorResponse::new(
                     "TE_00",
                     "Failed while creating the tenant".to_string(),
+                    None,
+                )),
+            )
+                .into_response(),
+            ApiError::DecryptingKeysFailed(_) => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new(
+                    "TE_00",
+                    "Failed while decrypting two custodian keys".to_string(),
                     None,
                 )),
             )
@@ -100,11 +113,13 @@ where
     E2: Send + Sync + std::error::Error + Clone + 'static,
     E1: From<E2>,
 {
+    #[track_caller]
     fn report_unwrap(self) -> Result<T, E1> {
         let output = match self {
             Ok(inner_val) => Ok(inner_val),
             Err(inner_err) => {
                 let new_error: E1 = (inner_err.current_context().clone()).into();
+                eprintln!("stuff broke: {:#?}", inner_err);
                 Err(inner_err.change_context(new_error))
             }
         };

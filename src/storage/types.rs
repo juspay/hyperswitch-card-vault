@@ -175,7 +175,7 @@ pub(super) trait StorageDecryption: Sized {
     fn decrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<Self::Output>;
+    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
 }
 
 pub(super) trait StorageEncryption: Sized {
@@ -184,7 +184,7 @@ pub(super) trait StorageEncryption: Sized {
     fn encrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<Self::Output>;
+    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
 }
 
 impl StorageDecryption for MerchantInner {
@@ -195,7 +195,8 @@ impl StorageDecryption for MerchantInner {
     fn decrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<Self::Output> {
+    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
+    {
         Ok(Self::Output {
             merchant_id: self.merchant_id,
             enc_key: algo.decrypt(self.enc_key.into_inner().expose())?.into(),
@@ -213,7 +214,8 @@ impl StorageEncryption for MerchantNew {
     fn encrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<Self::Output> {
+    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
+    {
         Ok(Self::Output {
             merchant_id: self.merchant_id,
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
@@ -230,7 +232,8 @@ impl StorageDecryption for LockerInner {
     fn decrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<Self::Output> {
+    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
+    {
         Ok(Self::Output {
             locker_id: self.locker_id,
             tenant_id: self.tenant_id,
@@ -251,7 +254,8 @@ impl StorageEncryption for LockerNew {
     fn encrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<Self::Output> {
+    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
+    {
         Ok(Self::Output {
             locker_id: self.locker_id,
             tenant_id: self.tenant_id,

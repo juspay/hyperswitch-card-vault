@@ -1,3 +1,6 @@
+#[cfg(feature = "kms")]
+use crate::crypto::kms;
+
 use std::path::PathBuf;
 
 #[derive(Clone, serde::Deserialize)]
@@ -5,8 +8,9 @@ pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
+    #[cfg(feature = "kms")]
+    pub kms: kms::KmsConfig,
 }
-
 #[derive(Clone, serde::Deserialize)]
 pub struct Server {
     pub host: String,
@@ -23,21 +27,17 @@ pub struct Secrets {
     pub tenant: String,
     #[serde(deserialize_with = "deserialize_hex")]
     pub master_key: Vec<u8>,
+    pub locker_private_key: String,
+    pub tenant_public_key: String,
 }
 
-/// Function to deserialize hex -> Vec<u8> this is used in case of non KMS decryption
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let hex_str: String = serde::Deserialize::deserialize(deserializer)?;
+    let deserialized_str: String = serde::Deserialize::deserialize(deserializer)?;
 
-    let bytes = match hex::decode(hex_str) {
-        Ok(data) => data,
-        Err(_) => return Err(serde::de::Error::custom("Base64 decoding error")),
-    };
-
-    Ok(bytes)
+    Ok(deserialized_str.into_bytes())
 }
 
 /// Get the origin directory of the project
