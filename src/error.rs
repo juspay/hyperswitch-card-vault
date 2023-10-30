@@ -54,6 +54,8 @@ pub enum ApiError {
     DeleteDataFailed,
     #[error("failed while retrieving stored data")]
     RetrieveDataFailed,
+    #[error("failed to decrypt two custodian keys")]
+    DecryptingKeysFailed(&'static str),
     #[error("middleware error occurred: {0}")]
     MiddlewareError(&'static str),
 }
@@ -66,6 +68,15 @@ impl axum::response::IntoResponse for ApiError {
                 axum::Json(ApiErrorResponse::new(
                     "TE_00",
                     "Failed while creating the tenant".to_string(),
+                    None,
+                )),
+            )
+                .into_response(),
+            ApiError::DecryptingKeysFailed(_) => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new(
+                    "TE_00",
+                    "Failed while decrypting two custodian keys".to_string(),
                     None,
                 )),
             )
