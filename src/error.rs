@@ -113,6 +113,6 @@ where
             }
         };
 
-        output.map_err(|err| (err.current_context().clone()).into())
+        output.map_err(|err| (err.current_context().clone()))
     }
 }

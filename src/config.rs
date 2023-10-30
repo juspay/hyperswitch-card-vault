@@ -44,8 +44,7 @@ where
 /// Get the origin directory of the project
 pub fn workspace_path() -> PathBuf {
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        let path = PathBuf::from(manifest_dir);
-        path
+        PathBuf::from(manifest_dir)
     } else {
         PathBuf::from(".")
     }
@@ -62,9 +61,9 @@ impl Config {
         explicit_config_path: Option<PathBuf>,
     ) -> Result<Self, config::ConfigError> {
         let env = "dev";
-        let config_path = Self::config_path(&env, explicit_config_path);
+        let config_path = Self::config_path(env, explicit_config_path);
 
-        let config = Self::builder(&env)?
+        let config = Self::builder(env)?
             .add_source(config::File::from(config_path).required(false))
             .add_source(config::Environment::with_prefix("LOCKER").separator("__"))
             .build()?;

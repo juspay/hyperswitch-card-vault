@@ -9,5 +9,11 @@ pub trait Encryption<I, O> {
     fn decrypt(&self, input: O) -> Self::ReturnType<I>;
 }
 
+pub trait Encode<I, O> {
+    type ReturnType<T>;
+    fn encode(&self, input: I) -> Self::ReturnType<O>;
+}
+
 pub mod aes;
 pub mod jw;
+pub mod sha;
