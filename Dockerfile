@@ -15,16 +15,20 @@ RUN cargo build --release --features release ${EXTRA_FEATURES}
 
 FROM debian:bookworm-slim
 
-ARG CONFIG_DIR=/config
-ARG BIN_DIR=/
+ARG CONFIG_DIR=/local/config
+ARG BIN_DIR=/local
 ARG BINARY=locker
+
+RUN apt-get update \
+    && apt-get install -y ca-certificates tzdata libpq-dev curl procps
+
 EXPOSE 8080
 
 RUN mkdir -p ${CONFIG_DIR}
 
-COPY --from=builder /locker/target/release/${BINARY} /${BINARY}
+COPY --from=builder /locker/target/release/${BINARY} ${BIN_DIR}/${BINARY}
 
 WORKDIR ${BIN_DIR}
 
-CMD ./${BINARY}
+CMD ./locker
 
