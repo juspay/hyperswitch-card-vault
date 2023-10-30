@@ -12,7 +12,6 @@ use hyper::body::HttpBody;
 use hyper::Body;
 use josekit::jwe;
 
-
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
 pub async fn middleware(
