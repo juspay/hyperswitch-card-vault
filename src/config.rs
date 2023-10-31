@@ -29,8 +29,10 @@ pub struct Secrets {
     pub tenant: String,
     #[serde(deserialize_with = "deserialize_hex")]
     pub master_key: Vec<u8>,
-    pub locker_private_key: String,
-    pub tenant_public_key: String,
+    #[cfg(feature = "middleware")]
+    pub locker_private_key: masking::Secret<String>,
+    #[cfg(feature = "middleware")]
+    pub tenant_public_key: masking::Secret<String>,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
