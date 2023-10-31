@@ -21,16 +21,24 @@ pub struct Server {
 
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct Database {
-    pub url: String,
+    pub username: String,
+    // KMS encrypted
+    pub password: masking::Secret<String>,
+    pub host: String,
+    pub port: u16,
+    pub dbname: String,
 }
 
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct Secrets {
     pub tenant: String,
+    // KMS encrypted
     #[serde(deserialize_with = "deserialize_hex")]
     pub master_key: Vec<u8>,
+    // KMS encrypted
     #[cfg(feature = "middleware")]
     pub locker_private_key: masking::Secret<String>,
+    // KMS encrypted
     #[cfg(feature = "middleware")]
     pub tenant_public_key: masking::Secret<String>,
 }
