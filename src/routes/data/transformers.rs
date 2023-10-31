@@ -20,9 +20,7 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
             types::Data::Card { card } => Ok(types::StoredData::CardData(card)),
             types::Data::EncData { enc_card_data } => Ok(types::StoredData::EncData(enc_card_data)),
         }
-        .and_then(|inner| {
-            serde_json::to_vec(&inner).change_context(error::ApiError::StoreDataFailed)
-        })
+        .and_then(|inner| serde_json::to_vec(&inner).change_context(error::ApiError::EncodingError))
         .report_unwrap()?;
 
         Ok(Self {
@@ -42,9 +40,7 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
 impl From<storage::types::Locker> for super::types::StoreCardResponse {
     fn from(value: storage::types::Locker) -> Self {
         Self {
-            status: "Ok".to_string(),
-            error_message: None,
-            error_code: None,
+            status: types::Status::Ok,
             payload: Some(super::types::StoreCardRespPayload {
                 card_reference: value.locker_id.expose(),
                 dedup: None,
@@ -58,7 +54,7 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
     fn try_from(value: storage::types::Locker) -> Result<Self, Self::Error> {
         let (card, enc_card_data) =
             match serde_json::from_slice::<types::StoredData>(&value.enc_data.expose())
-                .change_context(error::ApiError::RetrieveDataFailed)
+                .change_context(error::ApiError::DecodingError)
                 .report_unwrap()?
             {
                 types::StoredData::EncData(data) => (None, Some(data)),
@@ -66,9 +62,7 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
             };
 
         Ok(Self {
-            status: "OK".to_string(),
-            error_message: None,
-            error_code: None,
+            status: types::Status::Ok,
             payload: Some(super::types::RetrieveCardRespPayload {
                 card,
                 enc_card_data,
