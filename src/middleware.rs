@@ -1,5 +1,6 @@
 use crate::app::AppState;
-use crate::crypto::jw::{decrypt_jwe, encrypt_jwe, jws_sign_payload, verify_sign};
+use crate::crypto::jw::JWEncryption;
+use crate::crypto::Encryption;
 use crate::error::{self, LogReport};
 use axum::{
     body::BoxBody,
@@ -10,7 +11,6 @@ use axum::{
 use error_stack::ResultExt;
 use hyper::body::HttpBody;
 use hyper::Body;
-use josekit::jwe;
 
 pub async fn middleware(
     extract::State(state): extract::State<AppState>,
@@ -26,25 +26,17 @@ pub async fn middleware(
         ))
         .report_unwrap()?;
 
-    let jwt = String::from_utf8(request_body.to_vec())
-        .change_context(error::ApiError::MiddlewareError(
-            "Could not convert to UTF-8",
-        ))
+    let keys = JWEncryption {
+        private_key: state.config.secrets.locker_private_key,
+        public_key: state.config.secrets.tenant_public_key,
+    };
+
+    let jwe_decrypted = keys
+        .decrypt(request_body.to_vec())
+        .change_context(error::ApiError::MiddlewareError("Jwe decryption failed"))
         .report_unwrap()?;
 
-    let jwe_decrypted = decrypt_jwe(
-        &jwt,
-        &state.config.secrets.locker_private_key,
-        jwe::RSA_OAEP_256,
-    )
-    .change_context(error::ApiError::MiddlewareError("Jwe decryption failed"))
-    .report_unwrap()?;
-
-    let jws_verified = verify_sign(jwe_decrypted, &state.config.secrets.tenant_public_key)
-        .change_context(error::ApiError::MiddlewareError("Jws verification failed"))
-        .report_unwrap()?;
-
-    let next_layer_payload = Request::from_parts(parts, Body::from(jws_verified));
+    let next_layer_payload = Request::from_parts(parts, Body::from(jwe_decrypted));
 
     let response = next.run(next_layer_payload).await;
 
@@ -57,18 +49,16 @@ pub async fn middleware(
         ))
         .report_unwrap()?;
 
-    let jws_signed = jws_sign_payload(&response_body, &state.config.secrets.locker_private_key)
+    let jws_signed = keys
+        .encrypt(response_body.to_vec())
         .change_context(error::ApiError::MiddlewareError("Jws signing failed"))
         .report_unwrap()?;
 
-    let jwe_encrypted = encrypt_jwe(
-        jws_signed.as_bytes(),
-        &state.config.secrets.tenant_public_key,
-    )
-    .change_context(error::ApiError::MiddlewareError("Jwe encryption failed"))
-    .report_unwrap()?;
+    let jwt = String::from_utf8(jws_signed)
+        .change_context(error::ApiError::MiddlewareError(
+            "Could not convert to UTF-8",
+        ))
+        .report_unwrap()?;
 
-    Ok(Response::new(
-        jwe_encrypted.map_err(axum::Error::new).boxed_unsync(),
-    ))
+    Ok(Response::new(jwt.map_err(axum::Error::new).boxed_unsync()))
 }
