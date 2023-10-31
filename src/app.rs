@@ -1,6 +1,8 @@
 use axum::routing;
 use error_stack::ResultExt;
 use hyper::server::conn;
+#[cfg(feature = "kms")]
+use masking::PeekInterface;
 #[cfg(feature = "key_custodian")]
 use tokio::sync::{mpsc::Sender, RwLock};
 
@@ -120,23 +122,59 @@ impl AppState {
         {
             let kms_client = kms::get_kms_client(&config.kms).await;
 
-            let master_key_kms_input: KmsData<Base64Encoded> = KmsData {
-                data: String::from_utf8(config.secrets.master_key.clone())
+            let master_key_kms_input: KmsData<Base64Encoded> = KmsData::new(
+                String::from_utf8(config.secrets.master_key.clone())
                     .expect("Failed while converting bytes to String"),
-                decode_op: PhantomData,
-            };
-
-            #[allow(clippy::expect_used)]
+                PhantomData,
+            );
             let kms_decrypted_master_key: KmsData<Raw> = kms_client
                 .decrypt(master_key_kms_input)
                 .await
-                .expect("Failed while performing KMS decryption");
-
+                .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
             config.secrets.master_key = kms_decrypted_master_key.data;
+
+            let tenant_public_key_kms_input: KmsData<Base64Encoded> =
+                KmsData::new(config.secrets.tenant_public_key.peek().clone(), PhantomData);
+            let kms_decrypted_tenant_public_key: KmsData<Raw> = kms_client
+                .decrypt(tenant_public_key_kms_input)
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "tenant_public_key",
+                ))?;
+            config.secrets.tenant_public_key =
+                String::from_utf8(kms_decrypted_tenant_public_key.data)
+                    .expect("Failed while converting bytes to String")
+                    .into();
+
+            let locker_private_key_kms_input: KmsData<Base64Encoded> = KmsData::new(
+                config.secrets.locker_private_key.peek().clone(),
+                PhantomData,
+            );
+            let kms_decrypted_locker_private_key: KmsData<Raw> = kms_client
+                .decrypt(locker_private_key_kms_input)
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "locker_private_key",
+                ))?;
+            config.secrets.locker_private_key =
+                String::from_utf8(kms_decrypted_locker_private_key.data)
+                    .expect("Failed while converting bytes to String")
+                    .into();
+
+            let db_password_kms_input: KmsData<Base64Encoded> =
+                KmsData::new(config.database.password.clone(), PhantomData);
+            let kms_decrypted_db_password: KmsData<Raw> = kms_client
+                .decrypt(db_password_kms_input)
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "locker_private_key",
+                ))?;
+            config.database.password = String::from_utf8(kms_decrypted_db_password.data)
+                .expect("Failed while converting bytes to String");
         }
 
         Ok(Self {
-            db: storage::Storage::new(config.database.url.to_owned())
+            db: storage::Storage::new(&config.database)
                 .await
                 .change_context(error::ConfigurationError::DatabaseError)?,
 

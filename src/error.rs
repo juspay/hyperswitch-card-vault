@@ -10,6 +10,8 @@ pub enum ConfigurationError {
     AddressError(#[from] std::net::AddrParseError),
     #[error("Error while connecting/creating database pool")]
     DatabaseError,
+    #[error("Failed to KMS decrypt: {0}")]
+    KmsDecryptError(&'static str),
 }
 
 #[derive(Debug, thiserror::Error)]
