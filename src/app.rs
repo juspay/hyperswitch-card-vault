@@ -109,9 +109,16 @@ where
     Ok(server)
 }
 
+#[allow(clippy::expect_used)]
 impl AppState {
     ///
     /// Construct new app state with configuration
+    ///
+    /// # Panics
+    ///
+    /// - If the master key cannot be parsed as a string
+    /// - If the public/private key cannot be parsed as a string after kms decrypt
+    /// - If the database password cannot be parsed as a string after kms decrypt
     ///
     pub async fn new(
         config: &mut config::Config,
@@ -161,9 +168,7 @@ impl AppState {
             let kms_decrypted_db_password: KmsData<Raw> = kms_client
                 .decrypt(db_password_kms_input)
                 .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "locker_private_key",
-                ))?;
+                .change_context(error::ConfigurationError::KmsDecryptError("db_password"))?;
             config.database.password = String::from_utf8(kms_decrypted_db_password.data)
                 .expect("Failed while converting bytes to String")
                 .into();
