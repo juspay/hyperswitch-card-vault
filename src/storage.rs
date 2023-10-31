@@ -11,7 +11,7 @@ use diesel_async::{
     AsyncPgConnection,
 };
 use error_stack::ResultExt;
-use masking::Secret;
+use masking::{PeekInterface, Secret};
 
 pub mod db;
 pub mod schema;
@@ -32,7 +32,11 @@ impl Storage {
     pub async fn new(database: &Database) -> error_stack::Result<Self, error::StorageError> {
         let database_url = format!(
             "postgres://{}:{}@{}:{}/{}",
-            database.username, database.password, database.host, database.port, database.dbname
+            database.username,
+            database.password.peek(),
+            database.host,
+            database.port,
+            database.dbname
         );
         let config =
             pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
