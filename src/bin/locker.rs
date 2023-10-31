@@ -43,5 +43,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(feature = "key_custodian")]
 async fn graceful_shutdown_server1(recv: &mut tokio::sync::mpsc::Receiver<()>) {
     recv.recv().await;
-    println!("Shutting down the server1 gracefully.");
+    logger::info!("Shutting down the server1 gracefully.");
 }
