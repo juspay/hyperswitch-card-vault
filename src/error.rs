@@ -82,7 +82,7 @@ pub enum ApiError {
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         match self {
-            ApiError::TenentCreateError => (
+            Self::TenentCreateError => (
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new(
                     "TE_00",
@@ -91,7 +91,7 @@ impl axum::response::IntoResponse for ApiError {
                 )),
             )
                 .into_response(),
-            ApiError::DecryptingKeysFailed(err) => (
+            Self::DecryptingKeysFailed(err) => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new(
                     "TE_00",
@@ -100,18 +100,18 @@ impl axum::response::IntoResponse for ApiError {
                 )),
             )
                 .into_response(),
-            data @ ApiError::StoreDataFailed(_)
-            | data @ ApiError::RetrieveDataFailed(_)
-            | data @ ApiError::EncodingError
-            | data @ ApiError::ResponseMiddlewareError(_)
-            | data @ ApiError::DatabaseRetrieveFailed(_)
-            | data @ ApiError::DatabaseInsertFailed(_)
-            | data @ ApiError::DatabaseDeleteFailed(_) => (
+            data @ Self::StoreDataFailed(_)
+            | data @ Self::RetrieveDataFailed(_)
+            | data @ Self::EncodingError
+            | data @ Self::ResponseMiddlewareError(_)
+            | data @ Self::DatabaseRetrieveFailed(_)
+            | data @ Self::DatabaseInsertFailed(_)
+            | data @ Self::DatabaseDeleteFailed(_) => (
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
             )
                 .into_response(),
-            data @ ApiError::RequestMiddlewareError(_) | data @ ApiError::DecodingError => (
+            data @ Self::RequestMiddlewareError(_) | data @ Self::DecodingError => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new("TE_02", format!("{}", data), None)),
             )
