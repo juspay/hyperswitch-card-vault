@@ -1,8 +1,4 @@
-use axum::{
-    extract,
-    routing::post,
-    Json,
-};
+use axum::{extract, routing::post, Json};
 
 #[cfg(feature = "middleware")]
 use axum::middleware;
@@ -52,30 +48,30 @@ pub async fn add_card(
     let merchant = state
         .db
         .find_or_create_by_merchant_id(
-            request.merchant_id.clone(),
-            state.config.secrets.tenant.clone(),
+            &request.merchant_id,
+            &state.config.secrets.tenant,
             &master_encryption,
         )
         .await
-        .change_context(error::ApiError::StoreDataFailed)
+        .change_context(error::ApiError::RetrieveDataFailed("merchant"))
         .report_unwrap()?;
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
 
     let hash_data = serde_json::to_vec(&request.data)
-        .change_context(error::ApiError::StoreDataFailed)
+        .change_context(error::ApiError::EncodingError)
         .and_then(|data| {
             (Sha512)
                 .encode(data)
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::EncodingError)
         })
         .report_unwrap()?;
 
     let optional_hash_table = state
         .db
-        .find_by_data_hash(hash_data.clone())
+        .find_by_data_hash(&hash_data)
         .await
-        .change_context(error::ApiError::StoreDataFailed)
+        .change_context(error::ApiError::DatabaseRetrieveFailed("hash_table"))
         .report_unwrap()?;
 
     let output = match optional_hash_table {
@@ -83,14 +79,14 @@ pub async fn add_card(
             let stored_data = state
                 .db
                 .find_by_hash_id_merchant_id_customer_id(
-                    hash_table.hash_id.to_string(),
-                    state.config.secrets.tenant.to_string(),
-                    request.merchant_id.to_string(),
-                    request.merchant_customer_id.to_string(),
+                    &hash_table.hash_id,
+                    &state.config.secrets.tenant,
+                    &request.merchant_id,
+                    &request.merchant_customer_id,
                     &merchant_dek,
                 )
                 .await
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::DatabaseRetrieveFailed("locker"))
                 .report_unwrap()?;
 
             match stored_data {
@@ -98,11 +94,16 @@ pub async fn add_card(
                 None => state
                     .db
                     .insert_or_get_from_locker(
-                        (request, state.config.secrets.tenant, hash_table.hash_id).try_into()?,
+                        (
+                            request,
+                            state.config.secrets.tenant.as_str(),
+                            hash_table.hash_id.as_str(),
+                        )
+                            .try_into()?,
                         &merchant_dek,
                     )
                     .await
-                    .change_context(error::ApiError::StoreDataFailed)
+                    .change_context(error::ApiError::DatabaseInsertFailed("locker"))
                     .report_unwrap()?,
             }
         }
@@ -111,17 +112,22 @@ pub async fn add_card(
                 .db
                 .insert_hash(hash_data)
                 .await
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::DatabaseInsertFailed("hash_table"))
                 .report_unwrap()?;
 
             state
                 .db
                 .insert_or_get_from_locker(
-                    (request, state.config.secrets.tenant, hash_table.hash_id).try_into()?,
+                    (
+                        request,
+                        state.config.secrets.tenant.as_str(),
+                        hash_table.hash_id.as_str(),
+                    )
+                        .try_into()?,
                     &merchant_dek,
                 )
                 .await
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::DatabaseInsertFailed("locker"))
                 .report_unwrap()?
         }
     };
@@ -139,30 +145,28 @@ pub async fn delete_card(
     let _merchant = state
         .db
         .find_by_merchant_id(
-            request.merchant_id.clone(),
-            state.config.secrets.tenant.clone(),
+            &request.merchant_id,
+            &state.config.secrets.tenant,
             &master_key,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseRetrieveFailed("merchant"))
         .report_unwrap()?;
 
-    let delete_status = state
+    let _delete_status = state
         .db
         .delete_from_locker(
             request.card_reference.into(),
-            state.config.secrets.tenant,
-            request.merchant_id,
-            request.merchant_customer_id,
+            &state.config.secrets.tenant,
+            &request.merchant_id,
+            &request.merchant_customer_id,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseDeleteFailed("locker"))
         .report_unwrap()?;
 
     Ok(Json(types::DeleteCardResponse {
-        status: delete_status.to_string(),
-        error_message: None,
-        error_code: None,
+        status: types::Status::Ok,
     }))
 }
 
@@ -176,12 +180,12 @@ pub async fn retrieve_card(
     let merchant = state
         .db
         .find_by_merchant_id(
-            request.merchant_id.clone(),
-            state.config.secrets.tenant.clone(),
+            &request.merchant_id,
+            &state.config.secrets.tenant,
             &master_key,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseDeleteFailed("locker"))
         .report_unwrap()?;
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
@@ -190,13 +194,13 @@ pub async fn retrieve_card(
         .db
         .find_by_locker_id_merchant_id_customer_id(
             request.card_reference.into(),
-            state.config.secrets.tenant.clone(),
-            request.merchant_id,
-            request.merchant_customer_id,
+            &state.config.secrets.tenant,
+            &request.merchant_id,
+            &request.merchant_customer_id,
             &merchant_dek,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseDeleteFailed("locker"))
         .report_unwrap()?;
 
     Ok(Json(card.try_into()?))

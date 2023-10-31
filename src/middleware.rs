@@ -12,6 +12,8 @@ use error_stack::ResultExt;
 use hyper::body::HttpBody;
 use hyper::Body;
 
+/// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
+/// card APIs
 pub async fn middleware(
     extract::State(state): extract::State<AppState>,
     request: Request<Body>,
@@ -21,7 +23,7 @@ pub async fn middleware(
 
     let request_body = hyper::body::to_bytes(body)
         .await
-        .change_context(error::ApiError::MiddlewareError(
+        .change_context(error::ApiError::RequestMiddlewareError(
             "Failed to read request body for jwe decryption",
         ))
         .report_unwrap()?;
@@ -33,7 +35,9 @@ pub async fn middleware(
 
     let jwe_decrypted = keys
         .decrypt(request_body.to_vec())
-        .change_context(error::ApiError::MiddlewareError("Jwe decryption failed"))
+        .change_context(error::ApiError::RequestMiddlewareError(
+            "Jwe decryption failed",
+        ))
         .report_unwrap()?;
 
     let next_layer_payload = Request::from_parts(parts, Body::from(jwe_decrypted));
@@ -44,18 +48,20 @@ pub async fn middleware(
 
     let response_body = hyper::body::to_bytes(body)
         .await
-        .change_context(error::ApiError::MiddlewareError(
+        .change_context(error::ApiError::ResponseMiddlewareError(
             "Failed to read response body for jws signing",
         ))
         .report_unwrap()?;
 
     let jws_signed = keys
         .encrypt(response_body.to_vec())
-        .change_context(error::ApiError::MiddlewareError("Jws signing failed"))
+        .change_context(error::ApiError::ResponseMiddlewareError(
+            "Jws signing failed",
+        ))
         .report_unwrap()?;
 
     let jwt = String::from_utf8(jws_signed)
-        .change_context(error::ApiError::MiddlewareError(
+        .change_context(error::ApiError::ResponseMiddlewareError(
             "Could not convert to UTF-8",
         ))
         .report_unwrap()?;

@@ -60,8 +60,8 @@ pub trait MerchantInterface {
     /// find merchant from merchant table with `merchant_id` and `tenant_id` with key as master key
     async fn find_by_merchant_id(
         &self,
-        merchant_id: String,
-        tenant_id: String,
+        merchant_id: &str,
+        tenant_id: &str,
         key: &Self::Algorithm,
     ) -> CustomResult<types::Merchant, error::StorageError>;
 
@@ -69,15 +69,15 @@ pub trait MerchantInterface {
     /// and if not found create a new merchant
     async fn find_or_create_by_merchant_id(
         &self,
-        merchant_id: String,
-        tenant_id: String,
+        merchant_id: &str,
+        tenant_id: &str,
         key: &Self::Algorithm,
     ) -> CustomResult<types::Merchant, error::StorageError>;
 
     /// Insert a new merchant in the database by encrypting the dek with `master_key`
     async fn insert_merchant(
         &self,
-        new: types::MerchantNew,
+        new: types::MerchantNew<'_>,
         key: &Self::Algorithm,
     ) -> CustomResult<types::Merchant, error::StorageError>;
 }
@@ -93,16 +93,16 @@ pub trait LockerInterface {
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
-        tenant_id: String,
-        merchant_id: String,
-        customer_id: String,
+        tenant_id: &str,
+        merchant_id: &str,
+        customer_id: &str,
         key: &Self::Algorithm,
     ) -> CustomResult<types::Locker, error::StorageError>;
 
     /// Insert payment data from locker table by decrypting with `dek`
     async fn insert_or_get_from_locker(
         &self,
-        new: types::LockerNew,
+        new: types::LockerNew<'_>,
         key: &Self::Algorithm,
     ) -> CustomResult<types::Locker, error::StorageError>;
 
@@ -110,26 +110,28 @@ pub trait LockerInterface {
     async fn delete_from_locker(
         &self,
         locker_id: Secret<String>,
-        tenant_id: String,
-        merchant_id: String,
-        customer_id: String,
+        tenant_id: &str,
+        merchant_id: &str,
+        customer_id: &str,
     ) -> CustomResult<usize, error::StorageError>;
 
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
-        hash_id: String,
-        tenant_id: String,
-        merchant_id: String,
-        customer_id: String,
+        hash_id: &str,
+        tenant_id: &str,
+        merchant_id: &str,
+        customer_id: &str,
         key: &Self::Algorithm,
     ) -> CustomResult<Option<types::Locker>, error::StorageError>;
 }
 
+/// Trait defining behaviour of the application with the hash table, providing APIs to interact
+/// with it
 #[async_trait::async_trait]
 pub trait HashInterface {
     async fn find_by_data_hash(
         &self,
-        data_hash: Vec<u8>,
+        data_hash: &[u8],
     ) -> CustomResult<Option<types::HashTable>, error::StorageError>;
     async fn insert_hash(
         &self,
