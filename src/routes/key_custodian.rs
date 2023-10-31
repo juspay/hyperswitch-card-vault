@@ -11,6 +11,7 @@ use crate::{
     logger,
 };
 
+/// Api request model for /custodian/key1 and /custodian/key2 routes
 #[derive(serde::Deserialize)]
 pub struct KeyPayload {
     pub key: String,
@@ -26,6 +27,7 @@ pub fn serve() -> axum::Router<SharedState> {
         .route("/decrypt", post(decrypt))
 }
 
+/// Handler for `/custodian/key1`
 pub async fn key1(
     State((_, keys, _)): State<SharedState>,
     Json(payload): Json<KeyPayload>,
@@ -35,6 +37,7 @@ pub async fn key1(
     (hyper::StatusCode::OK, "Received Key1")
 }
 
+/// Handler for `/custodian/key2`
 pub async fn key2(
     State((_, keys, _)): State<SharedState>,
     Json(payload): Json<KeyPayload>,
@@ -44,6 +47,7 @@ pub async fn key2(
     (hyper::StatusCode::OK, "Received Key2")
 }
 
+/// Handler for `/custodian/decrypt`
 pub async fn decrypt(
     State((state, keys, tx)): State<SharedState>,
 ) -> Result<&'static str, error::ApiError> {
@@ -52,7 +56,7 @@ pub async fn decrypt(
             key1: Some(inner_key1),
             key2: Some(inner_key2),
         } => {
-            match aes_decrypt_custodian_key(state, inner_key1.clone(), inner_key2.clone()).await {
+            match aes_decrypt_custodian_key(state, inner_key1, inner_key2).await {
                 value @ Ok(_) => value,
                 error @ Err(_) => {
                     keys.write().await.key1 = None;
@@ -76,10 +80,11 @@ pub async fn decrypt(
 
 async fn aes_decrypt_custodian_key(
     state: Arc<RwLock<AppState>>,
-    inner_key1: String,
-    inner_key2: String,
+    inner_key1: &str,
+    inner_key2: &str,
 ) -> Result<(), error::ApiError> {
     let final_key = format!("{}{}", inner_key1, inner_key2);
+    // required by the AES algorithm instead of &[u8]
     let aes_decrypted_key = GcmAes256::new(state.read().await.config.secrets.master_key.clone())
         .decrypt(final_key.into_bytes())
         .change_context(error::ApiError::DecryptingKeysFailed(

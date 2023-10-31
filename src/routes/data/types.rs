@@ -1,10 +1,11 @@
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct Dedup {
-    hash1: Option<String>,
-    hash2: Option<String>,
-    hash1_reference: Option<String>,
-    hash2_reference: Option<String>,
-}
+// #[derive(serde::Serialize, serde::Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct Dedup {
+//     hash1: Option<String>,
+//     hash2: Option<String>,
+//     hash1_reference: Option<String>,
+//     hash2_reference: Option<String>,
+// }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Card {
@@ -17,13 +18,13 @@ pub struct Card {
     nick_name: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct StoreCardRespPayload {
     pub card_reference: String,
     pub dedup: Option<DedupResponsePayload>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct DedupResponsePayload {
     hash1_reference: Option<String>,
     hash2_reference: Option<String>,
@@ -41,7 +42,6 @@ pub struct StoreCardRequest {
     // pub enc_card_data: Option<String>,
     #[serde(flatten)]
     pub data: Data,
-    pub dedup: Option<Dedup>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
