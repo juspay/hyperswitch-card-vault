@@ -4,15 +4,12 @@ use std::sync::Arc;
 #[cfg(feature = "key_custodian")]
 use tokio::sync::RwLock;
 
-use futures_util::TryFutureExt;
-use tartarus::{app::AppState, error, logger};
+use tartarus::{app::AppState, logger};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = tartarus::config::Config::new().expect("failed while parsing config");
-    let state = AppState::new(&mut config)
-        .map_err(|_| error::ConfigurationError::DatabaseError)
-        .await?;
+    let state = AppState::new(&mut config).await?;
     let _guard = logger::setup(
         &config.log,
         tartarus::service_name!(),

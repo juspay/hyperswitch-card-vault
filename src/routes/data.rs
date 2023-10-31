@@ -22,6 +22,7 @@ pub mod types;
 ///
 /// Function for creating the server that is specifically handling the cards api
 ///
+#[allow(clippy::let_and_return)]
 pub fn serve(#[cfg(feature = "middleware")] state: AppState) -> axum::Router<AppState> {
     let router = axum::Router::new()
         .route("/add", post(add_card))
