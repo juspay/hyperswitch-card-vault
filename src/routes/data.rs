@@ -1,8 +1,4 @@
-use axum::{
-    extract,
-    routing::post,
-    Json,
-};
+use axum::{extract, routing::post, Json};
 
 #[cfg(feature = "middleware")]
 use axum::middleware;
@@ -57,17 +53,17 @@ pub async fn add_card(
             &master_encryption,
         )
         .await
-        .change_context(error::ApiError::StoreDataFailed)
+        .change_context(error::ApiError::RetrieveDataFailed("merchant"))
         .report_unwrap()?;
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
 
     let hash_data = serde_json::to_vec(&request.data)
-        .change_context(error::ApiError::StoreDataFailed)
+        .change_context(error::ApiError::EncodingError)
         .and_then(|data| {
             (Sha512)
                 .encode(data)
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::EncodingError)
         })
         .report_unwrap()?;
 
@@ -75,7 +71,7 @@ pub async fn add_card(
         .db
         .find_by_data_hash(&hash_data)
         .await
-        .change_context(error::ApiError::StoreDataFailed)
+        .change_context(error::ApiError::DatabaseRetrieveFailed("hash_table"))
         .report_unwrap()?;
 
     let output = match optional_hash_table {
@@ -90,7 +86,7 @@ pub async fn add_card(
                     &merchant_dek,
                 )
                 .await
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::DatabaseRetrieveFailed("locker"))
                 .report_unwrap()?;
 
             match stored_data {
@@ -107,7 +103,7 @@ pub async fn add_card(
                         &merchant_dek,
                     )
                     .await
-                    .change_context(error::ApiError::StoreDataFailed)
+                    .change_context(error::ApiError::DatabaseInsertFailed("locker"))
                     .report_unwrap()?,
             }
         }
@@ -116,7 +112,7 @@ pub async fn add_card(
                 .db
                 .insert_hash(hash_data)
                 .await
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::DatabaseInsertFailed("hash_table"))
                 .report_unwrap()?;
 
             state
@@ -131,7 +127,7 @@ pub async fn add_card(
                     &merchant_dek,
                 )
                 .await
-                .change_context(error::ApiError::StoreDataFailed)
+                .change_context(error::ApiError::DatabaseInsertFailed("locker"))
                 .report_unwrap()?
         }
     };
@@ -154,10 +150,10 @@ pub async fn delete_card(
             &master_key,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseRetrieveFailed("merchant"))
         .report_unwrap()?;
 
-    let delete_status = state
+    let _delete_status = state
         .db
         .delete_from_locker(
             request.card_reference.into(),
@@ -166,13 +162,11 @@ pub async fn delete_card(
             &request.merchant_customer_id,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseDeleteFailed("locker"))
         .report_unwrap()?;
 
     Ok(Json(types::DeleteCardResponse {
-        status: delete_status.to_string(),
-        error_message: None,
-        error_code: None,
+        status: types::Status::Ok,
     }))
 }
 
@@ -191,7 +185,7 @@ pub async fn retrieve_card(
             &master_key,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseDeleteFailed("locker"))
         .report_unwrap()?;
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
@@ -206,7 +200,7 @@ pub async fn retrieve_card(
             &merchant_dek,
         )
         .await
-        .change_context(error::ApiError::DeleteDataFailed)
+        .change_context(error::ApiError::DatabaseDeleteFailed("locker"))
         .report_unwrap()?;
 
     Ok(Json(card.try_into()?))

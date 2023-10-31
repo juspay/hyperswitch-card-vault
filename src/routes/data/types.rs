@@ -53,9 +53,7 @@ pub enum Data {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct StoreCardResponse {
-    pub status: String,
-    pub error_message: Option<String>,
-    pub error_code: Option<String>,
+    pub status: Status,
     pub payload: Option<StoreCardRespPayload>,
 }
 
@@ -70,9 +68,7 @@ pub struct RetrieveCardRequest {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct RetrieveCardResponse {
-    pub status: String,
-    pub error_message: Option<String>,
-    pub error_code: Option<String>,
+    pub status: Status,
     pub payload: Option<RetrieveCardRespPayload>,
 }
 
@@ -91,13 +87,17 @@ pub struct DeleteCardRequest {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct DeleteCardResponse {
-    pub status: String,
-    pub error_message: Option<String>,
-    pub error_code: Option<String>,
+    pub status: Status,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum StoredData {
     EncData(String),
     CardData(Card),
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum Status {
+    Ok,
 }

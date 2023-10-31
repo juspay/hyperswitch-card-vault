@@ -49,15 +49,32 @@ pub enum ApiError {
     #[error("failed while making merchant create")]
     TenentCreateError,
     #[error("failed while calling store data")]
-    StoreDataFailed,
-    #[error("failed while deleting stored data")]
-    DeleteDataFailed,
+    StoreDataFailed(&'static str),
     #[error("failed while retrieving stored data")]
-    RetrieveDataFailed,
+    RetrieveDataFailed(&'static str),
     #[error("failed to decrypt two custodian keys: {0}")]
     DecryptingKeysFailed(&'static str),
-    #[error("middleware error occurred: {0}")]
-    MiddlewareError(&'static str),
+
+    #[error("failed in request middleware: {0}")]
+    RequestMiddlewareError(&'static str),
+
+    #[error("failed in response middleware: {0}")]
+    ResponseMiddlewareError(&'static str),
+
+    #[error("Error while encoding data")]
+    EncodingError,
+
+    #[error("Failed while decoding data")]
+    DecodingError,
+
+    #[error("Failed while retrieving data from \"{0}\"")]
+    DatabaseRetrieveFailed(&'static str),
+
+    #[error("Failed while inserting data into \"{0}\"")]
+    DatabaseInsertFailed(&'static str),
+
+    #[error("failed while deleting data from {0}")]
+    DatabaseDeleteFailed(&'static str),
 }
 
 impl axum::response::IntoResponse for ApiError {
@@ -81,7 +98,22 @@ impl axum::response::IntoResponse for ApiError {
                 )),
             )
                 .into_response(),
-            _ => hyper::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            data @ ApiError::StoreDataFailed(_)
+            | data @ ApiError::RetrieveDataFailed(_)
+            | data @ ApiError::EncodingError
+            | data @ ApiError::ResponseMiddlewareError(_)
+            | data @ ApiError::DatabaseRetrieveFailed(_)
+            | data @ ApiError::DatabaseInsertFailed(_)
+            | data @ ApiError::DatabaseDeleteFailed(_) => (
+                hyper::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
+            )
+                .into_response(),
+            data @ ApiError::RequestMiddlewareError(_) | data @ ApiError::DecodingError => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new("TE_02", format!("{}", data), None)),
+            )
+                .into_response(),
         }
     }
 }
