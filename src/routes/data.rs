@@ -52,8 +52,8 @@ pub async fn add_card(
     let merchant = state
         .db
         .find_or_create_by_merchant_id(
-            request.merchant_id.clone(),
-            state.config.secrets.tenant.clone(),
+            &request.merchant_id,
+            &state.config.secrets.tenant,
             &master_encryption,
         )
         .await
@@ -73,7 +73,7 @@ pub async fn add_card(
 
     let optional_hash_table = state
         .db
-        .find_by_data_hash(hash_data.clone())
+        .find_by_data_hash(&hash_data)
         .await
         .change_context(error::ApiError::StoreDataFailed)
         .report_unwrap()?;
@@ -83,10 +83,10 @@ pub async fn add_card(
             let stored_data = state
                 .db
                 .find_by_hash_id_merchant_id_customer_id(
-                    hash_table.hash_id.to_string(),
-                    state.config.secrets.tenant.to_string(),
-                    request.merchant_id.to_string(),
-                    request.merchant_customer_id.to_string(),
+                    &hash_table.hash_id,
+                    &state.config.secrets.tenant,
+                    &request.merchant_id,
+                    &request.merchant_customer_id,
                     &merchant_dek,
                 )
                 .await
@@ -98,7 +98,12 @@ pub async fn add_card(
                 None => state
                     .db
                     .insert_or_get_from_locker(
-                        (request, state.config.secrets.tenant, hash_table.hash_id).try_into()?,
+                        (
+                            request,
+                            state.config.secrets.tenant.as_str(),
+                            hash_table.hash_id.as_str(),
+                        )
+                            .try_into()?,
                         &merchant_dek,
                     )
                     .await
@@ -117,7 +122,12 @@ pub async fn add_card(
             state
                 .db
                 .insert_or_get_from_locker(
-                    (request, state.config.secrets.tenant, hash_table.hash_id).try_into()?,
+                    (
+                        request,
+                        state.config.secrets.tenant.as_str(),
+                        hash_table.hash_id.as_str(),
+                    )
+                        .try_into()?,
                     &merchant_dek,
                 )
                 .await
@@ -139,8 +149,8 @@ pub async fn delete_card(
     let _merchant = state
         .db
         .find_by_merchant_id(
-            request.merchant_id.clone(),
-            state.config.secrets.tenant.clone(),
+            &request.merchant_id,
+            &state.config.secrets.tenant,
             &master_key,
         )
         .await
@@ -151,9 +161,9 @@ pub async fn delete_card(
         .db
         .delete_from_locker(
             request.card_reference.into(),
-            state.config.secrets.tenant,
-            request.merchant_id,
-            request.merchant_customer_id,
+            &state.config.secrets.tenant,
+            &request.merchant_id,
+            &request.merchant_customer_id,
         )
         .await
         .change_context(error::ApiError::DeleteDataFailed)
@@ -176,8 +186,8 @@ pub async fn retrieve_card(
     let merchant = state
         .db
         .find_by_merchant_id(
-            request.merchant_id.clone(),
-            state.config.secrets.tenant.clone(),
+            &request.merchant_id,
+            &state.config.secrets.tenant,
             &master_key,
         )
         .await
@@ -190,9 +200,9 @@ pub async fn retrieve_card(
         .db
         .find_by_locker_id_merchant_id_customer_id(
             request.card_reference.into(),
-            state.config.secrets.tenant.clone(),
-            request.merchant_id,
-            request.merchant_customer_id,
+            &state.config.secrets.tenant,
+            &request.merchant_id,
+            &request.merchant_customer_id,
             &merchant_dek,
         )
         .await

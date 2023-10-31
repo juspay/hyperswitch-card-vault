@@ -81,7 +81,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
             "JWS encoded data is incomplete",
         ))?;
         let jws_payload = serde_json::to_vec(&jws_body)?;
-        let jwe_encrypted = encrypt_jwe(&jws_payload, self.public_key.clone())?;
+        let jwe_encrypted = encrypt_jwe(&jws_payload, self.public_key.as_bytes())?;
         let jwe_body = JweBody::from_str(&jwe_encrypted)
             .ok_or(error::CryptoError::InvalidData("JWE data incomplete"))?;
         Ok(serde_json::to_vec(&jwe_body)?)
@@ -96,7 +96,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
         let jws_parsed: JwsBody = serde_json::from_str(&jwe_decrypted).map_err(|_| error::CryptoError::InvalidData("Failed while extracting jws body"))?;
 
         let jws_encoded = jws_parsed.get_dotted_jws();
-        let output = verify_sign(jws_encoded, self.public_key.clone())?;
+        let output = verify_sign(jws_encoded, self.public_key.as_bytes())?;
         Ok(output.as_bytes().to_vec())
     }
 }
