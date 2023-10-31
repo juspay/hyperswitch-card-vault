@@ -100,6 +100,12 @@ pub struct KmsData<T: Decoder> {
 }
 
 impl<T: Decoder> KmsData<T> {
+    pub fn new(data: T::Data) -> Self {
+        Self {
+            data,
+            decode_op: PhantomData,
+        }
+    }
     pub fn into_decoded(self) -> Result<Vec<u8>, T::Error> {
         T::decode(self.data)
     }
