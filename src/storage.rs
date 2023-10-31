@@ -1,4 +1,4 @@
-use crate::{crypto::Encryption, error};
+use crate::{config::Database, crypto::Encryption, error};
 
 type CustomResult<T, C> = error_stack::Result<T, C>;
 use std::sync::Arc;
@@ -29,7 +29,11 @@ type DeadPoolConnType = Object<AsyncPgConnection>;
 
 impl Storage {
     /// Create a new storage interface from configuration
-    pub async fn new(database_url: String) -> error_stack::Result<Self, error::StorageError> {
+    pub async fn new(database: &Database) -> error_stack::Result<Self, error::StorageError> {
+        let database_url = format!(
+            "postgres://{}:{}@{}:{}/{}",
+            database.username, database.password, database.host, database.port, database.dbname
+        );
         let config =
             pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
         let pool = Pool::builder(config)

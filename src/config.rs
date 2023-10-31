@@ -21,7 +21,11 @@ pub struct Server {
 
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct Database {
-    pub url: String,
+    pub username: String,
+    pub password: String,
+    pub host: String,
+    pub port: u16,
+    pub dbname: String,
 }
 
 #[derive(Clone, serde::Deserialize, Debug)]
