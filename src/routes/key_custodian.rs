@@ -10,7 +10,7 @@ use crate::{
     error::{self, LogReport},
 };
 
-/// Final key payload after decryption is successful
+/// Api request model for /custodian/key1 and /custodian/key2 routes
 #[derive(serde::Deserialize)]
 pub struct KeyPayload {
     pub key: String,
