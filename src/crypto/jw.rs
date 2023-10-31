@@ -2,8 +2,8 @@ use crate::error;
 use josekit::{jwe, jws};
 
 pub struct JWEncryption {
-    private_key: String,
-    public_key: String,
+    pub(crate) private_key: String,
+    pub(crate) public_key: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -14,7 +14,7 @@ pub struct JwsBody {
 }
 
 impl JwsBody {
-    fn from_str(input: &str) -> Option<Self> {
+    fn from_dotted_str(input: &str) -> Option<Self> {
         let mut data = input.split('.');
         let header = data.next()?.to_string();
         let payload = data.next()?.to_string();
@@ -77,7 +77,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
     fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let payload = input;
         let jws_encoded = jws_sign_payload(&payload, self.private_key.as_bytes())?;
-        let jws_body = JwsBody::from_str(&jws_encoded).ok_or(error::CryptoError::InvalidData(
+        let jws_body = JwsBody::from_dotted_str(&jws_encoded).ok_or(error::CryptoError::InvalidData(
             "JWS encoded data is incomplete",
         ))?;
         let jws_payload = serde_json::to_vec(&jws_body)?;
@@ -90,11 +90,11 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
     fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let jwe_body: JweBody = serde_json::from_slice(&input)?;
         let jwe_encoded = jwe_body.get_dotted_jwe();
-        let algo = jwe::RSA_OAEP;
-        let jwe_decrypted = decrypt_jwe(&jwe_encoded, self.private_key.as_bytes(), algo)?;
-        let jws_parsed = JwsBody::from_str(&jwe_decrypted).ok_or(
-            error::CryptoError::InvalidData("Failed while extracting jws body"),
-        )?;
+        let algo = jwe::RSA_OAEP_256;
+        let jwe_decrypted = decrypt_jwe(&jwe_encoded, self.private_key.clone(), algo)?;
+
+        let jws_parsed: JwsBody = serde_json::from_str(&jwe_decrypted).map_err(|_| error::CryptoError::InvalidData("Failed while extracting jws body"))?;
+
         let jws_encoded = jws_parsed.get_dotted_jws();
         let output = verify_sign(jws_encoded, self.public_key.as_bytes())?;
         Ok(output.as_bytes().to_vec())
@@ -115,7 +115,7 @@ pub fn encrypt_jwe(
     payload: &[u8],
     public_key: impl AsRef<[u8]>,
 ) -> Result<String, error::CryptoError> {
-    let alg = jwe::RSA_OAEP_256;
+    let alg = jwe::RSA_OAEP;
     let enc = "A256GCM";
     let mut src_header = jwe::JweHeader::new();
     src_header.set_content_encryption(enc);

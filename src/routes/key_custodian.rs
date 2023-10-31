@@ -8,6 +8,7 @@ use crate::{
     app::{AppState, Keys, SharedState},
     crypto::{aes::GcmAes256, Encryption},
     error::{self, LogReport},
+    logger,
 };
 
 /// Api request model for /custodian/key1 and /custodian/key2 routes
@@ -32,6 +33,7 @@ pub async fn key1(
     Json(payload): Json<KeyPayload>,
 ) -> (hyper::StatusCode, &'static str) {
     keys.write().await.key1 = Some(payload.key);
+    logger::info!("Received Key1");
     (hyper::StatusCode::OK, "Received Key1")
 }
 
@@ -41,6 +43,7 @@ pub async fn key2(
     Json(payload): Json<KeyPayload>,
 ) -> (hyper::StatusCode, &'static str) {
     keys.write().await.key2 = Some(payload.key);
+    logger::info!("Received Key2");
     (hyper::StatusCode::OK, "Received Key2")
 }
 
@@ -63,11 +66,15 @@ pub async fn decrypt(
             }?;
 
             let _ = tx.send(()).await;
+            logger::info!("Decryption of Custodian key is successful");
             Ok("Decryption successful")
         }
-        _ => Err(error::ApiError::DecryptingKeysFailed(
-            "Both the custodain keys are not present",
-        )),
+        _ => {
+            logger::error!("Both the custodian keys are not present");
+            Err(error::ApiError::DecryptingKeysFailed(
+                "Both the custodain keys are not present",
+            ))
+        }
     }
 }
 

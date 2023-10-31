@@ -7,8 +7,7 @@
 //     hash2_reference: Option<String>,
 // }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Card {
     card_number: masking::Secret<String>,
     name_on_card: Option<String>,
@@ -19,14 +18,13 @@ pub struct Card {
     nick_name: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct StoreCardRespPayload {
     pub card_reference: String,
     pub dedup: Option<DedupResponsePayload>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct DedupResponsePayload {
     hash1_reference: Option<String>,
     hash2_reference: Option<String>,
@@ -35,8 +33,7 @@ pub struct DedupResponsePayload {
 // Create Card Data Structures
 
 // prioritizing card data over enc_card_data
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct StoreCardRequest {
     pub merchant_id: String,
     pub merchant_customer_id: String,
@@ -45,11 +42,9 @@ pub struct StoreCardRequest {
     // pub enc_card_data: Option<String>,
     #[serde(flatten)]
     pub data: Data,
-    // pub dedup: Option<Dedup>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Data {
     Card { card: Card },
@@ -57,7 +52,6 @@ pub enum Data {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct StoreCardResponse {
     pub status: String,
     pub error_message: Option<String>,
@@ -68,7 +62,6 @@ pub struct StoreCardResponse {
 // Retrieve Card Data Structures
 
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RetrieveCardRequest {
     pub merchant_id: String,
     pub merchant_customer_id: String,
@@ -76,7 +69,6 @@ pub struct RetrieveCardRequest {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RetrieveCardResponse {
     pub status: String,
     pub error_message: Option<String>,
@@ -85,14 +77,12 @@ pub struct RetrieveCardResponse {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RetrieveCardRespPayload {
     pub card: Option<Card>,
     pub enc_card_data: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DeleteCardRequest {
     pub merchant_id: String,
     pub merchant_customer_id: String,
@@ -100,7 +90,6 @@ pub struct DeleteCardRequest {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DeleteCardResponse {
     pub status: String,
     pub error_message: Option<String>,

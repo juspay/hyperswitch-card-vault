@@ -54,7 +54,7 @@ pub enum ApiError {
     DeleteDataFailed,
     #[error("failed while retrieving stored data")]
     RetrieveDataFailed,
-    #[error("failed to decrypt two custodian keys")]
+    #[error("failed to decrypt two custodian keys: {0}")]
     DecryptingKeysFailed(&'static str),
     #[error("middleware error occurred: {0}")]
     MiddlewareError(&'static str),
@@ -72,11 +72,11 @@ impl axum::response::IntoResponse for ApiError {
                 )),
             )
                 .into_response(),
-            ApiError::DecryptingKeysFailed(_) => (
+            ApiError::DecryptingKeysFailed(err) => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new(
                     "TE_00",
-                    "Failed while decrypting two custodian keys".to_string(),
+                    format!("Failed while decrypting two custodian keys: {err}"),
                     None,
                 )),
             )
@@ -119,7 +119,7 @@ where
             Ok(inner_val) => Ok(inner_val),
             Err(inner_err) => {
                 let new_error: E1 = (*inner_err.current_context()).into();
-                eprintln!("stuff broke: {:#?}", inner_err);
+                crate::logger::error!(?inner_err);
                 Err(inner_err.change_context(new_error))
             }
         };

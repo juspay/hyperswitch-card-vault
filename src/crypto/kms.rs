@@ -186,10 +186,6 @@ impl<U: Decoder<Error = error_stack::Report<KmsError>>>
                 .ciphertext_blob(ciphertext_blob)
                 .send()
                 .await
-                .map_err(|error| {
-                    println!("Failed to KMS decrypt data: {error:?}");
-                    error
-                })
                 .change_context(KmsError::DecryptionFailed)?;
 
             let output = decrypt_output

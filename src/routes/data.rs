@@ -1,6 +1,6 @@
 use axum::{
     extract,
-    routing::{get, post},
+    routing::post,
     Json,
 };
 
@@ -30,7 +30,7 @@ pub fn serve(#[cfg(feature = "middleware")] state: AppState) -> axum::Router<App
     let router = axum::Router::new()
         .route("/add", post(add_card))
         .route("/delete", post(delete_card))
-        .route("/retrieve", get(retrieve_card));
+        .route("/retrieve", post(retrieve_card));
 
     #[cfg(feature = "middleware")]
     {
