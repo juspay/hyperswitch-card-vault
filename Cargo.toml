@@ -62,3 +62,8 @@ cargo_metadata = "0.15.4"
 
 [[bin]]
 name = "locker"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
