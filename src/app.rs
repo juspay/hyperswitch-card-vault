@@ -32,6 +32,7 @@ pub struct AppState {
     pub config: config::Config,
 }
 
+/// Temporary State to store keys
 #[cfg(feature = "key_custodian")]
 #[derive(Default, Debug)]
 pub struct Keys {
@@ -46,6 +47,10 @@ pub type SharedState = (
     tokio::sync::mpsc::Sender<()>,
 );
 
+///
+/// The server used to fulfil the initialization requirement for the locker. This accepts 2 keys as
+/// API input to complete the key custodian stage
+///
 #[cfg(feature = "key_custodian")]
 pub async fn server1_builder(
     state: Arc<RwLock<AppState>>,
@@ -56,6 +61,8 @@ pub async fn server1_builder(
 >
 where
 {
+    crate::logger::debug!(startup_config=?state.read().await.config);
+
     let keys = Arc::new(RwLock::new(Keys::default()));
     let socket_addr = std::net::SocketAddr::new(
         state.read().await.config.server.host.parse()?,
@@ -72,6 +79,10 @@ where
     Ok(server)
 }
 
+///
+/// The server responsible for the main cards APIs this will perform all storage, retrieval and
+/// deletion operation related to locker
+///
 pub async fn server2_builder(
     state: &AppState,
 ) -> Result<
@@ -99,6 +110,9 @@ where
 }
 
 impl AppState {
+    ///
+    /// Construct new app state with configuration
+    ///
     pub async fn new(
         config: &mut config::Config,
     ) -> error_stack::Result<Self, error::ConfigurationError> {

@@ -44,20 +44,37 @@ pub enum StorageError {
     EncryptionError,
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Copy, Clone, thiserror::Error)]
 pub enum ApiError {
     #[error("failed while making merchant create")]
     TenentCreateError,
     #[error("failed while calling store data")]
-    StoreDataFailed,
-    #[error("failed while deleting stored data")]
-    DeleteDataFailed,
+    StoreDataFailed(&'static str),
     #[error("failed while retrieving stored data")]
-    RetrieveDataFailed,
-    #[error("failed to decrypt two custodian keys")]
+    RetrieveDataFailed(&'static str),
+    #[error("failed to decrypt two custodian keys: {0}")]
     DecryptingKeysFailed(&'static str),
-    #[error("middleware error occurred: {0}")]
-    MiddlewareError(&'static str),
+
+    #[error("failed in request middleware: {0}")]
+    RequestMiddlewareError(&'static str),
+
+    #[error("failed in response middleware: {0}")]
+    ResponseMiddlewareError(&'static str),
+
+    #[error("Error while encoding data")]
+    EncodingError,
+
+    #[error("Failed while decoding data")]
+    DecodingError,
+
+    #[error("Failed while retrieving data from \"{0}\"")]
+    DatabaseRetrieveFailed(&'static str),
+
+    #[error("Failed while inserting data into \"{0}\"")]
+    DatabaseInsertFailed(&'static str),
+
+    #[error("failed while deleting data from {0}")]
+    DatabaseDeleteFailed(&'static str),
 }
 
 impl axum::response::IntoResponse for ApiError {
@@ -72,16 +89,31 @@ impl axum::response::IntoResponse for ApiError {
                 )),
             )
                 .into_response(),
-            ApiError::DecryptingKeysFailed(_) => (
+            ApiError::DecryptingKeysFailed(err) => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new(
                     "TE_00",
-                    "Failed while decrypting two custodian keys".to_string(),
+                    format!("Failed while decrypting two custodian keys: {err}"),
                     None,
                 )),
             )
                 .into_response(),
-            _ => hyper::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            data @ ApiError::StoreDataFailed(_)
+            | data @ ApiError::RetrieveDataFailed(_)
+            | data @ ApiError::EncodingError
+            | data @ ApiError::ResponseMiddlewareError(_)
+            | data @ ApiError::DatabaseRetrieveFailed(_)
+            | data @ ApiError::DatabaseInsertFailed(_)
+            | data @ ApiError::DatabaseDeleteFailed(_) => (
+                hyper::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
+            )
+                .into_response(),
+            data @ ApiError::RequestMiddlewareError(_) | data @ ApiError::DecodingError => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new("TE_02", format!("{}", data), None)),
+            )
+                .into_response(),
         }
     }
 }
@@ -109,8 +141,8 @@ pub trait LogReport<T, E> {
 
 impl<T, E1, E2> LogReport<T, E1> for Result<T, Report<E2>>
 where
-    E1: Send + Sync + std::error::Error + Clone + 'static,
-    E2: Send + Sync + std::error::Error + Clone + 'static,
+    E1: Send + Sync + std::error::Error + Copy + 'static,
+    E2: Send + Sync + std::error::Error + Copy + 'static,
     E1: From<E2>,
 {
     #[track_caller]
@@ -118,12 +150,12 @@ where
         let output = match self {
             Ok(inner_val) => Ok(inner_val),
             Err(inner_err) => {
-                let new_error: E1 = (inner_err.current_context().clone()).into();
-                eprintln!("stuff broke: {:#?}", inner_err);
+                let new_error: E1 = (*inner_err.current_context()).into();
+                crate::logger::error!(?inner_err);
                 Err(inner_err.change_context(new_error))
             }
         };
 
-        output.map_err(|err| (err.current_context().clone()))
+        output.map_err(|err| (*err.current_context()))
     }
 }

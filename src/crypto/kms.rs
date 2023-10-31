@@ -176,8 +176,8 @@ impl<U: Decoder<Error = error_stack::Report<KmsError>>>
         input: KmsData<Base64Encoded>,
     ) -> Pin<Box<dyn Future<Output = error_stack::Result<KmsData<U>, KmsError>> + 'a>> {
         Box::pin(async move {
-            let data = input.into_decoded()?;
-            let ciphertext_blob = Blob::new(data.clone());
+            let mut data = input.into_decoded()?;
+            let ciphertext_blob = Blob::new(&mut *data);
 
             let decrypt_output = self
                 .inner_client
@@ -186,10 +186,6 @@ impl<U: Decoder<Error = error_stack::Report<KmsError>>>
                 .ciphertext_blob(ciphertext_blob)
                 .send()
                 .await
-                .map_err(|error| {
-                    println!("Failed to KMS decrypt data: {error:?}");
-                    error
-                })
                 .change_context(KmsError::DecryptionFailed)?;
 
             let output = decrypt_output

@@ -1,5 +1,8 @@
 use crate::error;
 
+///
+/// Type providing encoding functional to perform hashing
+///
 pub struct Sha512;
 
 impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {

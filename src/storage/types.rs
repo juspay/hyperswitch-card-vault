@@ -30,16 +30,16 @@ pub struct Merchant {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
-pub(super) struct MerchantNewInner {
-    tenant_id: String,
-    merchant_id: String,
+pub(super) struct MerchantNewInner<'a> {
+    tenant_id: &'a str,
+    merchant_id: &'a str,
     enc_key: Encrypted,
 }
 
 #[derive(Debug)]
-pub struct MerchantNew {
-    pub tenant_id: String,
-    pub merchant_id: String,
+pub struct MerchantNew<'a> {
+    pub tenant_id: &'a str,
+    pub merchant_id: &'a str,
     pub enc_key: Secret<Vec<u8>>,
 }
 
@@ -68,24 +68,24 @@ pub struct Locker {
 }
 
 #[derive(Debug, Clone)]
-pub struct LockerNew {
+pub struct LockerNew<'a> {
     pub locker_id: Secret<String>,
-    pub tenant_id: String,
+    pub tenant_id: &'a str,
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Secret<Vec<u8>>,
-    pub hash_id: String,
+    pub hash_id: &'a str,
 }
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::locker)]
-pub(super) struct LockerNewInner {
+pub(super) struct LockerNewInner<'a> {
     locker_id: Secret<String>,
-    tenant_id: String,
+    tenant_id: &'a str,
     merchant_id: String,
     customer_id: String,
     enc_data: Encrypted,
-    hash_id: String,
+    hash_id: &'a str,
 }
 
 #[derive(Debug, Identifiable, Queryable)]
@@ -104,6 +104,9 @@ pub(super) struct HashTableNew {
     pub data_hash: Vec<u8>,
 }
 
+///
+/// Type representing data stored in ecrypted state in the database
+///
 #[derive(Debug, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
@@ -206,8 +209,8 @@ impl StorageDecryption for MerchantInner {
     }
 }
 
-impl StorageEncryption for MerchantNew {
-    type Output = MerchantNewInner;
+impl<'a> StorageEncryption for MerchantNew<'a> {
+    type Output = MerchantNewInner<'a>;
 
     type Algorithm = crypto::aes::GcmAes256;
 
@@ -246,8 +249,8 @@ impl StorageDecryption for LockerInner {
     }
 }
 
-impl StorageEncryption for LockerNew {
-    type Output = LockerNewInner;
+impl<'a> StorageEncryption for LockerNew<'a> {
+    type Output = LockerNewInner<'a>;
 
     type Algorithm = crypto::aes::GcmAes256;
 
