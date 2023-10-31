@@ -1,28 +1,30 @@
+use super::logger::config::Log;
 #[cfg(feature = "kms")]
 use crate::crypto::kms;
 
 use std::path::PathBuf;
 
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
     #[cfg(feature = "kms")]
     pub kms: kms::KmsConfig,
+    pub log: Log,
 }
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Server {
     pub host: String,
     pub port: u16,
 }
 
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Database {
     pub url: String,
 }
 
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, Debug)]
 pub struct Secrets {
     pub tenant: String,
     #[serde(deserialize_with = "deserialize_hex")]
@@ -36,8 +38,13 @@ where
     D: serde::Deserializer<'de>,
 {
     let deserialized_str: String = serde::Deserialize::deserialize(deserializer)?;
+    #[cfg(not(feature = "kms"))]
+    let deserialized_str = hex::decode(deserialized_str)
+        .map_err(|_| serde::de::Error::custom("error while parsing hex"))?;
+    #[cfg(feature = "kms")]
+    let deserialized_str = deserialized_str.into_bytes();
 
-    Ok(deserialized_str.into_bytes())
+    Ok(deserialized_str)
 }
 
 /// Get the origin directory of the project
