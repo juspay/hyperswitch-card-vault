@@ -19,8 +19,6 @@ use crate::crypto::{
     kms::{self, Base64Encoded, KmsData, Raw},
     Encryption,
 };
-#[cfg(feature = "kms")]
-use std::marker::PhantomData;
 
 ///
 /// AppState:
@@ -125,7 +123,6 @@ impl AppState {
             let master_key_kms_input: KmsData<Base64Encoded> = KmsData::new(
                 String::from_utf8(config.secrets.master_key.clone())
                     .expect("Failed while converting bytes to String"),
-                PhantomData,
             );
             let kms_decrypted_master_key: KmsData<Raw> = kms_client
                 .decrypt(master_key_kms_input)
@@ -134,7 +131,7 @@ impl AppState {
             config.secrets.master_key = kms_decrypted_master_key.data;
 
             let tenant_public_key_kms_input: KmsData<Base64Encoded> =
-                KmsData::new(config.secrets.tenant_public_key.peek().clone(), PhantomData);
+                KmsData::new(config.secrets.tenant_public_key.peek().clone());
             let kms_decrypted_tenant_public_key: KmsData<Raw> = kms_client
                 .decrypt(tenant_public_key_kms_input)
                 .await
@@ -146,10 +143,8 @@ impl AppState {
                     .expect("Failed while converting bytes to String")
                     .into();
 
-            let locker_private_key_kms_input: KmsData<Base64Encoded> = KmsData::new(
-                config.secrets.locker_private_key.peek().clone(),
-                PhantomData,
-            );
+            let locker_private_key_kms_input: KmsData<Base64Encoded> =
+                KmsData::new(config.secrets.locker_private_key.peek().clone());
             let kms_decrypted_locker_private_key: KmsData<Raw> = kms_client
                 .decrypt(locker_private_key_kms_input)
                 .await
@@ -162,7 +157,7 @@ impl AppState {
                     .into();
 
             let db_password_kms_input: KmsData<Base64Encoded> =
-                KmsData::new(config.database.password.clone(), PhantomData);
+                KmsData::new(config.database.password.peek().clone());
             let kms_decrypted_db_password: KmsData<Raw> = kms_client
                 .decrypt(db_password_kms_input)
                 .await
@@ -170,7 +165,8 @@ impl AppState {
                     "locker_private_key",
                 ))?;
             config.database.password = String::from_utf8(kms_decrypted_db_password.data)
-                .expect("Failed while converting bytes to String");
+                .expect("Failed while converting bytes to String")
+                .into();
         }
 
         Ok(Self {
