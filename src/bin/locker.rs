@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 
 use tartarus::{app::AppState, logger};
 
+#[allow(clippy::expect_used)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = tartarus::config::Config::new().expect("failed while parsing config");
@@ -27,12 +28,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_graceful_shutdown(graceful_shutdown_server1(&mut server1_rx));
 
         logger::info!("Server 1 started [{:?}] [{:?}]", config.server, config.log);
-        server1.await.unwrap();
+        server1.await.expect("Failed while running the server 1");
     }
 
     let server2 = tartarus::app::server2_builder(&state).await?;
     logger::info!("Server 2 started [{:?}] [{:?}]", config.server, config.log);
-    server2.await.unwrap();
+    server2.await.expect("Failed while running the server 2");
 
     Ok(())
 }
