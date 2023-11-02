@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-release = ["middleware", "key_custodian"]
 default = []
+release = ["kms", "middleware", "key_custodian"]
 kms = ["dep:aws-config", "dep:aws-sdk-kms"]
 middleware = []
 key_custodian = []
