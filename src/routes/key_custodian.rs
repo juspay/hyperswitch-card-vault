@@ -86,7 +86,11 @@ async fn aes_decrypt_custodian_key(
     let final_key = format!("{}{}", inner_key1, inner_key2);
     // required by the AES algorithm instead of &[u8]
     let aes_decrypted_key = GcmAes256::new(state.read().await.config.secrets.master_key.clone())
-        .decrypt(final_key.into_bytes())
+        .decrypt(
+            hex::decode(final_key)
+                .change_context(error::ApiError::DecryptingKeysFailed("Hex decode failed"))
+                .report_unwrap()?,
+        )
         .change_context(error::ApiError::DecryptingKeysFailed(
             "AES decryption failed",
         ))
