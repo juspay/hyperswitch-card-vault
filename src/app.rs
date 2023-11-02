@@ -128,7 +128,11 @@ impl AppState {
                 .decrypt(master_key_kms_input)
                 .await
                 .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
-            config.secrets.master_key = kms_decrypted_master_key.data;
+            config.secrets.master_key = hex::decode(
+                String::from_utf8(kms_decrypted_master_key.data)
+                    .expect("Failed while converting bytes to String"),
+            )
+            .expect("Failed to hex decode master_key");
 
             let tenant_public_key_kms_input: KmsData<Base64Encoded> =
                 KmsData::new(config.secrets.tenant_public_key.peek().clone());
@@ -168,7 +172,6 @@ impl AppState {
                 .expect("Failed while converting bytes to String")
                 .into();
         }
-
         Ok(Self {
             db: storage::Storage::new(&config.database)
                 .await
