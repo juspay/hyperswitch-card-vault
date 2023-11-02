@@ -1,5 +1,4 @@
 apiVersion: 1
-
 datasources:
   - name: k6influxdb
     type: influxdb

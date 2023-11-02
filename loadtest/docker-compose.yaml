@@ -8,7 +8,7 @@ networks:
 services:
   locker_server:
     image: locker:latest
-    ports: 
+    ports:
       - "8080:8080"
     networks:
       - test_net
@@ -38,7 +38,7 @@ services:
       - POSTGRES_DB=locker
   migration:
     image: rust:1.70
-    command: "bash -c 'cargo install diesel_cli --no-default-features --features \"postgres\" && diesel migration --database-url postgres://sam:damn@pg:5432/locker run'"
+    command: 'bash -c ''cargo install diesel_cli --no-default-features --features "postgres" && diesel migration --database-url postgres://sam:damn@pg:5432/locker run'''
     working_dir: /app
     networks:
       - test_net
