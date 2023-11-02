@@ -1,0 +1,85 @@
+version: "3.7"
+volumes:
+  k6_store:
+  pg_data:
+networks:
+  test_net:
+  grafana:
+services:
+  locker_server:
+    image: locker:latest
+    ports:
+      - "8080:8080"
+    networks:
+      - test_net
+    cpu_count: ${CORES}
+    environment:
+      - LOCKER__SERVER__HOST=0.0.0.0
+      - LOCKER__SERVER__PORT=8080
+      - LOCKER__DATABASE__URL=postgres://sam:damn@pg:5432/locker
+      - LOCKER__SECRETS__TENANT=hyperswitch
+      - LOCKER__SECRETS__MASTER_KEY=feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308
+      - LOCKER__SECRETS__TENANT_PUBLIC_KEY=
+      - LOCKER__SECRETS__LOCKER_PRIVATE_KEY=
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+  pg:
+    image: postgres:14.5
+    ports:
+      - "5432"
+    networks:
+      - test_net
+    volumes:
+      - pg_data:/VAR/LIB/POSTGRESQL/DATA
+    environment:
+      - POSTGRES_USER=sam
+      - POSTGRES_PASSWORD=damn
+      - POSTGRES_DB=locker
+  migration:
+    image: rust:1.70
+    command: 'bash -c ''cargo install diesel_cli --no-default-features --features "postgres" && diesel migration --database-url postgres://sam:damn@pg:5432/locker run'''
+    working_dir: /app
+    networks:
+      - test_net
+    volumes:
+      - ../:/app
+    depends_on:
+      - pg
+  influxdb:
+    image: influxdb:1.8
+    networks:
+      - test_net
+      - grafana
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=k6
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      - grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_BASIC_ENABLED=false
+    volumes:
+      - ./config/dashboards:/var/lib/grafana/dashboards
+      - ./config/grafana-dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboard.yaml
+      - ./config/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
+  k6:
+    image: grafana/k6:latest
+    command: run /scripts/${SCRIPT}
+    networks:
+      - test_net
+      - grafana
+    profiles:
+      - k6
+    ports:
+      - "6565:6565"
+    environment:
+      - K6_OUT=influxdb=http://influxdb:8086/k6
+    volumes:
+      - ./scripts:/scripts

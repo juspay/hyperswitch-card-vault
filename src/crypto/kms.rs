@@ -75,6 +75,9 @@ pub enum KmsError {
     /// The KMS client has not been initialized.
     #[error("The KMS client has not been initialized")]
     KmsClientNotInitialized,
+
+    #[error("This KMS flow is not implemented")]
+    KmsNotImplemented,
 }
 
 impl KmsConfig {
@@ -174,7 +177,7 @@ impl<U: Decoder<Error = error_stack::Report<KmsError>>>
     type ReturnType<'b, T> = Pin<Box<dyn Future<Output = error_stack::Result<T, KmsError>> + 'b>>;
 
     fn encrypt(&self, _input: KmsData<U>) -> Self::ReturnType<'_, KmsData<Base64Encoded>> {
-        todo!()
+        Box::pin(async { Err(report!(KmsError::KmsNotImplemented)) })
     }
 
     fn decrypt<'a>(

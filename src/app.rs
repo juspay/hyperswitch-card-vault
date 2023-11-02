@@ -109,9 +109,16 @@ where
     Ok(server)
 }
 
+#[allow(clippy::expect_used)]
 impl AppState {
     ///
     /// Construct new app state with configuration
+    ///
+    /// # Panics
+    ///
+    /// - If the master key cannot be parsed as a string
+    /// - If the public/private key cannot be parsed as a string after kms decrypt
+    /// - If the database password cannot be parsed as a string after kms decrypt
     ///
     pub async fn new(
         config: &mut config::Config,
@@ -134,40 +141,44 @@ impl AppState {
             )
             .expect("Failed to hex decode master_key");
 
-            let tenant_public_key_kms_input: KmsData<Base64Encoded> =
-                KmsData::new(config.secrets.tenant_public_key.peek().clone());
-            let kms_decrypted_tenant_public_key: KmsData<Raw> = kms_client
-                .decrypt(tenant_public_key_kms_input)
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "tenant_public_key",
-                ))?;
-            config.secrets.tenant_public_key =
-                String::from_utf8(kms_decrypted_tenant_public_key.data)
-                    .expect("Failed while converting bytes to String")
-                    .into();
+            #[cfg(feature = "middleware")]
+            {
+                let tenant_public_key_kms_input: KmsData<Base64Encoded> =
+                    KmsData::new(config.secrets.tenant_public_key.peek().clone());
+                let kms_decrypted_tenant_public_key: KmsData<Raw> = kms_client
+                    .decrypt(tenant_public_key_kms_input)
+                    .await
+                    .change_context(error::ConfigurationError::KmsDecryptError(
+                        "tenant_public_key",
+                    ))?;
+                config.secrets.tenant_public_key =
+                    String::from_utf8(kms_decrypted_tenant_public_key.data)
+                        .expect("Failed while converting bytes to String")
+                        .into();
+            }
 
-            let locker_private_key_kms_input: KmsData<Base64Encoded> =
-                KmsData::new(config.secrets.locker_private_key.peek().clone());
-            let kms_decrypted_locker_private_key: KmsData<Raw> = kms_client
-                .decrypt(locker_private_key_kms_input)
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "locker_private_key",
-                ))?;
-            config.secrets.locker_private_key =
-                String::from_utf8(kms_decrypted_locker_private_key.data)
-                    .expect("Failed while converting bytes to String")
-                    .into();
+            #[cfg(feature = "middleware")]
+            {
+                let locker_private_key_kms_input: KmsData<Base64Encoded> =
+                    KmsData::new(config.secrets.locker_private_key.peek().clone());
+                let kms_decrypted_locker_private_key: KmsData<Raw> = kms_client
+                    .decrypt(locker_private_key_kms_input)
+                    .await
+                    .change_context(error::ConfigurationError::KmsDecryptError(
+                        "locker_private_key",
+                    ))?;
+                config.secrets.locker_private_key =
+                    String::from_utf8(kms_decrypted_locker_private_key.data)
+                        .expect("Failed while converting bytes to String")
+                        .into();
+            }
 
             let db_password_kms_input: KmsData<Base64Encoded> =
                 KmsData::new(config.database.password.peek().clone());
             let kms_decrypted_db_password: KmsData<Raw> = kms_client
                 .decrypt(db_password_kms_input)
                 .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "locker_private_key",
-                ))?;
+                .change_context(error::ConfigurationError::KmsDecryptError("db_password"))?;
             config.database.password = String::from_utf8(kms_decrypted_db_password.data)
                 .expect("Failed while converting bytes to String")
                 .into();
