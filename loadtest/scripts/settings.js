@@ -14,20 +14,10 @@
 // };
 
 export const global_options = {
-  // stages: [
-  //   // { duration: "1m", target: 3 },
-  //   { duration: "5m", target: 3 },
-  // ],
-  scenarios: {
-    constant_request_rate: {
-      executor: "constant-arrival-rate",
-      rate: 100000,
-      timeUnit: "1s", // 1000 iterations per second, i.e. 1000 RPS
-      duration: "5m",
-      preAllocatedVUs: 3, // how large the initial pool of VUs would be
-      maxVUs: 5, // if the preAllocatedVUs are not enough, we can initialize more
-    },
-  },
+  stages: [
+    { duration: "1s", target: 3 },
+    { duration: "5m", target: 3 },
+  ],
 };
 
 // function step_increment(duration, step_size, count) {
