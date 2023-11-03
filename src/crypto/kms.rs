@@ -195,6 +195,12 @@ impl<U: Decoder<Error = error_stack::Report<KmsError>>>
                 .ciphertext_blob(ciphertext_blob)
                 .send()
                 .await
+                .map_err(|error| {
+                    // Logging using `Debug` representation of the error as the `Display`
+                    // representation does not hold sufficient information.
+                    eprintln!("{:?}", error);
+                    error
+                })
                 .change_context(KmsError::DecryptionFailed)?;
 
             let output = decrypt_output
