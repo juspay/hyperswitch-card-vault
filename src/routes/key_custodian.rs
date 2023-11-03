@@ -51,19 +51,12 @@ pub async fn key2(
 pub async fn decrypt(
     State((state, keys, tx)): State<SharedState>,
 ) -> Result<&'static str, error::ApiError> {
-    match keys.read().await.deref() {
+    let decrypt_output = match keys.read().await.deref() {
         Keys {
             key1: Some(inner_key1),
             key2: Some(inner_key2),
         } => {
-            match aes_decrypt_custodian_key(state, inner_key1, inner_key2).await {
-                value @ Ok(_) => value,
-                error @ Err(_) => {
-                    keys.write().await.key1 = None;
-                    keys.write().await.key2 = None;
-                    error
-                }
-            }?;
+            aes_decrypt_custodian_key(state, inner_key1, inner_key2).await?;
 
             let _ = tx.send(()).await;
             logger::info!("Decryption of Custodian key is successful");
@@ -74,6 +67,14 @@ pub async fn decrypt(
             Err(error::ApiError::DecryptingKeysFailed(
                 "Both the custodain keys are not present",
             ))
+        }
+    };
+    match decrypt_output {
+        value @ Ok(_) => value,
+        error @ Err(_) => {
+            keys.write().await.key1 = None;
+            keys.write().await.key2 = None;
+            error
         }
     }
 }
