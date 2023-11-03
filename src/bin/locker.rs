@@ -10,7 +10,7 @@ use tartarus::{app::AppState, logger};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = tartarus::config::Config::new().expect("failed while parsing config");
-    let state = AppState::new(&mut config).await?;
+    let state = Arc::new(RwLock::new(AppState::new(&mut config).await?));
     let _guard = logger::setup(
         &config.log,
         tartarus::service_name!(),
@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "key_custodian")]
     {
-        let state_lock = Arc::new(RwLock::new(state.clone()));
+        let state_lock = state.clone();
 
         let (server1_tx, mut server1_rx) = tokio::sync::mpsc::channel::<()>(1);
 
@@ -31,7 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server1.await.expect("Failed while running the server 1");
     }
 
-    let server2 = tartarus::app::server2_builder(&state).await?;
+    let new_state = state.read().await.to_owned();
+    let server2 = tartarus::app::server2_builder(&new_state).await?;
     logger::info!("Server 2 started [{:?}] [{:?}]", config.server, config.log);
     server2.await.expect("Failed while running the server 2");
 
