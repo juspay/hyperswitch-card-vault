@@ -7,20 +7,64 @@ networks:
   grafana:
 services:
   locker_server:
-    image: locker:latest
+    image: locker:loadtest
     ports:
       - "8080:8080"
     networks:
       - test_net
     cpu_count: ${CORES}
+    volumes:
+      - ../config/development.toml:/local/config/development.toml
     environment:
       - LOCKER__SERVER__HOST=0.0.0.0
       - LOCKER__SERVER__PORT=8080
+      - LOCKER__LOG__CONSOLE__ENABLED=true
+      - LOCKER__LOG__CONSOLE__LEVEL=DEBUG
+      - LOCKER__LOG__CONSOLE__LOG_FORMAT=default
       - LOCKER__DATABASE__URL=postgres://sam:damn@pg:5432/locker
+      - LOCKER__DATABASE__USERNAME=sam
+      - LOCKER__DATABASE__PASSWORD=damn
+      - LOCKER__DATABASE__HOST=pg
+      - LOCKER__DATABASE__PORT=5432
+      - LOCKER__DATABASE__DBNAME=locker
       - LOCKER__SECRETS__TENANT=hyperswitch
-      - LOCKER__SECRETS__MASTER_KEY=feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308
-      - LOCKER__SECRETS__TENANT_PUBLIC_KEY=
-      - LOCKER__SECRETS__LOCKER_PRIVATE_KEY=
+      # - LOCKER__SECRETS__MASTER_KEY=feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308
+      # - LOCKER__SECRETS__TENANT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----
+      #   MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Z/K0JWds8iHhWCa+rj0
+      #   rhOQX1nVs/ArQ1D0vh3UlSPR2vZUTrkdP7i3amv4d2XDC+3+5/YWExTkpxqnfl1T
+      #   9J37leN2guAARed6oYoTDEP/OoKtnUrKK2xk/+V5DNOWcRiSpcCrJOOIEoACOlPI
+      #   rXQSg16KDZQb0QTMntnsiPIJDbsOGcdKytRAcNaokiKLnia1v13N3bk6dSplrj1Y
+      #   zawslZfgqD0eov4FjzBMoA19yNtlVLLf6kOkLcFQjTKXJLP1tLflLUBPTg8fm9wg
+      #   APK2BjMQ2AMkUxx0ubbtw/9CeJ+bFWrqGnEhlvfDMlyAV77sAiIdQ4mXs3TLcLb/
+      #   AQIDAQAB
+      #   -----END PUBLIC KEY-----
+      # - LOCKER__SECRETS__LOCKER_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----
+      #   MIIEowIBAAKCAQEAwa6siKaSYqD1o4J3AbHqKm8oVTvep7GoN/C45qY60C7DO72H
+      #   1O7Ujt6ZsSiK83EyI0CaUg3ORPS3ayobFNmuzR366ckK8GIf3BG7sVI6u/9751z4
+      #   OvBHZMM9JFWa7Bx/RCPQ8aeM+iJoqf9auuQm3NCTlfaZJif45pShswR+xuZTR/bq
+      #   nsOSP/MFROI9ch0NE7KRogy0tvrZe21lP24iRo2LJJG+bYshxBddhxQf2ryJ85+/
+      #   Trxdu16PunodGzCl6EMT3bvb4ZC41i15omqUaXXV1Z1wYUhlsO0jyd1bVvjyuE/K
+      #   E1TbBS0gfR/RkacODmmE2zEdZ0EyyiXwqkmcoQIDAQABAoIBAEavZwxgLmCMedl4
+      #   zdHyipF+C+w/c10kO05fLjwPQrujtWDiJOaTW0Pg/ZpoP33lO/UdqLR1kWgdH6ue
+      #   rE+Jun/lhyM3WiSsyw/X8PYgGotuDFw90+I+uu+NSY0vKOEu7UuC/siS66KGWEhi
+      #   h0xZ480G2jYKz43bXL1aVUEuTM5tsjtt0a/zm08DEluYwrmxaaTvHW2+8FOn3z8g
+      #   UMClV2mN9X3rwlRhKAI1RVlymV95LmkTgzA4wW/M4j0kk108ouY8bo9vowoqidpo
+      #   0zKGfnqbQCIZP1QY6Xj8f3fqMY7IrFDdFHCEBXs29DnRz4oS8gYCAUXDx5iEVa1R
+      #   KVxic5kCgYEA4vGWOANuv+RoxSnNQNnZjqHKjhd+9lXARnK6qVVXcJGTps72ILGJ
+      #   CNrS/L6ndBePQGhtLtVyrvtS3ZvYhsAzJeMeeFUSZhQ2SOP5SCFWRnLJIBObJ5/x
+      #   fFwrCbp38qsEBlqJXue4JQCOxqO4P6YYUmeE8fxLPmdVNWq5fNe2YtsCgYEA2nrl
+      #   iMfttvNfQGX4pB3yEh/eWwqq4InFQdmWVDYPKJFG4TtUKJ48vzQXJqKfCBZ2q387
+      #   bH4KaKNWD7rYz4NBfE6z6lUc8We9w1tjVaqs5omBKUuovz8/8miUtxf2W5T2ta1/
+      #   zl9NyQ57duO423PeaCgPKKz3ftaxlz8G1CKYMTMCgYEAqkR7YhchNpOWD6cnOeq4
+      #   kYzNvgHe3c7EbZaSeY1wByMR1mscura4i44yEjKwzCcI8Vfn4uV+H86sA1xz/dWi
+      #   CmD2cW3SWgf8GoAAfZ+VbVGdmJVdKUOVGKrGF4xxhf3NDT9MJYpQ3GIovNwE1qw1
+      #   P04vrqaNhYpdobAq7oGhc1UCgYAkimNzcgTHEYM/0Q453KxM7bmRvoH/1esA7XRg
+      #   Fz6HyWxyZSrZNEXysLKiipZQkvk8C6aTqazx/Ud6kASNCGXedYdPzPZvRauOTe2a
+      #   OVZ7pEnO71GE0v5N+8HLsZ1JieuNTTxP9s6aruplYwba5VEwWGrYob0vIJdJNYhd
+      #   2H9d0wKBgFzqGPvG8u1lVOLYDU9BjhA/3l00C97WHIG0Aal70PVyhFhm5ILNSHU1
+      #   Sau7H1Bhzy5G7rwt05LNpU6nFcAGVaZtzl4/+FYfYIulubYjuSEh72yuBHHyvi1/
+      #   4Zql8DXhF5kkKx75cMcIxZ/ceiRiQyjzYv3LoTTADHHjzsiBEiQY
+      #   -----END RSA PRIVATE KEY-----
     depends_on:
       migration:
         condition: service_completed_successfully

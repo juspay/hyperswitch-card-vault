@@ -91,6 +91,7 @@ pub async fn server2_builder(
 >
 where
 {
+    eprintln!("{:#?}", state.config);
     let socket_addr =
         std::net::SocketAddr::new(state.config.server.host.parse()?, state.config.server.port);
     let router = axum::Router::new()
