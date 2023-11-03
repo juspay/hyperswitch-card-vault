@@ -85,22 +85,17 @@ async fn aes_decrypt_custodian_key(
 ) -> Result<(), error::ApiError> {
     let final_key = format!("{}{}", inner_key1, inner_key2);
     // required by the AES algorithm instead of &[u8]
-    let aes_decrypted_key = GcmAes256::new(state.read().await.config.secrets.master_key.clone())
-        .decrypt(
-            hex::decode(final_key)
-                .change_context(error::ApiError::DecryptingKeysFailed("Hex decode failed"))
-                .report_unwrap()?,
-        )
-        .change_context(error::ApiError::DecryptingKeysFailed(
-            "AES decryption failed",
-        ))
-        .report_unwrap()?;
+    let aes_decrypted_key = GcmAes256::new(
+        hex::decode(final_key)
+            .change_context(error::ApiError::DecryptingKeysFailed("Hex dcoding failed"))
+            .report_unwrap()?,
+    )
+    .decrypt(state.read().await.config.secrets.master_key.clone())
+    .change_context(error::ApiError::DecryptingKeysFailed(
+        "AES decryption failed",
+    ))
+    .report_unwrap()?;
 
-    let master_key = String::from_utf8(aes_decrypted_key)
-        .change_context(error::ApiError::DecryptingKeysFailed(
-            "Failed while parsing utf-8",
-        ))
-        .report_unwrap()?;
-    state.write().await.config.secrets.master_key = master_key.into_bytes();
+    state.write().await.config.secrets.master_key = aes_decrypted_key;
     Ok(())
 }
