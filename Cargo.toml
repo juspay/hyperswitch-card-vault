@@ -52,6 +52,8 @@ time = "0.3.30"
 async-trait = "0.1.74"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng"] }
 
+argh = "0.1.12"
+
 [dev-dependencies]
 rand = "0.8.5"
 axum-test = "13.0.1"
@@ -62,6 +64,9 @@ cargo_metadata = "0.15.4"
 
 [[bin]]
 name = "locker"
+
+[[bin]]
+name = "utils"
 
 [profile.release]
 strip = true
