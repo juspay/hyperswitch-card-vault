@@ -1,7 +1,5 @@
-#[cfg(feature = "key_custodian")]
 use std::sync::Arc;
 
-#[cfg(feature = "key_custodian")]
 use tokio::sync::RwLock;
 
 use tartarus::{app::AppState, logger};
