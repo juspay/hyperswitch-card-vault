@@ -38,7 +38,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.nested {
         SubCommand::MasterKey(master_key_conf) => master_key_generator(master_key_conf)?,
-        // _ => eprintln!("Failed while interpreting the subcommand provided")
     }
 
     Ok(())
