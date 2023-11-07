@@ -44,7 +44,7 @@ pub async fn middleware(
 
     let response = next.run(next_layer_payload).await;
 
-    let body = response.into_body();
+    let (parts, body) = response.into_parts();
 
     let response_body = hyper::body::to_bytes(body)
         .await
@@ -66,5 +66,5 @@ pub async fn middleware(
         ))
         .report_unwrap()?;
 
-    Ok(Response::new(jwt.map_err(axum::Error::new).boxed_unsync()))
+    axum::http::response::Builder::new().status(parts.status).body(jwt.map_err(axum::Error::new).boxed_unsync()).change_context(error::ApiError::ResponseMiddlewareError("failed while generating the response")).report_unwrap()
 }
