@@ -66,5 +66,11 @@ pub async fn middleware(
         ))
         .report_unwrap()?;
 
-    axum::http::response::Builder::new().status(parts.status).body(jwt.map_err(axum::Error::new).boxed_unsync()).change_context(error::ApiError::ResponseMiddlewareError("failed while generating the response")).report_unwrap()
+    axum::http::response::Builder::new()
+        .status(parts.status)
+        .body(jwt.map_err(axum::Error::new).boxed_unsync())
+        .change_context(error::ApiError::ResponseMiddlewareError(
+            "failed while generating the response",
+        ))
+        .report_unwrap()
 }
