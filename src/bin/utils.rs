@@ -4,7 +4,6 @@
 //! Simple Cli tool for generating keys to be used in the locker before deployment
 //!
 
-
 use tartarus::crypto::{
     aes::{generate_aes256_key, GcmAes256},
     Encryption,
