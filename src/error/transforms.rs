@@ -99,8 +99,8 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
     fn from(value: &'a super::MerchantDBError) -> Self {
         match value {
             super::MerchantDBError::DEKEncryptionError |
-            super::MerchantDBError::DEKDecryptionError | // This is due to the failure can also
-                                                         // occur becuase of master key
+            super::MerchantDBError::DEKDecryptionError | // This failure can also
+                                                         // occur becuase of master key failure
             super::MerchantDBError::DBError |
             super::MerchantDBError::DBFilterError |
             super::MerchantDBError::DBInsertError=> Self::MerchantError,
