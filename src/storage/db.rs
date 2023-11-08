@@ -1,27 +1,27 @@
 use diesel::BoolExpressionMethods;
 use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
-use error_stack::ResultExt;
 use masking::ExposeInterface;
 use masking::Secret;
 
 use crate::crypto::aes::{generate_aes256_key, GcmAes256};
-use crate::error;
+use crate::error::{self, ContainerError, ResultContainerExt};
 
 use super::types::StorageDecryption;
 use super::types::StorageEncryption;
-use super::{schema, types, CustomResult, LockerInterface, MerchantInterface, Storage};
+use super::{schema, types, LockerInterface, MerchantInterface, Storage};
 
 #[async_trait::async_trait]
 impl MerchantInterface for Storage {
     type Algorithm = GcmAes256;
+    type Error = error::MerchantDBError;
 
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
         tenant_id: &str,
         key: &GcmAes256,
-    ) -> CustomResult<types::Merchant, error::StorageError> {
+    ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
@@ -33,11 +33,11 @@ impl MerchantInterface for Storage {
                 .get_result(&mut conn)
                 .await;
         output
-            .change_context(error::StorageError::FindError)
+            .change_error(error::StorageError::FindError)
+            .map_err(From::from)
             .and_then(|inner| {
-                inner
-                    .decrypt(key)
-                    .change_context(error::StorageError::DecryptionError)
+                Ok(inner.decrypt(key)?)
+                // .change_context(error::StorageError::DecryptionError)
             })
     }
 
@@ -46,7 +46,7 @@ impl MerchantInterface for Storage {
         merchant_id: &str,
         tenant_id: &str,
         key: &GcmAes256,
-    ) -> CustomResult<types::Merchant, error::StorageError> {
+    ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
         let output: Result<types::MerchantInner, diesel::result::Error> =
@@ -59,9 +59,7 @@ impl MerchantInterface for Storage {
                 .get_result(&mut conn)
                 .await;
         match output {
-            Ok(inner) => inner
-                .decrypt(key)
-                .change_context(error::StorageError::DecryptionError),
+            Ok(inner) => Ok(inner.decrypt(key)?),
             Err(inner_err) => match inner_err {
                 diesel::result::Error::NotFound => {
                     self.insert_merchant(
@@ -74,7 +72,7 @@ impl MerchantInterface for Storage {
                     )
                     .await
                 }
-                output => Err(output).change_context(error::StorageError::FindError),
+                output => Err(output).change_error(error::StorageError::FindError)?,
             },
         }
     }
@@ -82,29 +80,24 @@ impl MerchantInterface for Storage {
         &self,
         new: types::MerchantNew<'_>,
         key: &GcmAes256,
-    ) -> CustomResult<types::Merchant, error::StorageError> {
+    ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
-        let query = diesel::insert_into(types::MerchantInner::table()).values(
-            new.encrypt(key)
-                .change_context(error::StorageError::FindError)?,
-        );
+        let query = diesel::insert_into(types::MerchantInner::table()).values(new.encrypt(key)?);
 
         query
             .get_result(&mut conn)
             .await
-            .map_err(error_stack::Report::from)
-            .change_context(error::StorageError::FindError)
-            .and_then(|inner: types::MerchantInner| {
-                inner
-                    .decrypt(key)
-                    .change_context(error::StorageError::DecryptionError)
-            })
+            .change_error(error::StorageError::InsertError)
+            .map_err(From::from)
+            .and_then(|inner: types::MerchantInner| Ok(inner.decrypt(key)?))
     }
 }
 
 #[async_trait::async_trait]
 impl LockerInterface for Storage {
     type Algorithm = GcmAes256;
+    type Error = error::LockerDBError;
+
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
@@ -112,7 +105,7 @@ impl LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
-    ) -> CustomResult<types::Locker, error::StorageError> {
+    ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
         types::LockerInner::table()
@@ -125,13 +118,9 @@ impl LockerInterface for Storage {
             )
             .get_result(&mut conn)
             .await
-            .map_err(error_stack::Report::from)
-            .change_context(error::StorageError::FindError)
-            .and_then(|inner: types::LockerInner| {
-                inner
-                    .decrypt(key)
-                    .change_context(error::StorageError::DecryptionError)
-            })
+            .change_error(error::StorageError::FindError)
+            .map_err(From::from)
+            .and_then(|inner: types::LockerInner| Ok(inner.decrypt(key)?))
     }
 
     async fn find_by_hash_id_merchant_id_customer_id(
@@ -141,7 +130,7 @@ impl LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
-    ) -> CustomResult<Option<types::Locker>, error::StorageError> {
+    ) -> Result<Option<types::Locker>, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
         let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
@@ -156,14 +145,10 @@ impl LockerInterface for Storage {
             .await;
 
         match output {
-            Ok(inner) => Ok(Some(
-                inner
-                    .decrypt(key)
-                    .change_context(error::StorageError::DecryptionError)?,
-            )),
+            Ok(inner) => Ok(Some(inner.decrypt(key)?)),
             Err(err) => match err {
                 diesel::result::Error::NotFound => Ok(None),
-                error => Err(error).change_context(error::StorageError::FindError),
+                error => Err(error).change_error(error::StorageError::FindError)?,
             },
         }
     }
@@ -172,23 +157,18 @@ impl LockerInterface for Storage {
         &self,
         new: types::LockerNew<'_>,
         key: &Self::Algorithm,
-    ) -> CustomResult<types::Locker, error::StorageError> {
+    ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
         let query: Result<_, diesel::result::Error> =
             diesel::insert_into(types::LockerInner::table())
-                .values(
-                    new.encrypt(key)
-                        .change_context(error::StorageError::EncryptionError)?,
-                )
+                .values(new.encrypt(key)?)
                 .get_result::<types::LockerInner>(&mut conn)
                 .await;
 
         match query {
-            Ok(inner) => inner
-                .decrypt(key)
-                .change_context(error::StorageError::DecryptionError),
+            Ok(inner) => Ok(inner.decrypt(key)?),
             Err(error) => match error {
                 diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -203,7 +183,7 @@ impl LockerInterface for Storage {
                     )
                     .await
                 }
-                error => Err(error).change_context(error::StorageError::FindError),
+                error => Err(error).change_error(error::StorageError::InsertError)?,
             },
         }
     }
@@ -214,7 +194,7 @@ impl LockerInterface for Storage {
         tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
-    ) -> CustomResult<usize, error::StorageError> {
+    ) -> Result<usize, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
         let query = diesel::delete(types::LockerInner::table()).filter(
@@ -225,20 +205,21 @@ impl LockerInterface for Storage {
                 .and(schema::locker::customer_id.eq(customer_id)),
         );
 
-        query
+        Ok(query
             .execute(&mut conn)
             .await
-            .map_err(error_stack::Report::from)
-            .change_context(error::StorageError::FindError)
+            .change_error(error::StorageError::DeleteError)?)
     }
 }
 
 #[async_trait::async_trait]
 impl super::HashInterface for Storage {
+    type Error = error::HashDBError;
+
     async fn find_by_data_hash(
         &self,
         data_hash: &[u8],
-    ) -> CustomResult<Option<types::HashTable>, error::StorageError> {
+    ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
         let output: Result<_, diesel::result::Error> = types::HashTable::table()
@@ -250,14 +231,14 @@ impl super::HashInterface for Storage {
             Ok(inner) => Ok(Some(inner)),
             Err(inner_err) => match inner_err {
                 diesel::result::Error::NotFound => Ok(None),
-                error => Err(error).change_context(error::StorageError::FindError),
+                error => Err(error).change_error(error::StorageError::FindError)?,
             },
         }
     }
     async fn insert_hash(
         &self,
         data_hash: Vec<u8>,
-    ) -> CustomResult<types::HashTable, error::StorageError> {
+    ) -> Result<types::HashTable, ContainerError<Self::Error>> {
         let output = self.find_by_data_hash(&data_hash).await?;
         match output {
             Some(inner) => Ok(inner),
@@ -269,11 +250,10 @@ impl super::HashInterface for Storage {
                         data_hash,
                     });
 
-                query
+                Ok(query
                     .get_result(&mut conn)
                     .await
-                    .map_err(error_stack::Report::from)
-                    .change_context(error::StorageError::FindError)
+                    .change_error(error::StorageError::InsertError)?)
             }
         }
     }

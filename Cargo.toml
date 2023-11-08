@@ -7,7 +7,7 @@ default-run = "locker"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["release"]
 release = ["kms", "middleware", "key_custodian"]
 kms = ["dep:aws-config", "dep:aws-sdk-kms"]
 middleware = []

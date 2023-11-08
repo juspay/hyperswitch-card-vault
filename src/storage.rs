@@ -1,6 +1,9 @@
-use crate::{config::Database, crypto::Encryption, error};
+use crate::{
+    config::Database,
+    crypto::Encryption,
+    error::{self, ContainerError},
+};
 
-type CustomResult<T, C> = error_stack::Result<T, C>;
 use std::sync::Arc;
 
 use diesel_async::{
@@ -49,11 +52,12 @@ impl Storage {
     }
 
     /// Get connection from database pool for accessing data
-    pub async fn get_conn(&self) -> error_stack::Result<DeadPoolConnType, error::StorageError> {
-        self.pg_pool
+    pub async fn get_conn(&self) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
+        Ok(self
+            .pg_pool
             .get()
             .await
-            .change_context(error::StorageError::PoolClientFailure)
+            .change_context(error::StorageError::PoolClientFailure)?)
     }
 }
 
@@ -64,6 +68,7 @@ impl Storage {
 #[async_trait::async_trait]
 pub trait MerchantInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
+    type Error;
 
     /// find merchant from merchant table with `merchant_id` and `tenant_id` with key as master key
     async fn find_by_merchant_id(
@@ -71,7 +76,7 @@ pub trait MerchantInterface {
         merchant_id: &str,
         tenant_id: &str,
         key: &Self::Algorithm,
-    ) -> CustomResult<types::Merchant, error::StorageError>;
+    ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
     /// find merchant from merchant table with `merchant_id` and `tenant_id` with key as master key
     /// and if not found create a new merchant
@@ -80,14 +85,14 @@ pub trait MerchantInterface {
         merchant_id: &str,
         tenant_id: &str,
         key: &Self::Algorithm,
-    ) -> CustomResult<types::Merchant, error::StorageError>;
+    ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
     /// Insert a new merchant in the database by encrypting the dek with `master_key`
     async fn insert_merchant(
         &self,
         new: types::MerchantNew<'_>,
         key: &Self::Algorithm,
-    ) -> CustomResult<types::Merchant, error::StorageError>;
+    ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 }
 
 ///
@@ -97,6 +102,8 @@ pub trait MerchantInterface {
 #[async_trait::async_trait]
 pub trait LockerInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
+    type Error;
+
     /// Fetch payment data from locker table by decrypting with `dek`
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
@@ -105,14 +112,14 @@ pub trait LockerInterface {
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
-    ) -> CustomResult<types::Locker, error::StorageError>;
+    ) -> Result<types::Locker, ContainerError<Self::Error>>;
 
     /// Insert payment data from locker table by decrypting with `dek`
     async fn insert_or_get_from_locker(
         &self,
         new: types::LockerNew<'_>,
         key: &Self::Algorithm,
-    ) -> CustomResult<types::Locker, error::StorageError>;
+    ) -> Result<types::Locker, ContainerError<Self::Error>>;
 
     /// Delete card from the locker, without access to the `dek`
     async fn delete_from_locker(
@@ -121,7 +128,7 @@ pub trait LockerInterface {
         tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
-    ) -> CustomResult<usize, error::StorageError>;
+    ) -> Result<usize, ContainerError<Self::Error>>;
 
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
@@ -130,19 +137,21 @@ pub trait LockerInterface {
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
-    ) -> CustomResult<Option<types::Locker>, error::StorageError>;
+    ) -> Result<Option<types::Locker>, ContainerError<Self::Error>>;
 }
 
 /// Trait defining behaviour of the application with the hash table, providing APIs to interact
 /// with it
 #[async_trait::async_trait]
 pub trait HashInterface {
+    type Error;
+
     async fn find_by_data_hash(
         &self,
         data_hash: &[u8],
-    ) -> CustomResult<Option<types::HashTable>, error::StorageError>;
+    ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>>;
     async fn insert_hash(
         &self,
         data_hash: Vec<u8>,
-    ) -> CustomResult<types::HashTable, error::StorageError>;
+    ) -> Result<types::HashTable, ContainerError<Self::Error>>;
 }
