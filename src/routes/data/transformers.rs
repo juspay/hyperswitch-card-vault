@@ -1,8 +1,7 @@
-use error_stack::ResultExt;
 use masking::ExposeInterface;
 
 use crate::{
-    error::{self, LogReport},
+    error::{self, ContainerError, ResultContainerExt},
     storage,
 };
 
@@ -11,7 +10,7 @@ use super::types;
 impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
     for storage::types::LockerNew<'a>
 {
-    type Error = error::ApiError;
+    type Error = ContainerError<error::ApiError>;
 
     fn try_from(
         (value, tenant_id, hash_id): (super::types::StoreCardRequest, &'a str, &'a str),
@@ -20,8 +19,9 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
             types::Data::Card { card } => Ok(types::StoredData::CardData(card)),
             types::Data::EncData { enc_card_data } => Ok(types::StoredData::EncData(enc_card_data)),
         }
-        .and_then(|inner| serde_json::to_vec(&inner).change_context(error::ApiError::EncodingError))
-        .report_unwrap()?;
+        .and_then(|inner| {
+            serde_json::to_vec(&inner).change_error(error::ApiError::EncodingError)
+        })?;
 
         Ok(Self {
             locker_id: value
@@ -50,12 +50,11 @@ impl From<storage::types::Locker> for super::types::StoreCardResponse {
 }
 
 impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
-    type Error = error::ApiError;
+    type Error = ContainerError<error::ApiError>;
     fn try_from(value: storage::types::Locker) -> Result<Self, Self::Error> {
         let (card, enc_card_data) =
             match serde_json::from_slice::<types::StoredData>(&value.enc_data.expose())
-                .change_context(error::ApiError::DecodingError)
-                .report_unwrap()?
+                .change_error(error::ApiError::DecodingError)?
             {
                 types::StoredData::EncData(data) => (None, Some(data)),
                 types::StoredData::CardData(card) => (Some(card), None),

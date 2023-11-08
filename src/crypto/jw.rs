@@ -1,4 +1,4 @@
-use crate::error;
+use crate::error::{self, ContainerError};
 use josekit::{jwe, jws};
 use masking::PeekInterface;
 
@@ -73,7 +73,7 @@ impl JweBody {
 }
 
 impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
-    type ReturnType<'a, T> = Result<T, error::CryptoError>;
+    type ReturnType<'a, T> = Result<T, ContainerError<error::CryptoError>>;
 
     fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let payload = input;
@@ -81,15 +81,15 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
         let jws_body = JwsBody::from_dotted_str(&jws_encoded).ok_or(
             error::CryptoError::InvalidData("JWS encoded data is incomplete"),
         )?;
-        let jws_payload = serde_json::to_vec(&jws_body)?;
+        let jws_payload = serde_json::to_vec(&jws_body).map_err(error::CryptoError::from)?;
         let jwe_encrypted = encrypt_jwe(&jws_payload, self.public_key.peek().as_bytes())?;
         let jwe_body = JweBody::from_str(&jwe_encrypted)
             .ok_or(error::CryptoError::InvalidData("JWE data incomplete"))?;
-        Ok(serde_json::to_vec(&jwe_body)?)
+        Ok(serde_json::to_vec(&jwe_body).map_err(error::CryptoError::from)?)
     }
 
     fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
-        let jwe_body: JweBody = serde_json::from_slice(&input)?;
+        let jwe_body: JweBody = serde_json::from_slice(&input).map_err(error::CryptoError::from)?;
         let jwe_encoded = jwe_body.get_dotted_jwe();
         let algo = jwe::RSA_OAEP_256;
         let jwe_decrypted = decrypt_jwe(&jwe_encoded, self.private_key.peek(), algo)?;
