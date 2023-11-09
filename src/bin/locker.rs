@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _guard = logger::setup(
         &config.log,
         tartarus::service_name!(),
-        [tartarus::service_name!()],
+        [tartarus::service_name!(), "tower_http"],
     );
 
     #[cfg(feature = "key_custodian")]
@@ -25,13 +25,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await?
             .with_graceful_shutdown(graceful_shutdown_server1(&mut server1_rx));
 
-        logger::info!("Server 1 started [{:?}] [{:?}]", config.server, config.log);
+        logger::info!(
+            "Key Custodian started [{:?}] [{:?}]",
+            config.server,
+            config.log
+        );
         server1.await.expect("Failed while running the server 1");
     }
 
     let new_state = state.read().await.to_owned();
     let server2 = tartarus::app::server2_builder(&new_state).await?;
-    logger::info!("Server 2 started [{:?}] [{:?}]", config.server, config.log);
+    logger::info!("Locker started [{:?}] [{:?}]", config.server, config.log);
     server2.await.expect("Failed while running the server 2");
 
     Ok(())
