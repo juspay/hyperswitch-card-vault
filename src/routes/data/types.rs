@@ -7,6 +7,10 @@
 //     hash2_reference: Option<String>,
 // }
 
+use masking::PeekInterface;
+
+use crate::error;
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Card {
     card_number: masking::StrongSecret<String>,
@@ -47,8 +51,8 @@ pub struct StoreCardRequest {
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Data {
-    Card { card: Card },
     EncData { enc_card_data: String },
+    Card { card: Card },
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -100,4 +104,23 @@ pub enum StoredData {
 #[serde(rename_all = "PascalCase")]
 pub enum Status {
     Ok,
+}
+
+pub trait Validation {
+    type Error;
+
+    fn validate(&self) -> Result<(), Self::Error>;
+}
+
+impl Validation for StoreCardRequest {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        match &self.data {
+            Data::EncData { .. } => Ok(()),
+            Data::Card { card } => crate::validations::luhn_on_string(card.card_number.peek())
+                .then_some(())
+                .ok_or(error::ApiError::ValidationError("card number invalid")),
+        }
+    }
 }
