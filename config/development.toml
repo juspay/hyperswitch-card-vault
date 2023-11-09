@@ -1,7 +1,6 @@
 [log.console]
 enabled = true
 level = "DEBUG"
-# filtering_directive = "tower_http=info,locker=debug,tartaurs=debug"
 log_format = "default"
 
 [server]
