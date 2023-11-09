@@ -16,6 +16,8 @@ use crate::{
 #[cfg(feature = "middleware")]
 use crate::middleware as custom_middleware;
 
+use self::types::Validation;
+
 mod transformers;
 pub mod types;
 
@@ -45,6 +47,8 @@ pub async fn add_card(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::StoreCardRequest>,
 ) -> Result<Json<types::StoreCardResponse>, error::ApiError> {
+    request.validate()?;
+
     let master_encryption = GcmAes256::new(state.config.secrets.master_key);
     let merchant = state
         .db
