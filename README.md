@@ -1,6 +1,6 @@
 ## Overview
 
-The Hyperswitch Card Vault (Tartarus) is a highly performant and a secure vault to save sensitive data such as payment card details, bank account details etc. 
+The Hyperswitch Card Vault (Tartarus) is a highly performant and a secure vault to save sensitive data such as payment card details, bank account details etc.
 
 It is designed in an polymorphic manner to handle and store any type of sensitive information making it highly scalable with extensive coverage of payment methods and processors.
 
@@ -10,10 +10,10 @@ Here's a quick guide to [Get Started](https://github.com/NishantJoshi00/tartarus
 
 ### How does Tartarus work?
 
-- Your application will communicate with Tartarus via a middleware. 
-- All requests and responses to and from the middleware are signed and encrypted with the JWS and JWE algorithms. 
-- The locker supports CRD APIs on the /data and /cards endpoints - <API Reference to be linked> 
-- Cards are stored against the combination of merchant and customer identifiers. 
+- Your application will communicate with Tartarus via a middleware.
+- All requests and responses to and from the middleware are signed and encrypted with the JWS and JWE algorithms.
+- The locker supports CRD APIs on the /data and /cards endpoints - <API Reference to be linked>
+- Cards are stored against the combination of merchant and customer identifiers.
 - Internal hashing checks are in place to avoid data duplication.
 
 ![General Work Flow](https://drive.google.com/file/d/17zDZpVRIKd1r1WmgJL0HMyxIZCeZV_V1/view?usp=sharing)
@@ -26,4 +26,5 @@ Here's a quick guide to [Get Started](https://github.com/NishantJoshi00/tartarus
 ![Key Hierarchy](https://drive.google.com/file/d/1-kyrFL72nJ41lx2WTVvgH69_mUey3F4S/view?usp=sharing)
 
 ### Setup Guide
+
 Follow this guide to setup Tartarus - [Get Started](https://github.com/NishantJoshi00/tartarus/blob/main/docs/guides/setup.md)
