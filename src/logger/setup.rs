@@ -87,6 +87,8 @@ fn get_envfilter(
             let mut workspace_members = crate::cargo_workspace_members!();
             workspace_members.extend(crates_to_filter.as_ref());
 
+            println!("{:#?}", workspace_members);
+
             workspace_members
                 .drain()
                 .zip(std::iter::repeat(filter_log_level.into_level()))
