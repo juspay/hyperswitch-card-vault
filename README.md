@@ -6,7 +6,7 @@ It is designed in an polymorphic manner to handle and store any type of sensitiv
 
 Tartarus is built with a GDPR compliant personal identifiable information (PII) storage and secure encryption algorithms to be fully compliant with PCI DSS requirements.
 
-Here's a quick guide to [Get Started](https://github.com/NishantJoshi00/tartarus/blob/main/docs/guides/setup.md) with setting up Tartarus.
+Here's a quick guide to [Get Started](./docs/guides/setup.md) with setting up Tartarus.
 
 ### How does Tartarus work?
 
@@ -16,15 +16,15 @@ Here's a quick guide to [Get Started](https://github.com/NishantJoshi00/tartarus
 - Cards are stored against the combination of merchant and customer identifiers.
 - Internal hashing checks are in place to avoid data duplication.
 
-![General Work Flow](https://drive.google.com/file/d/17zDZpVRIKd1r1WmgJL0HMyxIZCeZV_V1/view?usp=sharing)
+![General Work Flow](./docs/imgs/general-block-diagram.png)
 
 ### Key Hierarchy
 
 - Master Key - AES generated key to that is encrypted/decrypted by the custodian keys to run the locker and associated configurations.
 - Custodian Keys - AES generated key that is used to encrypt and decrypt the master key. It broken into two keys (key 1 and key 2) and available with two custodians to enhance security.
 
-![Key Hierarchy](https://drive.google.com/file/d/1-kyrFL72nJ41lx2WTVvgH69_mUey3F4S/view?usp=sharing)
+![Key Hierarchy](./docs/imgs/locker-key-hierarchy.png)
 
 ### Setup Guide
 
-Follow this guide to setup Tartarus - [Get Started](https://github.com/NishantJoshi00/tartarus/blob/main/docs/guides/setup.md)
+Follow this guide to setup Tartarus - [Get Started](./docs/guides/setup.md)
