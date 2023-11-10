@@ -99,14 +99,14 @@ where
         .nest(
             "/data",
             routes::data::serve(
-                #[cfg(feature = "middleware")]
+                #[cfg(any(feature = "middleware", feature = "limit"))]
                 state.clone(),
             ),
         )
         .nest(
             "/cards",
             routes::data::serve(
-                #[cfg(feature = "middleware")]
+                #[cfg(any(feature = "middleware", feature = "limit"))]
                 state.clone(),
             ),
         )
