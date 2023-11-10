@@ -1,10 +1,9 @@
-#![allow(clippy::expect_used)]
-#![allow(clippy::as_conversions)]
-
 ///
 /// Maximum limit of a card number will not exceed 19 by ISO standards
 ///
 const CARD_NUMBER_LENGTH: usize = 20;
+
+#[allow(clippy::expect_used)]
 ///
 /// # Panics
 ///
@@ -27,6 +26,7 @@ pub fn luhn_on_string(number: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[allow(clippy::as_conversions)]
 pub fn luhn(number: &[u8]) -> bool {
     number
         .iter()
