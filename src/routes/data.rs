@@ -1,6 +1,9 @@
 use axum::{
-    error_handling::HandleErrorLayer, extract, response::IntoResponse, routing::post, Json,
+    extract, routing::post, Json,
 };
+
+#[cfg(feature = "limit")]
+use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 
 #[cfg(feature = "middleware")]
 use axum::middleware;
@@ -22,8 +25,9 @@ use self::types::Validation;
 mod transformers;
 pub mod types;
 
+#[cfg(feature = "limit")]
 const BUFFER_LIMIT: usize = 1024;
-
+#[cfg(feature = "limit")]
 async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
     (hyper::StatusCode::TOO_MANY_REQUESTS, "Rate Limit Applied")
 }
