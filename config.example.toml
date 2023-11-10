@@ -1,0 +1,30 @@
+[log.console]
+enabled = true # To enable logging in console
+level = "DEBUG" # level to be set for the logging framework
+log_format = "default" # format to be used for logging default | json
+
+[server]
+host = "127.0.0.1" # The host that the server should be exposed to 
+port = 8080 # The port where the server should be hosted on
+
+[limit]
+request_count = 1 # The requests per duration
+duration = 60 # duration to rate limit the delete api (in sec)
+
+[database]
+username = "sam" # username for the database
+password = "damn" # password of the database
+host = "localhost" # the host where the database is hosted on
+port = 5432 # the port of the database
+dbname = "locker" # the name of the database where the cards are stored
+
+[secrets]
+tenant = "hyperswitch" # the tenant that we are currently configured for
+master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308" # master key that is used for database encryption this could be aes encrypted by key custodian
+
+tenant_public_key = ""  # The tenant public key to which the communication will be established with
+locker_private_key = "" # the locker private key to used used and the private key present with the tenant
+
+[kms]
+region = "us-west-2" # the kms details needed to perform kms decryption of the above mentioned environment variables
+key_id = "abc"
