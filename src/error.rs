@@ -1,6 +1,13 @@
 use std::string::FromUtf8Error;
 
-use error_stack::Report;
+#[macro_use]
+pub mod container;
+
+mod custom_error;
+mod transforms;
+
+pub use container::*;
+pub use custom_error::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigurationError {
@@ -40,6 +47,10 @@ pub enum StorageError {
     PoolClientFailure,
     #[error("Error while finding element in database")]
     FindError,
+    #[error("Error while inserting data in database")]
+    InsertError,
+    #[error("Error while deleting data in database")]
+    DeleteError,
     #[error("Error while decrypting the payload")]
     DecryptionError,
     #[error("Error while encrypting the payload")]
@@ -78,6 +89,18 @@ pub enum ApiError {
     #[error("failed while deleting data from {0}")]
     DatabaseDeleteFailed(&'static str),
 
+    #[error("Failed while getting merchant from DB")]
+    MerchantError,
+
+    #[error("Something went wrong")]
+    UnknownError,
+
+    #[error("Error while encrypting with merchant key")]
+    MerchantKeyError,
+
+    #[error("Failed whie connecting to database")]
+    DatabaseError,
+
     #[error("Failed while validation: {0}")]
     ValidationError(&'static str),
 }
@@ -104,11 +127,15 @@ impl axum::response::IntoResponse for ApiError {
             )
                 .into_response(),
             data @ Self::StoreDataFailed(_)
+            | data @ Self::MerchantError
             | data @ Self::RetrieveDataFailed(_)
             | data @ Self::EncodingError
             | data @ Self::ResponseMiddlewareError(_)
             | data @ Self::DatabaseRetrieveFailed(_)
             | data @ Self::DatabaseInsertFailed(_)
+            | data @ Self::UnknownError
+            | data @ Self::DatabaseError
+            | data @ Self::MerchantKeyError
             | data @ Self::DatabaseDeleteFailed(_) => (
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
@@ -125,6 +152,15 @@ impl axum::response::IntoResponse for ApiError {
             )
                 .into_response(),
         }
+    }
+}
+
+impl<T: axum::response::IntoResponse + error_stack::Context + Copy> axum::response::IntoResponse
+    for ContainerError<T>
+{
+    fn into_response(self) -> axum::response::Response {
+        crate::logger::error!(?self.error);
+        (*self.error.current_context()).into_response()
     }
 }
 
@@ -145,27 +181,27 @@ impl ApiErrorResponse {
     }
 }
 
-pub trait LogReport<T, E> {
-    fn report_unwrap(self) -> Result<T, E>;
-}
+// pub trait LogReport<T, E> {
+//     fn report_unwrap(self) -> Result<T, E>;
+// }
 
-impl<T, E1, E2> LogReport<T, E1> for Result<T, Report<E2>>
-where
-    E1: Send + Sync + std::error::Error + Copy + 'static,
-    E2: Send + Sync + std::error::Error + Copy + 'static,
-    E1: From<E2>,
-{
-    #[track_caller]
-    fn report_unwrap(self) -> Result<T, E1> {
-        let output = match self {
-            Ok(inner_val) => Ok(inner_val),
-            Err(inner_err) => {
-                let new_error: E1 = (*inner_err.current_context()).into();
-                crate::logger::error!(?inner_err);
-                Err(inner_err.change_context(new_error))
-            }
-        };
+// impl<T, E1, E2> LogReport<T, E1> for Result<T, Report<E2>>
+// where
+//     E1: Send + Sync + std::error::Error + Copy + 'static,
+//     E2: Send + Sync + std::error::Error + Copy + 'static,
+//     E1: From<E2>,
+// {
+//     #[track_caller]
+//     fn report_unwrap(self) -> Result<T, E1> {
+//         let output = match self {
+//             Ok(inner_val) => Ok(inner_val),
+//             Err(inner_err) => {
+//                 let new_error: E1 = (*inner_err.current_context()).into();
+//                 crate::logger::error!(?inner_err);
+//                 Err(inner_err.change_context(new_error))
+//             }
+//         };
 
-        output.map_err(|err| (*err.current_context()))
-    }
-}
+//         output.map_err(|err| (*err.current_context()))
+//     }
+// }

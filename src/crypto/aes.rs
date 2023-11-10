@@ -1,4 +1,4 @@
-use crate::error;
+use crate::error::{self, ContainerError};
 use error_stack::ResultExt;
 use ring::aead::{self, BoundKey};
 
@@ -70,7 +70,7 @@ impl ring::aead::NonceSequence for NonceSequence {
 }
 
 impl super::Encryption<Vec<u8>, Vec<u8>> for GcmAes256 {
-    type ReturnType<'b, T> = error_stack::Result<T, error::CryptoError>;
+    type ReturnType<'b, T> = Result<T, ContainerError<error::CryptoError>>;
     fn encrypt(&self, mut input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let nonce_sequence =
             NonceSequence::new().change_context(error::CryptoError::EncryptionError)?;

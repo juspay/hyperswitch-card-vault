@@ -1,13 +1,12 @@
 use std::{ops::Deref, sync::Arc};
 
 use axum::{extract::State, routing::post, Json};
-use error_stack::ResultExt;
 use tokio::sync::RwLock;
 
 use crate::{
     app::{AppState, Keys, SharedState},
     crypto::{aes::GcmAes256, Encryption},
-    error::{self, LogReport},
+    error::{self, ResultContainerExt},
     logger,
 };
 
@@ -69,7 +68,7 @@ pub async fn key2(
 /// Handler for `/custodian/decrypt`
 pub async fn decrypt(
     State((state, keys, tx)): State<SharedState>,
-) -> Result<&'static str, error::ApiError> {
+) -> Result<&'static str, error::ContainerError<error::ApiError>> {
     let decrypt_output = match keys.read().await.deref() {
         Keys {
             key1: Some(inner_key1),
@@ -89,11 +88,11 @@ pub async fn decrypt(
         }
     };
     match decrypt_output {
-        value @ Ok(_) => value,
-        error @ Err(_) => {
+        Ok(inner) => Ok(inner),
+        Err(inner_err) => {
             keys.write().await.key1 = None;
             keys.write().await.key2 = None;
-            error
+            Err(inner_err)?
         }
     }
 }
@@ -102,19 +101,14 @@ async fn aes_decrypt_custodian_key(
     state: Arc<RwLock<AppState>>,
     inner_key1: &str,
     inner_key2: &str,
-) -> Result<(), error::ApiError> {
+) -> Result<(), error::ContainerError<error::ApiError>> {
     let final_key = format!("{}{}", inner_key1, inner_key2);
     // required by the AES algorithm instead of &[u8]
     let aes_decrypted_key = GcmAes256::new(
         hex::decode(final_key)
-            .change_context(error::ApiError::DecryptingKeysFailed("Hex dcoding failed"))
-            .report_unwrap()?,
+            .change_error(error::ApiError::DecryptingKeysFailed("Hex dcoding failed"))?,
     )
-    .decrypt(state.read().await.config.secrets.master_key.clone())
-    .change_context(error::ApiError::DecryptingKeysFailed(
-        "AES decryption failed",
-    ))
-    .report_unwrap()?;
+    .decrypt(state.read().await.config.secrets.master_key.clone())?;
 
     state.write().await.config.secrets.master_key = aes_decrypted_key;
     Ok(())
