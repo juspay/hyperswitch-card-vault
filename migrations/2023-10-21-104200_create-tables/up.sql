@@ -20,4 +20,4 @@ CREATE TABLE locker (
   created_at TIMESTAMP NOT NULL DEFAULT now()::TIMESTAMP,
 
   PRIMARY KEY (tenant_id, merchant_id, customer_id, locker_id)
-)
+);

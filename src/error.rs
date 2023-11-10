@@ -100,6 +100,9 @@ pub enum ApiError {
 
     #[error("Failed whie connecting to database")]
     DatabaseError,
+
+    #[error("Failed while validation: {0}")]
+    ValidationError(&'static str),
 }
 
 impl axum::response::IntoResponse for ApiError {
@@ -141,6 +144,11 @@ impl axum::response::IntoResponse for ApiError {
             data @ Self::RequestMiddlewareError(_) | data @ Self::DecodingError => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new("TE_02", format!("{}", data), None)),
+            )
+                .into_response(),
+            data @ Self::ValidationError(_) => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new("TE_03", format!("{}", data), None)),
             )
                 .into_response(),
         }

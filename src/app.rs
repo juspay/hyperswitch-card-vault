@@ -5,6 +5,7 @@ use hyper::server::conn;
 use masking::PeekInterface;
 #[cfg(feature = "key_custodian")]
 use tokio::sync::{mpsc::Sender, RwLock};
+use tower_http::trace as tower_trace;
 
 #[cfg(feature = "key_custodian")]
 use std::sync::Arc;
@@ -98,19 +99,33 @@ where
         .nest(
             "/data",
             routes::data::serve(
-                #[cfg(feature = "middleware")]
+                #[cfg(any(feature = "middleware", feature = "limit"))]
                 state.clone(),
             ),
         )
         .nest(
             "/cards",
             routes::data::serve(
-                #[cfg(feature = "middleware")]
+                #[cfg(any(feature = "middleware", feature = "limit"))]
                 state.clone(),
             ),
         )
         .with_state(state.clone())
-        .route("/health", routing::get(routes::health::health));
+        .route("/health", routing::get(routes::health::health))
+        .layer(
+            tower_trace::TraceLayer::new_for_http()
+                .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
+                .on_response(
+                    tower_trace::DefaultOnResponse::new()
+                        .level(tracing::Level::INFO)
+                        .latency_unit(tower_http::LatencyUnit::Micros),
+                )
+                .on_failure(
+                    tower_trace::DefaultOnFailure::new()
+                        .latency_unit(tower_http::LatencyUnit::Micros)
+                        .level(tracing::Level::ERROR),
+                ),
+        );
 
     let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
     Ok(server)

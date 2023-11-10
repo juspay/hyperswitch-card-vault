@@ -12,7 +12,18 @@ pub struct Config {
     #[cfg(feature = "kms")]
     pub kms: kms::KmsConfig,
     pub log: Log,
+    #[cfg(feature = "limit")]
+    pub limit: Limit,
 }
+
+#[cfg(feature = "limit")]
+#[derive(Clone, serde::Deserialize, Debug)]
+pub struct Limit {
+    pub request_count: u64,
+    pub duration: u64, // in sec
+    pub buffer_size: Option<usize>,
+}
+
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct Server {
     pub host: String,
