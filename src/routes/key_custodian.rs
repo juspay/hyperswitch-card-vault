@@ -11,10 +11,29 @@ use crate::{
     logger,
 };
 
+const KEY_LENGTH: usize = 16;
+
 /// Api request model for /custodian/key1 and /custodian/key2 routes
 #[derive(serde::Deserialize)]
 pub struct KeyPayload {
+    #[serde(deserialize_with = "key_validation")]
     pub key: String,
+}
+
+fn key_validation<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let deserialized_str: String = serde::Deserialize::deserialize(deserializer)?;
+
+    let hex_data = hex::decode(&deserialized_str)
+        .map_err(|_| serde::de::Error::custom("error while parsing hex"))?;
+
+    (hex_data.len() == KEY_LENGTH)
+        .then_some(())
+        .ok_or(serde::de::Error::custom("Error while validating key"))?;
+
+    Ok(deserialized_str)
 }
 
 ///
