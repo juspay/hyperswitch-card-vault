@@ -1,4 +1,6 @@
-use axum::{extract, routing::post, Json};
+use axum::{
+    error_handling::HandleErrorLayer, extract, response::IntoResponse, routing::post, Json,
+};
 
 #[cfg(feature = "middleware")]
 use axum::middleware;
@@ -21,14 +23,39 @@ use self::types::Validation;
 mod transformers;
 pub mod types;
 
+const BUFFER_LIMIT: usize = 1024;
+
+async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
+    (hyper::StatusCode::TOO_MANY_REQUESTS, "Rate Limit Applied")
+}
+
 ///
 /// Function for creating the server that is specifically handling the cards api
 ///
 #[allow(clippy::let_and_return)]
-pub fn serve(#[cfg(feature = "middleware")] state: AppState) -> axum::Router<AppState> {
+pub fn serve(
+    #[cfg(any(feature = "middleware", feature = "limit"))] state: AppState,
+) -> axum::Router<AppState> {
+    #[cfg(feature = "limit")]
+    let ratelimit_middleware = tower::ServiceBuilder::new()
+        .layer(HandleErrorLayer::new(ratelimit_err_handler))
+        .buffer(state.config.limit.buffer_size.unwrap_or(BUFFER_LIMIT))
+        .load_shed()
+        .rate_limit(
+            state.config.limit.request_count,
+            std::time::Duration::from_secs(state.config.limit.duration),
+        )
+        .into_inner();
+
+    #[cfg(feature = "limit")]
+    let delete_route = post(delete_card).layer(ratelimit_middleware);
+
+    #[cfg(not(feature = "limit"))]
+    let delete_route = post(delete_card);
+
     let router = axum::Router::new()
+        .route("/delete", delete_route)
         .route("/add", post(add_card))
-        .route("/delete", post(delete_card))
         .route("/retrieve", post(retrieve_card));
 
     #[cfg(feature = "middleware")]
