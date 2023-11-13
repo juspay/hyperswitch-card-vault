@@ -86,6 +86,32 @@ The configuration can be provided in two ways
 
 - Local Setup:
 
+  User setup before running the diesel commands,
+
+  ```bash
+  export DB_USER="db_user"
+  export DB_PASS="db_pass"
+  export DB_NAME="locker"
+  ```
+
+  On Ubuntu-based systems (also applicable for Ubuntu on WSL2):
+
+  ```bash
+  sudo -u postgres psql -e -c \
+   "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS' SUPERUSER CREATEDB CREATEROLE INHERIT LOGIN;"
+  sudo -u postgres psql -e -c \
+   "CREATE DATABASE $DB_NAME;"
+  ```
+
+  On MacOS:
+
+  ```bash
+  psql -e -U postgres -c \
+  "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS' SUPERUSER CREATEDB CREATEROLE INHERIT LOGIN;"
+  psql -e -U postgres -c \
+  "CREATE DATABASE $DB_NAME"
+  ```
+
   For local setup, you can use the diesel-cli to run the diesel migrations.
   To install the diesel cli, simply run
 
