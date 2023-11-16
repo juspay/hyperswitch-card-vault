@@ -43,7 +43,14 @@ impl Storage {
         );
         let config =
             pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
-        let pool = Pool::builder(config)
+        let pool = Pool::builder(config);
+
+        let pool = match database.pool_size {
+            Some(value) => pool.max_size(value),
+            None => pool,
+        };
+
+        let pool = pool
             .build()
             .change_context(error::StorageError::DBPoolError)?;
         Ok(Self {

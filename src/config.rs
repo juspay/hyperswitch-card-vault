@@ -38,6 +38,7 @@ pub struct Database {
     pub host: String,
     pub port: u16,
     pub dbname: String,
+    pub pool_size: Option<usize>,
 }
 
 #[derive(Clone, serde::Deserialize, Debug)]
