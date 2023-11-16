@@ -1,0 +1,88 @@
+name: CI - main
+on:
+  push:
+    branches: ["main"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CARGO_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+jobs:
+  formatting:
+    name: Formatting Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rustfmt
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Run rustfmt check
+        run: cargo +nighly fmt --all --check
+  clippy:
+    name: basic clippy checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable 2 weeks ago
+          components: clippy
+      - name: Deny warnings
+        shell: bash
+        run: sed -i 's/rustflags = \[/rustflags = \[\n    "-Dwarnings",/' .cargo/config.toml
+      - name: Run clippy
+        shell: bash
+        run: cargo clippy --all-features --all-targets
+  cargo-hack:
+    name: cargo-hack
+    runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+    strategy:
+      matrix:
+        # generated using `cargo hack check --workspace --each-feature --print-command-list`
+        command:
+          - name: no default features
+            command: cargo check --manifest-path Cargo.toml --no-default-features
+          - name: default features
+            command: cargo check --manifest-path Cargo.toml --no-default-features --features default
+          - name: key custodian
+            command: cargo check --manifest-path Cargo.toml --no-default-features --features key_custodian
+          - name: kms
+            command: cargo check --manifest-path Cargo.toml --no-default-features --features kms
+          - name: limit
+            command: cargo check --manifest-path Cargo.toml --no-default-features --features limit
+          - name: middleware
+            command: cargo check --manifest-path Cargo.toml --no-default-features --features middleware
+          - name: release
+            command: cargo check --manifest-path Cargo.toml --no-default-features --features release
+          - name: all features
+            command: cargo check --manifest-path Cargo.toml --no-default-features --all-features
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable 2 weeks ago
+          components: clippy
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
+      - name: Deny warnings
+        shell: bash
+        run: sed -i 's/rustflags = \[/rustflags = \[\n    "-Dwarnings",/' .cargo/config.toml
+      - name: Running ${{ matrix.name }}
+        shell: bash
+        run: ${{ matrix.command }}
+      - name: Run sccache stat for check
+        shell: bash
+        run: ${SCCACHE_PATH} --show-stats
