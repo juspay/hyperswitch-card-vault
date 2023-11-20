@@ -100,7 +100,7 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
         match value {
             super::MerchantDBError::DEKEncryptionError |
             super::MerchantDBError::DEKDecryptionError | // This failure can also
-                                                         // occur becuase of master key failure
+                                                         // occur because of master key failure
             super::MerchantDBError::DBError |
             super::MerchantDBError::DBFilterError |
             super::MerchantDBError::DBInsertError=> Self::MerchantError,

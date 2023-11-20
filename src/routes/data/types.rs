@@ -41,7 +41,7 @@ pub struct DedupResponsePayload {
 pub struct StoreCardRequest {
     pub merchant_id: String,
     pub merchant_customer_id: String,
-    pub requestor_card_reference: Option<String>,
+    pub requester_card_reference: Option<String>,
     // pub card: Option<Card>,
     // pub enc_card_data: Option<String>,
     #[serde(flatten)]
