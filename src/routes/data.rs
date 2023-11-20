@@ -1,6 +1,4 @@
-use axum::{
-    extract, routing::post, Json,
-};
+use axum::{extract, routing::post, Json};
 
 #[cfg(feature = "limit")]
 use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
