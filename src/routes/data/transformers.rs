@@ -25,7 +25,7 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
 
         Ok(Self {
             locker_id: value
-                .requester_card_reference
+                .requestor_card_reference
                 .unwrap_or_else(generate_uuid)
                 .into(),
             tenant_id,

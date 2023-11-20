@@ -3,6 +3,7 @@ check-filename = true
 
 [default.extend-words]
 encrypter = "encrypter"
+requestor = "requestor"
 
 [files]
 extend-exclude = ["loadtest/scripts/http-rs.js"]
