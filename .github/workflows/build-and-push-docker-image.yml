@@ -14,15 +14,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Docker tag creation with trigger event being 'push'
+      - name: Determine Docker image tag when event is 'push'
         if: ${{ github.event_name == 'push' }}
         shell: bash
         # Docker tag will be the tag that triggered the workflow run
         run: echo "DOCKER_TAG=$GITHUB_REF_NAME" >> $GITHUB_ENV
 
-      - name: Docker tag creation with trigger event being 'workflow_dispatch'
+      - name: Determine Docker image tag when event is 'workflow_dispatch'
         if: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
         # Docker tag will be the latest commit hash of the branch that triggered the workflow run
@@ -30,7 +30,6 @@ jobs:
           if [[ ${{ github.ref_type }} == 'tag' ]]; then
             DOCKER_TAG=$GITHUB_REF_NAME
           else
-            git fetch origin $GITHUB_REF_NAME
             DOCKER_TAG=$(git rev-parse --short=7 "$GITHUB_REF_NAME^{commit}")
           fi
           echo "DOCKER_TAG=$DOCKER_TAG" >> $GITHUB_ENV

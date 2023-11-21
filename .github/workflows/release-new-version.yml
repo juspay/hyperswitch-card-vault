@@ -88,4 +88,4 @@ jobs:
         # This would also then require us to remove the last few lines from the changelog.
         run: |
           git-cliff --config .github/git-cliff-release.toml "${PREVIOUS_TAG}^..${NEW_TAG}" | changelog-gh-usernames | sed "/## ${PREVIOUS_TAG#v}/,\$d" > release-notes.md
-          gh release create "${NEW_TAG}" --notes-file release-notes.md --verify-tag --title "Hyperswitch-card-vault ${NEW_TAG}"
+          gh release create "${NEW_TAG}" --notes-file release-notes.md --verify-tag --title "Hyperswitch Card Vault ${NEW_TAG}"
