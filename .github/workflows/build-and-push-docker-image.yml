@@ -41,10 +41,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Build and push router Docker image
+      - name: Build and push Docker images tagged with both latest and above determined tag
         uses: docker/build-push-action@v5
+        # If the workflow trigger event is `push`, then its clear that a new tag has been pushed, hence we push images tagged with latest as well
+        if: ${{ github.event_name == 'push' }}
         with:
           context: .
           file: Dockerfile
           push: true
           tags: juspaydotin/hyperswitch-card-vault:latest,juspaydotin/hyperswitch-card-vault:${{ env.DOCKER_TAG }}
+
+      - name: Build and push Docker image tagged only with above determined tag
+        uses: docker/build-push-action@v5
+        # If the workflow is triggered manually, the built image need not necessarily be latest
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: juspaydotin/hyperswitch-card-vault:${{ env.DOCKER_TAG }}
