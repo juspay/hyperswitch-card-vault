@@ -1,16 +1,9 @@
-name: CI
+name: CI-push
 
 on:
   push:
     branches:
       - main
-
-  pull_request:
-    types:
-      - opened
-      - ready_for_review
-      - reopened
-      - synchronize
 
 jobs:
   formatting:
@@ -68,7 +61,6 @@ jobs:
         run: cargo clippy --all-features --all-targets
 
       - name: Cargo hack
-        if: ${{ github.event_name == 'push' }}
         shell: bash
         run: cargo hack check --each-feature --no-dev-deps
 
