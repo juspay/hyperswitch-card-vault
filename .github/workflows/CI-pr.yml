@@ -1,4 +1,4 @@
-name: CI-pr
+name: CI
 
 on:
   pull_request:
@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate a token
+        if: ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
         id: generate_token
         uses: actions/create-github-app-token@v1
         with:
@@ -62,6 +63,7 @@ jobs:
 
     steps:
       - name: Generate a token
+        if: ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
         id: generate_token
         uses: actions/create-github-app-token@v1
         with:
@@ -97,8 +99,6 @@ jobs:
           crate: cargo-hack
 
       - uses: Swatinem/rust-cache@v2.7.0
-        with:
-          save-if: ${{ github.event_name == 'push' }}
 
       - name: Deny warnings
         shell: bash
