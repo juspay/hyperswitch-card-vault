@@ -5,13 +5,6 @@ on:
     branches:
       - main
 
-  pull_request:
-    types:
-      - opened
-      - ready_for_review
-      - reopened
-      - synchronize
-
 jobs:
   formatting:
     name: Check formatting
@@ -56,8 +49,6 @@ jobs:
           crate: cargo-hack
 
       - uses: Swatinem/rust-cache@v2.7.0
-        with:
-          save-if: ${{ github.event_name == 'push' }}
 
       - name: Deny warnings
         shell: bash
@@ -68,7 +59,6 @@ jobs:
         run: cargo clippy --all-features --all-targets
 
       - name: Cargo hack
-        if: ${{ github.event_name == 'push' }}
         shell: bash
         run: cargo hack check --each-feature --no-dev-deps
 
