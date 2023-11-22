@@ -160,8 +160,7 @@ impl AppState {
             config.secrets.master_key = hex::decode(
                 String::from_utf8(kms_decrypted_master_key.data)
                     .expect("Failed while converting bytes to String"),
-            )
-            .expect("Failed to hex decode master_key");
+            ).expect("Failed to hex decode master_key");
 
             #[cfg(feature = "middleware")]
             {
