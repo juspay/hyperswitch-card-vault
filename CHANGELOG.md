@@ -4,6 +4,21 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.1.3 (2023-11-24)
+
+### Bug Fixes
+
+- **luhn:** Fix the check by reversing ordering ([#51](https://github.com/juspay/hyperswitch-card-vault/pull/51)) ([`61c0164`](https://github.com/juspay/hyperswitch-card-vault/commit/61c01644dda83d4bc56947610b06fc19633a9ba1))
+
+### Miscellaneous Tasks
+
+- Bump the crate version to 0.1.3 ([#52](https://github.com/juspay/hyperswitch-card-vault/pull/52)) ([`bf5fe37`](https://github.com/juspay/hyperswitch-card-vault/commit/bf5fe370b125f1e0b395512f98b416b854caca81))
+
+**Full Changelog:** [`v0.1.2...v0.1.3`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.1.2...v0.1.3)
+
+- - -
+
+
 ## 0.1.2 (2023-11-21)
 
 ### Features
