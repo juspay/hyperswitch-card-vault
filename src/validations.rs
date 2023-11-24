@@ -30,10 +30,11 @@ pub fn luhn_on_string(number: &str) -> bool {
 pub fn luhn(number: &[u8]) -> bool {
     number
         .iter()
+        .rev()
         .enumerate()
         .map(|(idx, element)| {
-            ((*element * 2) / 10 + (*element * 2) % 10) * (((idx + 1) as u8) % 2)
-                + (*element) * ((idx as u8) % 2)
+            ((*element * 2) / 10 + (*element * 2) % 10) * ((idx as u8) % 2)
+                + (*element) * (((idx + 1) as u8) % 2)
         })
         .sum::<u8>()
         % 10
