@@ -60,6 +60,7 @@ argh = "0.1.12"
 [dev-dependencies]
 rand = "0.8.5"
 axum-test = "13.0.1"
+criterion = "0.5.1"
 
 [build-dependencies]
 cargo_metadata = "0.15.4"
@@ -75,3 +76,7 @@ name = "utils"
 strip = true
 lto = true
 codegen-units = 1
+
+[[bench]]
+name = "luhn-test"
+harness = false
