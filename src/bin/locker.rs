@@ -9,6 +9,7 @@ use tartarus::{app::AppState, logger};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = tartarus::config::Config::new().expect("failed while parsing config");
     let state = Arc::new(RwLock::new(AppState::new(&mut config).await?));
+
     let _guard = logger::setup(
         &config.log,
         tartarus::service_name!(),

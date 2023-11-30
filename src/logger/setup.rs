@@ -14,6 +14,10 @@ pub struct TelemetryGuard {
 /// Setup logging sub-system specifying the logging configuration, service (binary) name, and a
 /// list of external crates for which a more verbose logging must be enabled. All crates within the
 /// current cargo workspace are automatically considered for verbose logging.
+///
+/// # Panics
+///
+/// If the `tokio-console` feature is enabled, and the directive format is changed in `console_subscriber`
 pub fn setup(
     config: &config::Log,
     service_name: &str,
@@ -22,6 +26,9 @@ pub fn setup(
     let mut guards = Vec::new();
 
     let subscriber = tracing_subscriber::registry().with(StorageSubscription);
+
+    #[cfg(feature = "tokio-console")]
+    let subscriber = subscriber.with(console_subscriber::spawn());
 
     // Setup console logging
     if config.console.enabled {
@@ -33,6 +40,23 @@ pub fn setup(
             config::Level(tracing::Level::WARN),
             config.console.level,
             &crates_to_filter,
+        );
+
+        // Safety: The won't panic as the directive format is according to console_subscriber docs
+        #[allow(clippy::expect_used)]
+        #[cfg(feature = "tokio-console")]
+        let console_filter = console_filter.add_directive(
+            "tokio=trace"
+                .parse()
+                .expect("Invalid EnvFilter directive format"),
+        );
+        // Safety: The won't panic as the directive format is according to console_subscriber docs
+        #[allow(clippy::expect_used)]
+        #[cfg(feature = "tokio-console")]
+        let console_filter = console_filter.add_directive(
+            "runtime=trace"
+                .parse()
+                .expect("Invalid EnvFilter directive format"),
         );
 
         println!("Using console logging filter: {console_filter}");
