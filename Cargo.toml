@@ -80,3 +80,7 @@ codegen-units = 1
 [[bench]]
 name = "luhn-test"
 harness = false
+
+[[bench]]
+name = "encryption"
+harness = false
