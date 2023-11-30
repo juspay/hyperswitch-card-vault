@@ -164,8 +164,6 @@ pub fn verify_sign(jws_body: String, key: impl AsRef<[u8]>) -> Result<String, er
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-    use crate::crypto::Encryption;
-
     use super::*;
 
     // Keys used for tests
