@@ -75,6 +75,7 @@ impl JweBody {
 impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
     type ReturnType<'a, T> = Result<T, ContainerError<error::CryptoError>>;
 
+    #[tracing::instrument(skip_all)]
     fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let payload = input;
         let jws_encoded = jws_sign_payload(&payload, self.private_key.peek().as_bytes())?;
@@ -88,6 +89,7 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
         Ok(serde_json::to_vec(&jwe_body).map_err(error::CryptoError::from)?)
     }
 
+    #[tracing::instrument(skip_all)]
     fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let jwe_body: JweBody = serde_json::from_slice(&input).map_err(error::CryptoError::from)?;
         let jwe_encoded = jwe_body.get_dotted_jwe();

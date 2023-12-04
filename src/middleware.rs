@@ -12,8 +12,11 @@ use error_stack::ResultExt;
 use hyper::body::HttpBody;
 use hyper::Body;
 
+use tracing::instrument;
+
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
+#[instrument(skip_all)]
 pub async fn middleware(
     extract::State(state): extract::State<AppState>,
     request: Request<Body>,

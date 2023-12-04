@@ -1,6 +1,6 @@
 [log.console]
 enabled = true
-level = "DEBUG"
+level = "INFO"
 log_format = "default"
 
 [server]
