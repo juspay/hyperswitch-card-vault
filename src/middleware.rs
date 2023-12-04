@@ -1,60 +1,51 @@
 use crate::app::AppState;
-use crate::crypto::jw::JWEncryption;
+use crate::crypto::jw::{self, JWEncryption};
 use crate::crypto::Encryption;
 use crate::error::{self, ContainerError, ResultContainerExt};
+use axum::body::Body;
+use axum::http::{request, response};
 use axum::{
-    body::BoxBody,
     extract,
-    http::{Request, Response},
+    http::Request,
     middleware::Next,
 };
-use error_stack::ResultExt;
-use hyper::body::HttpBody;
-use hyper::Body;
+
+use http_body_util::BodyExt;
 
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
 pub async fn middleware(
     extract::State(state): extract::State<AppState>,
-    request: Request<Body>,
-    next: Next<Body>,
-) -> Result<Response<BoxBody>, ContainerError<error::ApiError>> {
-    let (parts, body) = request.into_parts();
-
-    let request_body =
-        hyper::body::to_bytes(body)
-            .await
-            .change_error(error::ApiError::RequestMiddlewareError(
-                "Failed to read request body for jwe decryption",
-            ))?;
-
+    parts: request::Parts,
+    axum::Json(jwe_body): axum::Json<jw::JweBody>,
+    next: Next,
+) -> Result<(response::Parts, axum::Json<jw::JweBody>), ContainerError<error::ApiError>> {
     let keys = JWEncryption {
         private_key: state.config.secrets.locker_private_key,
         public_key: state.config.secrets.tenant_public_key,
     };
 
-    let jwe_decrypted = keys.decrypt(request_body.to_vec())?;
+    let jwe_decrypted = keys.decrypt(jwe_body)?;
 
     let next_layer_payload = Request::from_parts(parts, Body::from(jwe_decrypted));
 
-    let response = next.run(next_layer_payload).await;
+    let (mut parts, body) = next.run(next_layer_payload).await.into_parts();
 
-    let (parts, body) = response.into_parts();
+    let response_body = body
+        .collect()
+        .await
+        .change_error(error::ApiError::ResponseMiddlewareError(
+            "Failed to read response body for jws signing",
+        ))?
+        .to_bytes();
 
-    let response_body = hyper::body::to_bytes(body).await.change_error(
-        error::ApiError::ResponseMiddlewareError("Failed to read response body for jws signing"),
-    )?;
+    let jwe_payload = keys.encrypt(response_body.to_vec())?;
 
-    let jws_signed = keys.encrypt(response_body.to_vec())?;
+    parts.headers = hyper::HeaderMap::new();
+    parts.headers.append(
+        hyper::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("application/json"),
+    );
 
-    let jwt = String::from_utf8(jws_signed).change_error(
-        error::ApiError::ResponseMiddlewareError("Could not convert to UTF-8"),
-    )?;
-
-    Ok(axum::http::response::Builder::new()
-        .status(parts.status)
-        .body(jwt.map_err(axum::Error::new).boxed_unsync())
-        .change_context(error::ApiError::ResponseMiddlewareError(
-            "failed while generating the response",
-        ))?)
+    Ok((parts, axum::Json(jwe_payload)))
 }
