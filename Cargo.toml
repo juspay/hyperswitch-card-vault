@@ -7,7 +7,7 @@ default-run = "locker"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["middleware", "key_custodian"]
 release = ["kms", "middleware", "key_custodian", "limit"]
 kms = ["dep:aws-config", "dep:aws-sdk-kms"]
 limit = []
@@ -29,11 +29,11 @@ once_cell = "1.18.0"
 
 # Tokio Dependencies
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
-axum = "0.6.20"
-hyper = "0.14.27"
+axum = "0.7.1"
+hyper = "1.0.1"
 tower = { version = "0.4.13", features = ["limit", "buffer", "load-shed"] }
-tower-http = { version = "0.4.4", features = ["trace"] }
-
+tower-http = { version = "0.5.0", features = ["trace"] }
+http-body-util = "*"
 
 diesel = { version = "2.1.3", features = ["postgres", "serde_json", "time"] }
 diesel-async = { version = "0.4.1", features = ["postgres", "deadpool"] }
