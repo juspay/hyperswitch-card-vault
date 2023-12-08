@@ -10,10 +10,10 @@ use tower_http::trace as tower_trace;
 #[cfg(feature = "key_custodian")]
 use std::sync::Arc;
 
-use crate::{
-    config, error, routes,
-    storage::{self, caching::Caching, types},
-};
+use crate::{config, error, routes, storage};
+
+#[cfg(feature = "caching")]
+use crate::storage::{caching::Caching, types};
 
 #[cfg(feature = "kms")]
 use crate::crypto::{
@@ -21,7 +21,11 @@ use crate::crypto::{
     Encryption,
 };
 
+#[cfg(feature = "caching")]
 type Storage = Caching<Caching<storage::Storage, types::HashTable>, types::Merchant>;
+
+#[cfg(not(feature = "caching"))]
+type Storage = storage::Storage;
 
 ///
 /// AppState:
@@ -207,11 +211,22 @@ impl AppState {
                 .expect("Failed while converting bytes to String")
                 .into();
         }
+
         Ok(Self {
             db: storage::Storage::new(&config.database)
                 .await
-                .map(storage::caching::implement_cache("hash", &config.cache))
-                .map(storage::caching::implement_cache("merchant", &config.cache))
+                .map(
+                    #[cfg(feature = "caching")]
+                    storage::caching::implement_cache("hash", &config.cache),
+                    #[cfg(not(feature = "caching"))]
+                    std::convert::identity,
+                )
+                .map(
+                    #[cfg(feature = "caching")]
+                    storage::caching::implement_cache("merchant", &config.cache),
+                    #[cfg(not(feature = "caching"))]
+                    std::convert::identity,
+                )
                 .change_context(error::ConfigurationError::DatabaseError)?,
 
             config: config.clone(),

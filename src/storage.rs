@@ -16,7 +16,9 @@ use diesel_async::{
 use error_stack::ResultExt;
 use masking::{PeekInterface, Secret};
 
+#[cfg(feature = "caching")]
 pub mod caching;
+
 pub mod db;
 pub mod schema;
 pub mod types;
@@ -69,16 +71,19 @@ impl Storage {
     }
 }
 
+#[cfg(feature = "caching")]
 pub trait Cacheable<Table> {
     type Key: std::hash::Hash + Eq + PartialEq + Send + Sync + 'static;
     type Value: Clone + Send + Sync + 'static;
 }
 
+#[cfg(feature = "caching")]
 impl Cacheable<types::Merchant> for Storage {
     type Key = (String, String);
     type Value = types::Merchant;
 }
 
+#[cfg(feature = "caching")]
 impl Cacheable<types::HashTable> for Storage {
     type Key = Vec<u8>;
     type Value = types::HashTable;

@@ -14,6 +14,7 @@ pub struct Config {
     pub log: Log,
     #[cfg(feature = "limit")]
     pub limit: Limit,
+    #[cfg(feature = "caching")]
     pub cache: Cache,
 }
 
@@ -42,6 +43,7 @@ pub struct Database {
     pub pool_size: Option<usize>,
 }
 
+#[cfg(feature = "caching")]
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct Cache {
     // time to idle (in secs)
