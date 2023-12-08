@@ -210,10 +210,7 @@ impl AppState {
         Ok(Self {
             db: storage::Storage::new(&config.database)
                 .await
-                .map(storage::caching::implement_cache(
-                    "hash_table",
-                    &config.cache,
-                ))
+                .map(storage::caching::implement_cache("hash", &config.cache))
                 .map(storage::caching::implement_cache("merchant", &config.cache))
                 .change_context(error::ConfigurationError::DatabaseError)?,
 

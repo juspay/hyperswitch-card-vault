@@ -35,6 +35,7 @@ impl<T, U> Caching<T, U>
 where
     T: super::Cacheable<U>,
 {
+    #[inline(always)]
     pub async fn lookup(&self, key: T::Key) -> Option<T::Value> {
         self.cache.get(&key).await.map(|value| {
             let data = value.as_ref();
@@ -42,6 +43,7 @@ where
         })
     }
 
+    #[inline(always)]
     pub async fn cache_data(&self, key: T::Key, value: T::Value) {
         self.cache.insert(key, value.into()).await;
     }
