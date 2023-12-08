@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use crate::{
     config, error, routes,
-    storage::{self},
+    storage::{self, caching::Caching, types},
 };
 
 #[cfg(feature = "kms")]
@@ -20,6 +20,8 @@ use crate::crypto::{
     kms::{self, Base64Encoded, KmsData, Raw},
     Encryption,
 };
+
+type Storage = Caching<Caching<storage::Storage, types::HashTable>, types::Merchant>;
 
 ///
 /// AppState:
@@ -29,7 +31,7 @@ use crate::crypto::{
 ///
 #[derive(Clone)]
 pub struct AppState {
-    pub db: storage::Storage,
+    pub db: Storage,
     pub config: config::Config,
 }
 
@@ -208,6 +210,11 @@ impl AppState {
         Ok(Self {
             db: storage::Storage::new(&config.database)
                 .await
+                .map(storage::caching::implement_cache(
+                    "hash_table",
+                    &config.cache,
+                ))
+                .map(storage::caching::implement_cache("merchant", &config.cache))
                 .change_context(error::ConfigurationError::DatabaseError)?,
 
             config: config.clone(),
