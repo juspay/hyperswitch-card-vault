@@ -10,7 +10,7 @@ use masking::ExposeInterface;
 
 use crate::{
     app::AppState,
-    crypto::{aes::GcmAes256, sha::Sha512, Encode},
+    crypto::{aes::GcmAes256, sha::Sha512},
     error::{self, ContainerError, ResultContainerExt},
     storage::{HashInterface, LockerInterface, MerchantInterface},
 };
@@ -86,27 +86,12 @@ pub async fn add_card(
             &master_encryption,
         )
         .await?;
-    // .change_context(error::ApiError::RetrieveDataFailed("merchant"))
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
-
-    // let hash_data = serde_json::to_vec(&request.data)
-    //     .change_error(error::ApiError::EncodingError)
-    //     .and_then(|data| Ok((Sha512).encode(data)?))?;
-
-    // let data = match &request.data {
-    //     types::Data::EncData { enc_card_data } => enc_card_data,
-    //     types::Data::Card { card } => card.card_number.peek(),
-    // };
-
-    // let hash_data = serde_json::to_vec(&data)
-    //     .change_error(error::ApiError::EncodingError)
-    //     .and_then(|data| Ok((Sha512).encode(data)?))?;
 
     let hash_data = transformers::get_hash(&request.data, Sha512)
         .change_error(error::ApiError::EncodingError)?;
 
-    //card number duplication check
     let optional_hash_table = state.db.find_by_data_hash(&hash_data).await?;
 
     let output = match optional_hash_table {
