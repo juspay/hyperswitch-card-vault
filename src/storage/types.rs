@@ -99,7 +99,7 @@ pub struct HashTable {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::hash_table)]
-pub(super) struct HashTableNew {
+pub struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
 }

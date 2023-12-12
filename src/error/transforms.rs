@@ -38,7 +38,8 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
-            | super::StorageError::DeleteError => Self::UnknownError,
+            | super::StorageError::DeleteError
+            | super::StorageError::UpdateError => Self::UnknownError,
             super::StorageError::InsertError => Self::DBInsertError,
         }
     }
@@ -57,6 +58,7 @@ impl<'a> From<&'a super::StorageError> for super::LockerDBError {
             }
             super::StorageError::InsertError => Self::DBInsertError,
             super::StorageError::DeleteError => Self::DBDeleteError,
+            super::StorageError::UpdateError => Self::DBUpdateError,
         }
     }
 }
@@ -71,7 +73,8 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
-            | super::StorageError::DeleteError => Self::UnknownError,
+            | super::StorageError::DeleteError
+            | super::StorageError::UpdateError => Self::UnknownError,
             super::StorageError::InsertError => Self::DBInsertError,
         }
     }
@@ -120,6 +123,7 @@ impl<'a> From<&'a super::LockerDBError> for super::ApiError {
             super::LockerDBError::DBInsertError => Self::DatabaseInsertFailed("locker"),
             super::LockerDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
             super::LockerDBError::UnknownError => Self::UnknownError,
+            super::LockerDBError::DBUpdateError => Self::DatabaseUpdateFailed("locker"),
         }
     }
 }

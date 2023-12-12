@@ -51,6 +51,8 @@ pub enum StorageError {
     InsertError,
     #[error("Error while deleting data in database")]
     DeleteError,
+    #[error("Error while updating data in database")]
+    UpdateError,
     #[error("Error while decrypting the payload")]
     DecryptionError,
     #[error("Error while encrypting the payload")]
@@ -89,6 +91,9 @@ pub enum ApiError {
     #[error("failed while deleting data from {0}")]
     DatabaseDeleteFailed(&'static str),
 
+    #[error("Failed while updating data into \"{0}\"")]
+    DatabaseUpdateFailed(&'static str),
+
     #[error("Failed while getting merchant from DB")]
     MerchantError,
 
@@ -103,6 +108,9 @@ pub enum ApiError {
 
     #[error("Failed while validation: {0}")]
     ValidationError(&'static str),
+
+    #[error("Failed whie performing database transaction")]
+    DatabaseTransactionError,
 }
 
 impl axum::response::IntoResponse for ApiError {
@@ -133,10 +141,12 @@ impl axum::response::IntoResponse for ApiError {
             | data @ Self::ResponseMiddlewareError(_)
             | data @ Self::DatabaseRetrieveFailed(_)
             | data @ Self::DatabaseInsertFailed(_)
+            | data @ Self::DatabaseUpdateFailed(_)
             | data @ Self::UnknownError
             | data @ Self::DatabaseError
             | data @ Self::MerchantKeyError
-            | data @ Self::DatabaseDeleteFailed(_) => (
+            | data @ Self::DatabaseDeleteFailed(_)
+            | data @ Self::DatabaseTransactionError => (
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
             )

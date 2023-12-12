@@ -110,6 +110,10 @@ where
                 state.clone(),
             ),
         )
+        .route(
+            "/migrate/:merchant_id/:customer_id/:pm_id",
+            routing::get(routes::migration::migrate),
+        )
         .with_state(state.clone())
         .route("/health", routing::get(routes::health::health))
         .layer(

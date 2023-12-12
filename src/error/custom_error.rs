@@ -30,6 +30,8 @@ pub enum LockerDBError {
     DBDeleteError,
     #[error("Unpredictable error occurred")]
     UnknownError,
+    #[error("Error while updating element in database")]
+    DBUpdateError,
 }
 
 #[derive(Debug, thiserror::Error)]
