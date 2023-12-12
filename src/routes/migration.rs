@@ -2,6 +2,7 @@ use crate::{
     app::AppState,
     crypto::{aes::GcmAes256, sha::Sha512, Encode},
     error::{self, ContainerError, ResultContainerExt},
+    logger,
     routes::data::types,
     storage::{schema, types as storage_types, HashInterface, LockerInterface, MerchantInterface},
 };
@@ -16,73 +17,83 @@ use masking::{ExposeInterface, PeekInterface};
 pub async fn migrate(
     extract::State(state): extract::State<AppState>,
     Path((merchant_id, customer_id, pmid)): Path<(String, String, String)>,
-) -> Result<Json<MigrationResponse>, ContainerError<error::ApiError>> {
-    let master_encryption = GcmAes256::new(state.config.secrets.master_key.clone());
-    let merchant = state
-        .db
-        .find_or_create_by_merchant_id(
-            &merchant_id,
-            &state.config.secrets.tenant,
-            &master_encryption,
+) -> Json<MigrationResponse> {
+    async fn migration_core(
+        state: AppState,
+        merchant_id: String,
+        customer_id: String,
+        pmid: String,
+    ) -> Result<(), ContainerError<error::ApiError>> {
+        let master_encryption = GcmAes256::new(state.config.secrets.master_key.clone());
+        let merchant = state
+            .db
+            .find_or_create_by_merchant_id(
+                &merchant_id,
+                &state.config.secrets.tenant,
+                &master_encryption,
+            )
+            .await?;
+
+        let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
+
+        let stored_card = state
+            .db
+            .find_by_locker_id_merchant_id_customer_id(
+                masking::Secret::new(pmid.clone()),
+                &state.config.secrets.tenant,
+                &merchant_id,
+                &customer_id,
+                &merchant_dek,
+            )
+            .await?;
+
+        let raw_card = match serde_json::from_slice::<types::StoredData>(
+            &stored_card.enc_data.clone().expose(),
         )
-        .await?;
-
-    let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
-
-    let stored_card = state
-        .db
-        .find_by_locker_id_merchant_id_customer_id(
-            masking::Secret::new(pmid.clone()),
-            &state.config.secrets.tenant,
-            &merchant_id,
-            &customer_id,
-            &merchant_dek,
-        )
-        .await?;
-
-    let raw_card =
-        match serde_json::from_slice::<types::StoredData>(&stored_card.enc_data.clone().expose())
-            .change_error(error::ApiError::DecodingError)?
+        .change_error(error::ApiError::DecodingError)?
         {
             types::StoredData::EncData(_) => {
-                return Ok(Json(MigrationResponse {
-                    message: "Encrypted card cannot be migrated".to_string(),
-                }))
+                return Ok::<(), ContainerError<error::ApiError>>(());
             }
             types::StoredData::CardData(card) => card,
         };
 
-    let card_number_hash = serde_json::to_vec(&raw_card.card_number.peek())
-        .change_error(error::ApiError::EncodingError)
-        .and_then(|data| Ok((Sha512).encode(data)?))?;
+        let card_number_hash = serde_json::to_vec(&raw_card.card_number.peek())
+            .change_error(error::ApiError::EncodingError)
+            .and_then(|data| Ok((Sha512).encode(data)?))?;
 
-    let optional_hash_table = state.db.find_by_data_hash(&card_number_hash).await?;
+        let optional_hash_table = state.db.find_by_data_hash(&card_number_hash).await?;
 
-    let mut conn = state
-        .db
-        .get_conn()
-        .await
-        .change_error(error::ApiError::DatabaseError)?;
+        let mut conn = state
+            .db
+            .get_conn()
+            .await
+            .change_error(error::ApiError::DatabaseError)?;
 
-    conn.build_transaction()
-        .read_write()
-        .run(|conn| {
-            Box::pin(async move {
-                let new_hash_id = match optional_hash_table {
-                    Some(hash) => hash.hash_id,
-                    None => {
-                        let hash_table = insert_hash(state, conn, card_number_hash).await?;
+        conn.build_transaction()
+            .read_write()
+            .run(|conn| {
+                Box::pin(async move {
+                    let new_hash_id = match optional_hash_table {
+                        Some(hash) => hash.hash_id,
+                        None => {
+                            let hash_table = insert_hash(state, conn, card_number_hash).await?;
 
-                        hash_table.hash_id
-                    }
-                };
+                            hash_table.hash_id
+                        }
+                    };
 
-                update_locker_with_new_hash_id(conn, new_hash_id, stored_card).await?;
+                    update_locker_with_new_hash_id(conn, new_hash_id, stored_card).await?;
 
-                Ok::<(), ContainerError<error::ApiError>>(())
+                    Ok::<(), ContainerError<error::ApiError>>(())
+                })
             })
-        })
-        .await?;
+            .await?;
+
+        Ok(())
+    }
+
+    let result = migration_core(state, merchant_id, customer_id, pmid).await;
 
     // let new_hash_id = match optional_hash_table {
     //     Some(hash) => hash.hash_id,
@@ -94,13 +105,17 @@ pub async fn migrate(
     // };
 
     // update_locker_with_new_hash_id(&mut conn, new_hash_id, stored_card).await?;
-
-    Ok(Json(MigrationResponse {
-        message: format!(
-            "Migration successful for merchant_id: {}, customer_id: {}, pmid: {}",
-            merchant_id, customer_id, pmid
-        ),
-    }))
+    match result {
+        Ok(_) => Json(MigrationResponse {
+            message: "Migration successful".to_string(),
+        }),
+        Err(err) => {
+            logger::error!(error=?err);
+            Json(MigrationResponse {
+                message: "Migration failed".to_string(),
+            })
+        }
+    }
 }
 
 async fn update_locker_with_new_hash_id(
