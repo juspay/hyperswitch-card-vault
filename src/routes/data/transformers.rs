@@ -1,6 +1,7 @@
-use masking::ExposeInterface;
+use masking::{ExposeInterface, PeekInterface};
 
 use crate::{
+    crypto::Encode,
     error::{self, ContainerError, ResultContainerExt},
     storage,
 };
@@ -73,4 +74,27 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
 /// Generate UUID v4 as strings to be used in storage layer
 pub fn generate_uuid() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+pub fn get_hash<T>(
+    request: &types::Data,
+    hash_algorithm: T,
+) -> Result<Vec<u8>, ContainerError<error::ApiError>>
+where
+    T: Encode<
+        Vec<u8>,
+        Vec<u8>,
+        ReturnType<Vec<u8>> = Result<Vec<u8>, error::ContainerError<error::CryptoError>>,
+    >,
+{
+    let data = match request {
+        types::Data::EncData { enc_card_data } => enc_card_data,
+        types::Data::Card { card } => card.card_number.peek(),
+    };
+
+    let json_data = serde_json::to_vec(data).change_error(error::ApiError::EncodingError)?;
+
+    let hash_data = hash_algorithm.encode(json_data)?;
+
+    Ok(hash_data)
 }

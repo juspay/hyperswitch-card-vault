@@ -13,7 +13,7 @@ use crate::error;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Card {
-    card_number: masking::StrongSecret<String>,
+    pub card_number: masking::StrongSecret<String>,
     name_on_card: Option<String>,
     card_exp_month: Option<String>,
     card_exp_year: Option<String>,
