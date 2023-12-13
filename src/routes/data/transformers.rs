@@ -83,8 +83,8 @@ impl std::cmp::PartialEq<types::Data> for super::types::StoredData
 {
     fn eq(&self, other: &types::Data) -> bool {
         match (self, other) {
-            (types::StoredData::EncData(left), types::Data::EncData { enc_card_data  }) => left == enc_card_data,
-            (types::StoredData::CardData(left), types::Data::Card { card  }) => left == card,
+            (types::StoredData::EncData(request_enc_card_data), types::Data::EncData { enc_card_data  }) => request_enc_card_data == enc_card_data,
+            (types::StoredData::CardData(request_card), types::Data::Card { card  }) => request_card == card,
             _ => false
         }
     }
