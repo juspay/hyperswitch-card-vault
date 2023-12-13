@@ -8,6 +8,8 @@ use axum::middleware;
 
 use masking::ExposeInterface;
 
+use types::StoreCardResponse;
+
 use crate::{
     app::AppState,
     crypto::{aes::GcmAes256, sha::Sha512},
@@ -94,7 +96,7 @@ pub async fn add_card(
 
     let optional_hash_table = state.db.find_by_data_hash(&hash_data).await?;
 
-    let output = match optional_hash_table {
+    let (is_card_duplicated, is_duplicated, output) = match optional_hash_table {
         Some(hash_table) => {
             let stored_data = state
                 .db
@@ -106,10 +108,17 @@ pub async fn add_card(
                     &merchant_dek,
                 )
                 .await?;
+            
+            //This is just a bool that tells if card is duplicated or not
+            let mut is_card_duplicated = stored_data.is_some();
 
-            match stored_data {
+            let is_duplicated =
+                transformers::validate_card_metadata(&stored_data, &request.data)?;
+
+            let output = match stored_data {
                 Some(data) => data,
                 None => {
+                    is_card_duplicated = false;
                     state
                         .db
                         .insert_or_get_from_locker(
@@ -123,12 +132,15 @@ pub async fn add_card(
                         )
                         .await?
                 }
-            }
+            };
+
+            (is_card_duplicated, is_duplicated, output)
         }
         None => {
+            let is_card_duplicated = false;
             let hash_table = state.db.insert_hash(hash_data).await?;
 
-            state
+            let output = state
                 .db
                 .insert_or_get_from_locker(
                     (
@@ -139,11 +151,17 @@ pub async fn add_card(
                         .try_into()?,
                     &merchant_dek,
                 )
-                .await?
+                .await?;
+
+            (is_card_duplicated, None, output)
         }
     };
 
-    Ok(Json(output.into()))
+    Ok(Json(StoreCardResponse::from((
+        is_card_duplicated,
+        is_duplicated,
+        output,
+    ))))
 }
 
 /// `/data/delete` handling the requirement of deleting cards

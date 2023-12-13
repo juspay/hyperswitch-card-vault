@@ -6,7 +6,7 @@ use crate::{
     storage,
 };
 
-use super::types;
+use super::types::{self, DataDuplicationCheck};
 
 impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
     for storage::types::LockerNew<'a>
@@ -38,12 +38,22 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
     }
 }
 
-impl From<storage::types::Locker> for super::types::StoreCardResponse {
-    fn from(value: storage::types::Locker) -> Self {
+impl From<(bool, Option<DataDuplicationCheck>, storage::types::Locker)>
+    for super::types::StoreCardResponse
+{
+    fn from(
+        (is_duplicate, data_duplicated, value): (
+            bool,
+            Option<DataDuplicationCheck>,
+            storage::types::Locker,
+        ),
+    ) -> Self {
         Self {
             status: types::Status::Ok,
             payload: Some(super::types::StoreCardRespPayload {
                 card_reference: value.locker_id.expose(),
+                duplicate: is_duplicate,
+                data_duplicated,
                 dedup: None,
             }),
         }
@@ -97,4 +107,39 @@ where
     let hash_data = hash_algorithm.encode(json_data)?;
 
     Ok(hash_data)
+}
+
+pub fn validate_card_metadata(
+    stored_data: &Option<storage::types::Locker>,
+    request_data: &types::Data,
+) -> Result<Option<DataDuplicationCheck>, ContainerError<error::ApiError>> {
+    stored_data
+        .as_ref()
+        .map(|stored_data| {
+            let (stored_card, stored_enc_card_data) =
+                match serde_json::from_slice::<types::StoredData>(
+                    &stored_data.enc_data.clone().expose(),
+                )
+                .change_error(error::ApiError::DecodingError)?
+                {
+                    types::StoredData::EncData(data) => (None, Some(data)),
+                    types::StoredData::CardData(card) => (Some(card), None),
+                };
+
+            let (request_card, request_enc_card_data) = match request_data {
+                types::Data::EncData { enc_card_data } => (None, Some(enc_card_data)),
+                types::Data::Card { card } => (Some(card), None),
+            };
+
+            let is_metadata_duplicated = match (request_card, stored_card) {
+                (Some(request_card), Some(stored_card)) => stored_card.eq(&request_card),
+                _ => stored_enc_card_data.as_ref().eq(&request_enc_card_data),
+            };
+
+            Ok(match is_metadata_duplicated {
+                true => DataDuplicationCheck::Duplicated,
+                false => DataDuplicationCheck::MetaDataChanged,
+            })
+        })
+        .transpose()
 }
