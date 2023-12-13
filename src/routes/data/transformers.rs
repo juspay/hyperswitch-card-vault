@@ -42,10 +42,7 @@ impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
     for super::types::StoreCardResponse
 {
     fn from(
-        (duplication_check, value): (
-            Option<DataDuplicationCheck>,
-            storage::types::Locker,
-        ),
+        (duplication_check, value): (Option<DataDuplicationCheck>, storage::types::Locker),
     ) -> Self {
         Self {
             status: types::Status::Ok,

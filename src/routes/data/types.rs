@@ -33,7 +33,7 @@ pub struct StoreCardRespPayload {
 #[serde(rename_all = "snake_case")]
 pub enum DataDuplicationCheck {
     Duplicated,
-    MetaDataChanged
+    MetaDataChanged,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
