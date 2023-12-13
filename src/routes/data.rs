@@ -110,7 +110,7 @@ pub async fn add_card(
                 .await?;
 
             let duplication_check =
-                transformers::validate_card_metadata(&stored_data, request.data.clone())?;
+                transformers::validate_card_metadata(stored_data.as_ref(), &request.data)?;
 
             let output = match stored_data {
                 Some(data) => data,

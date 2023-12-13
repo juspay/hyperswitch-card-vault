@@ -11,7 +11,7 @@ use masking::PeekInterface;
 
 use crate::error;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct Card {
     pub card_number: masking::StrongSecret<String>,
     name_on_card: Option<String>,
@@ -33,7 +33,7 @@ pub struct StoreCardRespPayload {
 #[serde(rename_all = "snake_case")]
 pub enum DataDuplicationCheck {
     Duplicated,
-    MetaDataChanged
+    MetaDataChanged,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -56,7 +56,7 @@ pub struct StoreCardRequest {
     pub data: Data,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum Data {
     EncData { enc_card_data: String },

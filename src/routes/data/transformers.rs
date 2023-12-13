@@ -79,11 +79,13 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
     }
 }
 
-impl From<types::Data> for super::types::StoredData {
-    fn from(request_data: types::Data) -> Self {
-        match request_data {
-            types::Data::EncData { enc_card_data } => Self::EncData(enc_card_data),
-            types::Data::Card { card } => Self::CardData(card),
+impl std::cmp::PartialEq<types::Data> for super::types::StoredData 
+{
+    fn eq(&self, other: &types::Data) -> bool {
+        match (self, other) {
+            (types::StoredData::EncData(left), types::Data::EncData { enc_card_data  }) => left == enc_card_data,
+            (types::StoredData::CardData(left), types::Data::Card { card  }) => left == card,
+            _ => false
         }
     }
 }
@@ -117,17 +119,16 @@ where
 }
 
 pub fn validate_card_metadata(
-    stored_payload: &Option<storage::types::Locker>,
-    request_data: types::Data,
+    stored_payload: Option<&storage::types::Locker>,
+    request_data: &types::Data,
 ) -> Result<Option<DataDuplicationCheck>, ContainerError<error::ApiError>> {
     stored_payload
-        .as_ref()
         .map(|stored_data| {
             let stored_data =
-                serde_json::from_slice::<types::StoredData>(&stored_data.enc_data.clone().expose())
+                serde_json::from_slice::<types::StoredData>(&stored_data.enc_data.peek())
                     .change_error(error::ApiError::DecodingError)?;
 
-            let is_metadata_duplicated = stored_data.eq(&request_data.into());
+            let is_metadata_duplicated = stored_data.eq(request_data);
 
             Ok(match is_metadata_duplicated {
                 true => DataDuplicationCheck::Duplicated,
