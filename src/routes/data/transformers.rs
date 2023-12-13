@@ -80,8 +80,8 @@ impl std::cmp::PartialEq<types::Data> for super::types::StoredData
 {
     fn eq(&self, other: &types::Data) -> bool {
         match (self, other) {
-            (types::StoredData::EncData(request_enc_card_data), types::Data::EncData { enc_card_data  }) => request_enc_card_data == enc_card_data,
-            (types::StoredData::CardData(request_card), types::Data::Card { card  }) => request_card == card,
+            (Self::EncData(request_enc_card_data), types::Data::EncData { enc_card_data  }) => request_enc_card_data == enc_card_data,
+            (Self::CardData(request_card), types::Data::Card { card  }) => request_card == card,
             _ => false
         }
     }
@@ -122,7 +122,7 @@ pub fn validate_card_metadata(
     stored_payload
         .map(|stored_data| {
             let stored_data =
-                serde_json::from_slice::<types::StoredData>(&stored_data.enc_data.peek())
+                serde_json::from_slice::<types::StoredData>(stored_data.enc_data.peek())
                     .change_error(error::ApiError::DecodingError)?;
 
             let is_metadata_duplicated = stored_data.eq(request_data);
