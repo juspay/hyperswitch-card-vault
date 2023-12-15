@@ -43,6 +43,7 @@ impl<T> From<T> for ContainerError<T>
 where
     error_stack::Report<T>: From<T>,
 {
+    #[track_caller]
     fn from(value: T) -> Self {
         Self {
             error: error_stack::Report::from(value),
