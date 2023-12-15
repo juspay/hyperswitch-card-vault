@@ -1,6 +1,6 @@
+use async_bb8_diesel::AsyncRunQueryDsl;
 use diesel::BoolExpressionMethods;
 use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
-use diesel_async::RunQueryDsl;
 use masking::ExposeInterface;
 use masking::Secret;
 use tracing::instrument;
@@ -20,11 +20,11 @@ impl MerchantInterface for Storage {
     #[instrument(skip_all)]
     async fn find_by_merchant_id(
         &self,
-        merchant_id: &str,
-        tenant_id: &str,
+        merchant_id: String,
+        tenant_id: String,
         key: &GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
                 .filter(
@@ -32,7 +32,7 @@ impl MerchantInterface for Storage {
                         .eq(merchant_id)
                         .and(schema::merchant::tenant_id.eq(tenant_id)),
                 )
-                .get_result(&mut conn)
+                .get_result_async(&*conn)
                 .await;
         output
             .change_error(error::StorageError::FindError)
@@ -46,20 +46,20 @@ impl MerchantInterface for Storage {
     #[instrument(skip_all)]
     async fn find_or_create_by_merchant_id(
         &self,
-        merchant_id: &str,
-        tenant_id: &str,
+        merchant_id: String,
+        tenant_id: String,
         key: &GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
                 .filter(
                     schema::merchant::merchant_id
-                        .eq(merchant_id)
-                        .and(schema::merchant::tenant_id.eq(tenant_id)),
+                        .eq(merchant_id.to_string())
+                        .and(schema::merchant::tenant_id.eq(tenant_id.to_string())),
                 )
-                .get_result(&mut conn)
+                .get_result_async(&*conn)
                 .await;
         match output {
             Ok(inner) => Ok(inner.decrypt(key)?),
@@ -83,14 +83,14 @@ impl MerchantInterface for Storage {
     #[instrument(skip_all)]
     async fn insert_merchant(
         &self,
-        new: types::MerchantNew<'_>,
+        new: types::MerchantNew,
         key: &GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
         let query = diesel::insert_into(types::MerchantInner::table()).values(new.encrypt(key)?);
 
         query
-            .get_result(&mut conn)
+            .get_result_async(&*conn)
             .await
             .change_error(error::StorageError::InsertError)
             .map_err(From::from)
@@ -107,12 +107,12 @@ impl LockerInterface for Storage {
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
-        merchant_id: &str,
-        customer_id: &str,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
         key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
         types::LockerInner::table()
             .filter(
@@ -122,7 +122,7 @@ impl LockerInterface for Storage {
                     .and(schema::locker::merchant_id.eq(merchant_id))
                     .and(schema::locker::customer_id.eq(customer_id)),
             )
-            .get_result(&mut conn)
+            .get_result_async(&*conn)
             .await
             .change_error(error::StorageError::FindError)
             .map_err(From::from)
@@ -132,13 +132,13 @@ impl LockerInterface for Storage {
     #[instrument(skip_all)]
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
-        hash_id: &str,
-        tenant_id: &str,
-        merchant_id: &str,
-        customer_id: &str,
+        hash_id: String,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
         key: &Self::Algorithm,
     ) -> Result<Option<types::Locker>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
         let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
             .filter(
@@ -148,7 +148,7 @@ impl LockerInterface for Storage {
                     .and(schema::locker::merchant_id.eq(merchant_id))
                     .and(schema::locker::customer_id.eq(customer_id)),
             )
-            .get_result(&mut conn)
+            .get_result_async(&*conn)
             .await;
 
         match output {
@@ -163,16 +163,16 @@ impl LockerInterface for Storage {
     #[instrument(skip_all)]
     async fn insert_or_get_from_locker(
         &self,
-        new: types::LockerNew<'_>,
+        new: types::LockerNew,
         key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
         let query: Result<_, diesel::result::Error> =
             diesel::insert_into(types::LockerInner::table())
                 .values(new.encrypt(key)?)
-                .get_result::<types::LockerInner>(&mut conn)
+                .get_result_async::<types::LockerInner>(&*conn)
                 .await;
 
         match query {
@@ -185,8 +185,8 @@ impl LockerInterface for Storage {
                     self.find_by_locker_id_merchant_id_customer_id(
                         cloned_new.locker_id,
                         cloned_new.tenant_id,
-                        &cloned_new.merchant_id,
-                        &cloned_new.customer_id,
+                        cloned_new.merchant_id,
+                        cloned_new.customer_id,
                         key,
                     )
                     .await
@@ -200,11 +200,11 @@ impl LockerInterface for Storage {
     async fn delete_from_locker(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
-        merchant_id: &str,
-        customer_id: &str,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
     ) -> Result<usize, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
         let query = diesel::delete(types::LockerInner::table()).filter(
             schema::locker::locker_id
@@ -215,7 +215,7 @@ impl LockerInterface for Storage {
         );
 
         Ok(query
-            .execute(&mut conn)
+            .execute_async(&*conn)
             .await
             .change_error(error::StorageError::DeleteError)?)
     }
@@ -228,13 +228,13 @@ impl super::HashInterface for Storage {
     #[instrument(skip_all)]
     async fn find_by_data_hash(
         &self,
-        data_hash: &[u8],
+        data_hash: Vec<u8>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
         let output: Result<_, diesel::result::Error> = types::HashTable::table()
             .filter(schema::hash_table::data_hash.eq(data_hash))
-            .get_result(&mut conn)
+            .get_result_async(&*conn)
             .await;
 
         match output {
@@ -251,11 +251,11 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: Vec<u8>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
-        let output = self.find_by_data_hash(&data_hash).await?;
+        let output = self.find_by_data_hash(data_hash.to_vec()).await?;
         match output {
             Some(inner) => Ok(inner),
             None => {
-                let mut conn = self.get_conn().await?;
+                let conn = self.get_conn().await?;
                 let query =
                     diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
                         hash_id: uuid::Uuid::new_v4().to_string(),
@@ -263,7 +263,7 @@ impl super::HashInterface for Storage {
                     });
 
                 Ok(query
-                    .get_result(&mut conn)
+                    .get_result_async(&*conn)
                     .await
                     .change_error(error::StorageError::InsertError)?)
             }

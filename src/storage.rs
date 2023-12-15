@@ -6,13 +6,15 @@ use crate::{
 
 use std::sync::Arc;
 
-use diesel_async::{
-    pooled_connection::{
-        self,
-        deadpool::{Object, Pool},
-    },
-    AsyncPgConnection,
-};
+use bb8::Pool;
+use diesel::PgConnection;
+// use diesel_async::{
+//     pooled_connection::{
+//         self,
+//         deadpool::{Object, Pool},
+//     },
+//     AsyncPgConnection,
+// };
 use error_stack::ResultExt;
 use masking::{PeekInterface, Secret};
 
@@ -25,10 +27,11 @@ pub trait State {}
 /// Storage State that is to be passed though the application
 #[derive(Clone)]
 pub struct Storage {
-    pg_pool: Arc<Pool<AsyncPgConnection>>,
+    pg_pool: Arc<bb8::Pool<async_bb8_diesel::ConnectionManager<PgConnection>>>,
 }
 
-type DeadPoolConnType = Object<AsyncPgConnection>;
+pub type PgPooledConn<'a> =
+    bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>;
 
 impl Storage {
     /// Create a new storage interface from configuration
@@ -41,9 +44,8 @@ impl Storage {
             database.port,
             database.dbname
         );
-        let config =
-            pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
-        let pool = Pool::builder(config);
+        let config = async_bb8_diesel::ConnectionManager::<PgConnection>::new(database_url);
+        let pool = Pool::builder();
 
         let pool = match database.pool_size {
             Some(value) => pool.max_size(value),
@@ -51,7 +53,9 @@ impl Storage {
         };
 
         let pool = pool
-            .build()
+            .queue_strategy(bb8::QueueStrategy::Lifo)
+            .build(config)
+            .await
             .change_context(error::StorageError::DBPoolError)?;
         Ok(Self {
             pg_pool: Arc::new(pool),
@@ -59,7 +63,12 @@ impl Storage {
     }
 
     /// Get connection from database pool for accessing data
-    pub async fn get_conn(&self) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
+    pub async fn get_conn<'a, 'b>(
+        &'b self,
+    ) -> Result<PgPooledConn<'a>, ContainerError<error::StorageError>>
+    where
+        'b: 'a,
+    {
         Ok(self
             .pg_pool
             .get()
@@ -80,8 +89,8 @@ pub trait MerchantInterface {
     /// find merchant from merchant table with `merchant_id` and `tenant_id` with key as master key
     async fn find_by_merchant_id(
         &self,
-        merchant_id: &str,
-        tenant_id: &str,
+        merchant_id: String,
+        tenant_id: String,
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
@@ -89,15 +98,15 @@ pub trait MerchantInterface {
     /// and if not found create a new merchant
     async fn find_or_create_by_merchant_id(
         &self,
-        merchant_id: &str,
-        tenant_id: &str,
+        merchant_id: String,
+        tenant_id: String,
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
     /// Insert a new merchant in the database by encrypting the dek with `master_key`
     async fn insert_merchant(
         &self,
-        new: types::MerchantNew<'_>,
+        new: types::MerchantNew,
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 }
@@ -115,16 +124,16 @@ pub trait LockerInterface {
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
-        merchant_id: &str,
-        customer_id: &str,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
         key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>>;
 
     /// Insert payment data from locker table by decrypting with `dek`
     async fn insert_or_get_from_locker(
         &self,
-        new: types::LockerNew<'_>,
+        new: types::LockerNew,
         key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>>;
 
@@ -132,17 +141,17 @@ pub trait LockerInterface {
     async fn delete_from_locker(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
-        merchant_id: &str,
-        customer_id: &str,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
     ) -> Result<usize, ContainerError<Self::Error>>;
 
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
-        hash_id: &str,
-        tenant_id: &str,
-        merchant_id: &str,
-        customer_id: &str,
+        hash_id: String,
+        tenant_id: String,
+        merchant_id: String,
+        customer_id: String,
         key: &Self::Algorithm,
     ) -> Result<Option<types::Locker>, ContainerError<Self::Error>>;
 }
@@ -155,7 +164,7 @@ pub trait HashInterface {
 
     async fn find_by_data_hash(
         &self,
-        data_hash: &[u8],
+        data_hash: Vec<u8>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>>;
     async fn insert_hash(
         &self,

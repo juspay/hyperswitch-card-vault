@@ -83,8 +83,8 @@ pub async fn add_card(
     let merchant = state
         .db
         .find_or_create_by_merchant_id(
-            &request.merchant_id,
-            &state.config.secrets.tenant,
+            request.merchant_id.to_string(),
+            state.config.secrets.tenant.to_string(),
             &master_encryption,
         )
         .await?;
@@ -96,17 +96,17 @@ pub async fn add_card(
         .change_error(error::ApiError::EncodingError)
         .and_then(|data| Ok((Sha512).encode(data)?))?;
 
-    let optional_hash_table = state.db.find_by_data_hash(&hash_data).await?;
+    let optional_hash_table = state.db.find_by_data_hash(hash_data.clone()).await?;
 
     let output = match optional_hash_table {
         Some(hash_table) => {
             let stored_data = state
                 .db
                 .find_by_hash_id_merchant_id_customer_id(
-                    &hash_table.hash_id,
-                    &state.config.secrets.tenant,
-                    &request.merchant_id,
-                    &request.merchant_customer_id,
+                    hash_table.hash_id.to_string(),
+                    state.config.secrets.tenant.to_string(),
+                    request.merchant_id.to_string(),
+                    request.merchant_customer_id.to_string(),
                     &merchant_dek,
                 )
                 .await?;
@@ -161,8 +161,8 @@ pub async fn delete_card(
     let _merchant = state
         .db
         .find_by_merchant_id(
-            &request.merchant_id,
-            &state.config.secrets.tenant,
+            request.merchant_id.to_string(),
+            state.config.secrets.tenant.to_string(),
             &master_key,
         )
         .await?;
@@ -171,9 +171,9 @@ pub async fn delete_card(
         .db
         .delete_from_locker(
             request.card_reference.into(),
-            &state.config.secrets.tenant,
-            &request.merchant_id,
-            &request.merchant_customer_id,
+            state.config.secrets.tenant.to_string(),
+            request.merchant_id.to_string(),
+            request.merchant_customer_id.to_string(),
         )
         .await?;
 
@@ -193,8 +193,8 @@ pub async fn retrieve_card(
     let merchant = state
         .db
         .find_by_merchant_id(
-            &request.merchant_id,
-            &state.config.secrets.tenant,
+            request.merchant_id.to_string(),
+            state.config.secrets.tenant.to_string(),
             &master_key,
         )
         .await?;
@@ -205,9 +205,9 @@ pub async fn retrieve_card(
         .db
         .find_by_locker_id_merchant_id_customer_id(
             request.card_reference.into(),
-            &state.config.secrets.tenant,
-            &request.merchant_id,
-            &request.merchant_customer_id,
+            state.config.secrets.tenant.to_string(),
+            request.merchant_id.to_string(),
+            request.merchant_customer_id.to_string(),
             &merchant_dek,
         )
         .await?;

@@ -30,16 +30,16 @@ pub struct Merchant {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
-pub(super) struct MerchantNewInner<'a> {
-    tenant_id: &'a str,
-    merchant_id: &'a str,
+pub(super) struct MerchantNewInner {
+    tenant_id: String,
+    merchant_id: String,
     enc_key: Encrypted,
 }
 
 #[derive(Debug)]
-pub struct MerchantNew<'a> {
-    pub tenant_id: &'a str,
-    pub merchant_id: &'a str,
+pub struct MerchantNew {
+    pub tenant_id: String,
+    pub merchant_id: String,
     pub enc_key: Secret<Vec<u8>>,
 }
 
@@ -68,24 +68,24 @@ pub struct Locker {
 }
 
 #[derive(Debug, Clone)]
-pub struct LockerNew<'a> {
+pub struct LockerNew {
     pub locker_id: Secret<String>,
-    pub tenant_id: &'a str,
+    pub tenant_id: String,
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Secret<Vec<u8>>,
-    pub hash_id: &'a str,
+    pub hash_id: String,
 }
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::locker)]
-pub(super) struct LockerNewInner<'a> {
+pub(super) struct LockerNewInner {
     locker_id: Secret<String>,
-    tenant_id: &'a str,
+    tenant_id: String,
     merchant_id: String,
     customer_id: String,
     enc_data: Encrypted,
-    hash_id: &'a str,
+    hash_id: String,
 }
 
 #[derive(Debug, Identifiable, Queryable)]
@@ -209,8 +209,8 @@ impl StorageDecryption for MerchantInner {
     }
 }
 
-impl<'a> StorageEncryption for MerchantNew<'a> {
-    type Output = MerchantNewInner<'a>;
+impl StorageEncryption for MerchantNew {
+    type Output = MerchantNewInner;
 
     type Algorithm = crypto::aes::GcmAes256;
 
@@ -249,8 +249,8 @@ impl StorageDecryption for LockerInner {
     }
 }
 
-impl<'a> StorageEncryption for LockerNew<'a> {
-    type Output = LockerNewInner<'a>;
+impl StorageEncryption for LockerNew {
+    type Output = LockerNewInner;
 
     type Algorithm = crypto::aes::GcmAes256;
 
