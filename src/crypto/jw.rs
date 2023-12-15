@@ -5,13 +5,22 @@ use masking::PeekInterface;
 pub struct JWEncryption {
     pub(crate) private_key: masking::Secret<String>,
     pub(crate) public_key: masking::Secret<String>,
+    pub(crate) encryption_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
+    pub(crate) decryption_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
 }
 
 impl JWEncryption {
-    pub fn new(private_key: String, public_key: String) -> Self {
+    pub fn new(
+        private_key: String,
+        public_key: String,
+        enc_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
+        dec_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
+    ) -> Self {
         Self {
             private_key: private_key.into(),
             public_key: public_key.into(),
+            encryption_algo: enc_algo,
+            decryption_algo: dec_algo,
         }
     }
 }
@@ -91,7 +100,11 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
             error::CryptoError::InvalidData("JWS encoded data is incomplete"),
         )?;
         let jws_payload = serde_json::to_vec(&jws_body).map_err(error::CryptoError::from)?;
-        let jwe_encrypted = encrypt_jwe(&jws_payload, self.public_key.peek().as_bytes())?;
+        let jwe_encrypted = encrypt_jwe(
+            &jws_payload,
+            self.public_key.peek().as_bytes(),
+            self.encryption_algo,
+        )?;
         let jwe_body = JweBody::from_str(&jwe_encrypted)
             .ok_or(error::CryptoError::InvalidData("JWE data incomplete"))?;
         Ok(serde_json::to_vec(&jwe_body).map_err(error::CryptoError::from)?)
@@ -100,8 +113,9 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
     fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let jwe_body: JweBody = serde_json::from_slice(&input).map_err(error::CryptoError::from)?;
         let jwe_encoded = jwe_body.get_dotted_jwe();
-        let algo = jwe::RSA_OAEP_256;
-        let jwe_decrypted = decrypt_jwe(&jwe_encoded, self.private_key.peek(), algo)?;
+        // let algo = jwe::RSA_OAEP_256;
+        let jwe_decrypted =
+            decrypt_jwe(&jwe_encoded, self.private_key.peek(), self.decryption_algo)?;
 
         let jws_parsed: JwsBody = serde_json::from_str(&jwe_decrypted)
             .map_err(|_| error::CryptoError::InvalidData("Failed while extracting jws body"))?;
@@ -125,8 +139,9 @@ pub fn jws_sign_payload(
 pub fn encrypt_jwe(
     payload: &[u8],
     public_key: impl AsRef<[u8]>,
+    alg: jwe::alg::rsaes::RsaesJweAlgorithm,
 ) -> Result<String, error::CryptoError> {
-    let alg = jwe::RSA_OAEP;
+    // let alg = jwe::RSA_OAEP;
     let enc = "A256GCM";
     let mut src_header = jwe::JweHeader::new();
     src_header.set_content_encryption(enc);
@@ -251,7 +266,7 @@ VuY3OeNxi+dC2r7HppP3O/MJ4gX/RJJfSrcaGP8/Ke1W5+jE97Qy
 
     #[test]
     fn test_jwe() {
-        let jwt = encrypt_jwe("request_payload".as_bytes(), ENCRYPTION_KEY).unwrap();
+        let jwt = encrypt_jwe("request_payload".as_bytes(), ENCRYPTION_KEY, jwe::RSA_OAEP).unwrap();
         let alg = jwe::RSA_OAEP;
         let payload = decrypt_jwe(&jwt, DECRYPTION_KEY, alg).unwrap();
         assert_eq!("request_payload".to_string(), payload)
