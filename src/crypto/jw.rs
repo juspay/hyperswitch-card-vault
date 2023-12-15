@@ -7,6 +7,15 @@ pub struct JWEncryption {
     pub(crate) public_key: masking::Secret<String>,
 }
 
+impl JWEncryption {
+    pub fn new(private_key: String, public_key: String) -> Self {
+        Self {
+            private_key: private_key.into(),
+            public_key: public_key.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JwsBody {
     pub header: String,
@@ -243,7 +252,7 @@ VuY3OeNxi+dC2r7HppP3O/MJ4gX/RJJfSrcaGP8/Ke1W5+jE97Qy
     #[test]
     fn test_jwe() {
         let jwt = encrypt_jwe("request_payload".as_bytes(), ENCRYPTION_KEY).unwrap();
-        let alg = jwe::RSA_OAEP_256;
+        let alg = jwe::RSA_OAEP;
         let payload = decrypt_jwe(&jwt, DECRYPTION_KEY, alg).unwrap();
         assert_eq!("request_payload".to_string(), payload)
     }
