@@ -6,6 +6,7 @@
 
 use std::io::{stdin, stdout, Read, Write};
 
+use josekit::jwe;
 use tartarus::{
     crypto::{
         aes::{generate_aes256_key, GcmAes256},
@@ -79,7 +80,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let pub_key = read_file_to_string(
                 &public_key.ok_or(error::CryptoError::InvalidData("public key not found"))?,
             )?;
-            jwe_operation(|x| JWEncryption::new(priv_key, pub_key).encrypt(x))?;
+            jwe_operation(|x| {
+                JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP).encrypt(x)
+            })?;
         }
         SubCommand::JweDecrypt(JweD {
             private_key,
@@ -91,7 +94,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let pub_key = read_file_to_string(
                 &public_key.ok_or(error::CryptoError::InvalidData("private key not found"))?,
             )?;
-            jwe_operation(|x| JWEncryption::new(priv_key, pub_key).decrypt(x))?;
+            jwe_operation(|x| {
+                JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP).decrypt(x)
+            })?;
         }
     }
 
