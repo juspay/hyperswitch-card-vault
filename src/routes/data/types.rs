@@ -8,6 +8,7 @@
 // }
 
 use masking::PeekInterface;
+use tracing_attributes::instrument;
 
 use crate::error;
 
@@ -115,6 +116,7 @@ pub trait Validation {
 impl Validation for StoreCardRequest {
     type Error = error::ApiError;
 
+    #[instrument(skip_all)]
     fn validate(&self) -> Result<(), Self::Error> {
         match &self.data {
             Data::EncData { .. } => Ok(()),
