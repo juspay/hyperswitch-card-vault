@@ -1,9 +1,18 @@
 //! Setup logging subsystem.
 
+use super::{config, formatter::FormattingLayer, storage::StorageSubscription};
+
+use std::time::Duration;
+
+use opentelemetry::{
+    global,
+    sdk::{propagation::TraceContextPropagator, trace, trace::BatchConfig, Resource},
+    trace::{TraceContextExt, TraceState},
+    KeyValue,
+};
+use opentelemetry_otlp::{TonicExporterBuilder, WithExportConfig};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, prelude::*, util::SubscriberInitExt, EnvFilter, Layer};
-
-use super::{config, formatter::FormattingLayer, storage::StorageSubscription};
 
 /// Contains guards necessary for logging
 #[derive(Debug)]
@@ -21,7 +30,16 @@ pub fn setup(
 ) -> TelemetryGuard {
     let mut guards = Vec::new();
 
-    let subscriber = tracing_subscriber::registry().with(StorageSubscription);
+    // Setup OpenTelemetry traces
+    let traces_layer = if config.telemetry.traces_enabled {
+        setup_tracing_pipeline(&config.telemetry, service_name)
+    } else {
+        None
+    };
+
+    let subscriber = tracing_subscriber::registry()
+        .with(traces_layer)
+        .with(StorageSubscription);
 
     // Setup console logging
     if config.console.enabled {
@@ -49,7 +67,8 @@ pub fn setup(
             }
             config::LogFormat::Json => {
                 error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
-                let logging_layer = FormattingLayer::new(service_name, console_writer);
+                let logging_layer =
+                    FormattingLayer::new(service_name, console_writer).with_filter(console_filter);
                 subscriber.with(logging_layer).init();
             }
         }
@@ -61,6 +80,155 @@ pub fn setup(
     // dropped
     TelemetryGuard {
         _log_guards: guards,
+    }
+}
+
+#[derive(Debug, Clone)]
+enum TraceUrlAssert {
+    Match(String),
+    EndsWith(String),
+}
+
+impl TraceUrlAssert {
+    fn compare_url(&self, url: &str) -> bool {
+        match self {
+            Self::Match(value) => url == value,
+            Self::EndsWith(end) => url.ends_with(end),
+        }
+    }
+}
+
+impl From<String> for TraceUrlAssert {
+    fn from(value: String) -> Self {
+        match value {
+            url if url.starts_with('*') => Self::EndsWith(url.trim_start_matches('*').to_string()),
+            url => Self::Match(url),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TraceAssertion {
+    clauses: Option<Vec<TraceUrlAssert>>,
+    /// default behaviour for tracing if no condition is provided
+    default: bool,
+}
+
+impl TraceAssertion {
+    ///
+    /// Should the provided url be traced
+    ///
+    fn should_trace_url(&self, url: &str) -> bool {
+        match &self.clauses {
+            Some(clauses) => clauses.iter().any(|cur| cur.compare_url(url)),
+            None => self.default,
+        }
+    }
+}
+
+///
+/// Conditional Sampler for providing control on url based tracing
+///
+#[derive(Clone, Debug)]
+struct ConditionalSampler<T: trace::ShouldSample + Clone + 'static>(TraceAssertion, T);
+
+impl<T: trace::ShouldSample + Clone + 'static> trace::ShouldSample for ConditionalSampler<T> {
+    fn should_sample(
+        &self,
+        parent_context: Option<&opentelemetry::Context>,
+        trace_id: opentelemetry::trace::TraceId,
+        name: &str,
+        span_kind: &opentelemetry::trace::SpanKind,
+        attributes: &opentelemetry::trace::OrderMap<opentelemetry::Key, opentelemetry::Value>,
+        links: &[opentelemetry::trace::Link],
+        instrumentation_library: &opentelemetry::InstrumentationLibrary,
+    ) -> opentelemetry::trace::SamplingResult {
+        match attributes
+            .get(&opentelemetry::Key::new("uri"))
+            .map_or(self.0.default, |inner| {
+                self.0.should_trace_url(&inner.as_str())
+            }) {
+            true => self.1.should_sample(
+                parent_context,
+                trace_id,
+                name,
+                span_kind,
+                attributes,
+                links,
+                instrumentation_library,
+            ),
+            false => opentelemetry::trace::SamplingResult {
+                decision: opentelemetry::trace::SamplingDecision::Drop,
+                attributes: Vec::new(),
+                trace_state: match parent_context {
+                    Some(ctx) => ctx.span().span_context().trace_state().clone(),
+                    None => TraceState::default(),
+                },
+            },
+        }
+    }
+}
+
+fn get_opentelemetry_exporter(config: &config::LogTelemetry) -> TonicExporterBuilder {
+    let mut exporter_builder = opentelemetry_otlp::new_exporter().tonic();
+
+    if let Some(ref endpoint) = config.otel_exporter_otlp_endpoint {
+        exporter_builder = exporter_builder.with_endpoint(endpoint);
+    }
+    if let Some(timeout) = config.otel_exporter_otlp_timeout {
+        exporter_builder = exporter_builder.with_timeout(Duration::from_millis(timeout));
+    }
+
+    exporter_builder
+}
+
+fn setup_tracing_pipeline(
+    config: &config::LogTelemetry,
+    service_name: &str,
+) -> Option<tracing_opentelemetry::OpenTelemetryLayer<tracing_subscriber::Registry, trace::Tracer>>
+{
+    global::set_text_map_propagator(TraceContextPropagator::new());
+
+    let mut trace_config = trace::config()
+        .with_sampler(trace::Sampler::ParentBased(Box::new(ConditionalSampler(
+            TraceAssertion {
+                clauses: config
+                    .route_to_trace
+                    .clone()
+                    .map(|inner| inner.into_iter().map(Into::into).collect()),
+                default: false,
+            },
+            trace::Sampler::TraceIdRatioBased(config.sampling_rate.unwrap_or(1.0)),
+        ))))
+        .with_resource(Resource::new(vec![KeyValue::new(
+            "service.name",
+            service_name.to_owned(),
+        )]));
+    if config.use_xray_generator {
+        trace_config = trace_config.with_id_generator(trace::XrayIdGenerator::default());
+    }
+
+    // Change the default export interval from 5 seconds to 1 second
+    let batch_config = BatchConfig::default().with_scheduled_delay(Duration::from_millis(1000));
+
+    let traces_layer_result = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(get_opentelemetry_exporter(config))
+        .with_batch_config(batch_config)
+        .with_trace_config(trace_config)
+        .install_batch(opentelemetry::runtime::TokioCurrentThread)
+        .map(|tracer| tracing_opentelemetry::layer().with_tracer(tracer));
+
+    if config.ignore_errors {
+        traces_layer_result
+            .map_err(|error| {
+                eprintln!("Failed to create an `opentelemetry_otlp` tracer: {error:?}")
+            })
+            .ok()
+    } else {
+        // Safety: This is conditional, there is an option to avoid this behavior at runtime.
+        #[allow(clippy::expect_used)]
+        Some(traces_layer_result.expect("Failed to create an `opentelemetry_otlp` tracer"))
     }
 }
 

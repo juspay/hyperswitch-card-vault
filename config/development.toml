@@ -3,6 +3,12 @@ enabled = true
 level = "DEBUG"
 log_format = "default"
 
+[log.telemetry]
+traces_enabled = false
+use_xray_generator = false
+otel_exporter_otlp_endpoint = "http://localhost:4317"
+route_to_trace = ["*/add", "*/retrieve", "*/delete"]
+
 [server]
 host = "127.0.0.1"
 port = 8080

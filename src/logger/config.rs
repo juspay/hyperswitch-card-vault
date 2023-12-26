@@ -9,6 +9,8 @@ use serde::Deserialize;
 pub struct Log {
     /// Logging to a console.
     pub console: LogConsole,
+    /// Telemetry / tracing.
+    pub telemetry: LogTelemetry,
 }
 
 /// Logging to a console.
@@ -22,6 +24,26 @@ pub struct LogConsole {
     pub log_format: LogFormat,
     /// Directive which sets the log level for one or more crates/modules.
     pub filtering_directive: Option<String>,
+}
+
+/// Telemetry / tracing.
+#[derive(Debug, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct LogTelemetry {
+    /// Whether the traces pipeline is enabled.
+    pub traces_enabled: bool,
+    /// Whether errors in setting up traces or metrics pipelines must be ignored.
+    pub ignore_errors: bool,
+    /// Sampling rate for traces
+    pub sampling_rate: Option<f64>,
+    /// Base endpoint URL to send metrics and traces to. Can optionally include the port number.
+    pub otel_exporter_otlp_endpoint: Option<String>,
+    /// Timeout (in milliseconds) for sending metrics and traces.
+    pub otel_exporter_otlp_timeout: Option<u64>,
+    /// Whether to use xray ID generator, (enable this if you plan to use AWS-XRAY)
+    pub use_xray_generator: bool,
+    /// Route Based Tracing
+    pub route_to_trace: Option<Vec<String>>,
 }
 
 /// Describes the level of verbosity of a span or event.
