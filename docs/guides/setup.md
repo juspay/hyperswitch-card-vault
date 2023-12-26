@@ -41,7 +41,7 @@ Thus, if the locker is building normally using the `Dockerfile` included, all of
 
   # Generating the public keys
   openssl rsa -in locker-private-key.pem -pubout -out locker-public-key.pem
-  openssl rsa -in locker-private-key.pem -pubout -out tenant-public-key.pem
+  openssl rsa -in tenant-private-key.pem -pubout -out tenant-public-key.pem
   ```
 
   This step is required if you have enabled the `middleware` feature.
