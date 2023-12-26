@@ -15,7 +15,7 @@ duration = 60
 username = "sam"
 password = "damn"
 host = "localhost"
-port = 5431
+port = 5432
 dbname = "locker"
 
 [secrets]
