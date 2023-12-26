@@ -20,7 +20,7 @@ pub(super) struct MerchantInner {
     created_at: time::PrimitiveDateTime,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Merchant {
     pub tenant_id: String,
     pub merchant_id: String,
@@ -88,7 +88,7 @@ pub(super) struct LockerNewInner<'a> {
     hash_id: &'a str,
 }
 
-#[derive(Debug, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,

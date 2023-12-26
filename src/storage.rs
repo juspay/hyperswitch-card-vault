@@ -16,6 +16,9 @@ use diesel_async::{
 use error_stack::ResultExt;
 use masking::{PeekInterface, Secret};
 
+#[cfg(feature = "caching")]
+pub mod caching;
+
 pub mod db;
 pub mod schema;
 pub mod types;
@@ -68,13 +71,31 @@ impl Storage {
     }
 }
 
+#[cfg(feature = "caching")]
+pub trait Cacheable<Table> {
+    type Key: std::hash::Hash + Eq + PartialEq + Send + Sync + 'static;
+    type Value: Clone + Send + Sync + 'static;
+}
+
+#[cfg(feature = "caching")]
+impl Cacheable<types::Merchant> for Storage {
+    type Key = (String, String);
+    type Value = types::Merchant;
+}
+
+#[cfg(feature = "caching")]
+impl Cacheable<types::HashTable> for Storage {
+    type Key = Vec<u8>;
+    type Value = types::HashTable;
+}
+
 ///
 /// MerchantInterface:
 ///
 /// Interface providing functional to interface with the merchant table in database
 #[async_trait::async_trait]
 pub trait MerchantInterface {
-    type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
+    type Algorithm: Encryption<Vec<u8>, Vec<u8>> + Sync;
     type Error;
 
     /// find merchant from merchant table with `merchant_id` and `tenant_id` with key as master key

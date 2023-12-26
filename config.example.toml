@@ -11,6 +11,11 @@ port = 8080 # The port where the server should be hosted on
 request_count = 1 # The requests per duration
 duration = 60 # duration to rate limit the delete api (in sec)
 
+
+[cache]
+tti = 7200 # Idle time after a get/insert of a cache entry to free the cache (in secs)
+max_capacity = 5000 # Max capacity of a single table cache
+
 [database]
 username = "sam" # username for the database
 password = "damn" # password of the database
