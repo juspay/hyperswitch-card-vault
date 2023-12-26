@@ -66,6 +66,26 @@ impl Storage {
             .await
             .change_context(error::StorageError::PoolClientFailure)?)
     }
+
+    // pub async fn execute_transaction<F>(
+    //     &self,
+    //     block: F,
+    // ) -> Result<(), ContainerError<error::StorageError>>
+    // where
+    //     for<'a>F: FnOnce(&'a mut DeadPoolConnType)
+    //         -> std::pin::Pin<Box<dyn futures::Future<Output = Result<(), ContainerError<error::StorageError>>> + Send>> + Send,
+    // {
+    //     Ok(self
+    //         .pg_pool
+    //         .get()
+    //         .await
+    //         .change_context(error::StorageError::PoolClientFailure)?
+    //         .build_transaction()
+    //         .read_write()
+    //         .serializable()
+    //         .run(block)
+    //         .await?)
+    // }
 }
 
 ///
@@ -161,4 +181,10 @@ pub trait HashInterface {
         &self,
         data_hash: Vec<u8>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>>;
+}
+
+#[async_trait::async_trait]
+pub trait TestInterface {
+    type Error;
+    async fn test(&self) -> Result<(), ContainerError<Self::Error>>;
 }

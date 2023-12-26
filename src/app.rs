@@ -73,8 +73,11 @@ where
 
     let router = axum::Router::new()
         .nest("/custodian", routes::key_custodian::serve())
-        .with_state(shared_state)
-        .route("/health", routing::get(routes::health::health));
+        .route(
+            "/health",
+            routing::get(routes::health::health::<routes::health::Custodian, SharedState>),
+        )
+        .with_state(shared_state);
 
     let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
     Ok(server)
@@ -110,8 +113,11 @@ where
                 state.clone(),
             ),
         )
+        .route(
+            "/health",
+            routing::get(routes::health::health::<routes::health::Locker, AppState>),
+        )
         .with_state(state.clone())
-        .route("/health", routing::get(routes::health::health))
         .layer(
             tower_trace::TraceLayer::new_for_http()
                 .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))

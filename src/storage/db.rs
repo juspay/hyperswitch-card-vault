@@ -1,6 +1,6 @@
 use diesel::BoolExpressionMethods;
 use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
-use diesel_async::RunQueryDsl;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use masking::ExposeInterface;
 use masking::Secret;
 
@@ -256,5 +256,48 @@ impl super::HashInterface for Storage {
                     .change_error(error::StorageError::InsertError)?)
             }
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl super::TestInterface for Storage {
+    type Error = error::TestDBError;
+
+    async fn test(&self) -> Result<(), ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        let _data = conn
+            .test_transaction(|x| {
+                Box::pin(async {
+                    let query =
+                        diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+                    let _x: i32 = query
+                        .get_result(x)
+                        .await
+                        .change_error(error::StorageError::FindError)?;
+
+                    diesel::insert_into(types::HashTable::table())
+                        .values(types::HashTableNew {
+                            hash_id: "test".to_string(),
+                            data_hash: b"0".to_vec(),
+                        })
+                        .execute(x)
+                        .await
+                        .change_error(error::StorageError::InsertError)?;
+
+                    diesel::delete(
+                        types::HashTable::table()
+                            .filter(schema::hash_table::hash_id.eq("test".to_string())),
+                    )
+                    .execute(x)
+                    .await
+                    .change_error(error::StorageError::DeleteError)?;
+
+                    Ok::<_, ContainerError<Self::Error>>(())
+                })
+            })
+            .await;
+
+        Ok(())
     }
 }
