@@ -77,6 +77,23 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
     }
 }
 
+error_transform!(super::StorageError => super::TestDBError);
+impl<'a> From<&'a super::StorageError> for super::TestDBError {
+    fn from(value: &'a super::StorageError) -> Self {
+        match value {
+            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
+                Self::DBError
+            }
+            super::StorageError::FindError => Self::DBReadError,
+            super::StorageError::InsertError => Self::DBWriteError,
+            super::StorageError::DeleteError => Self::DBDeleteError,
+            super::StorageError::DecryptionError | super::StorageError::EncryptionError => {
+                Self::UnknownError
+            }
+        }
+    }
+}
+
 error_transform!(super::CryptoError => super::HashDBError);
 impl<'a> From<&'a super::CryptoError> for super::HashDBError {
     fn from(value: &'a super::CryptoError) -> Self {
@@ -132,6 +149,19 @@ impl<'a> From<&'a super::HashDBError> for super::ApiError {
             super::HashDBError::DBFilterError => Self::RetrieveDataFailed("hash table"),
             super::HashDBError::DBInsertError => Self::DatabaseInsertFailed("hash table"),
             super::HashDBError::UnknownError => Self::UnknownError,
+        }
+    }
+}
+
+error_transform!(super::TestDBError => super::ApiError);
+impl<'a> From<&'a super::TestDBError> for super::ApiError {
+    fn from(value: &'a super::TestDBError) -> Self {
+        match value {
+            super::TestDBError::DBError => Self::DatabaseError,
+            super::TestDBError::UnknownError => Self::UnknownError,
+            super::TestDBError::DBWriteError => Self::DatabaseInsertFailed("TestFailed"),
+            super::TestDBError::DBReadError => Self::RetrieveDataFailed("Test Failed"),
+            super::TestDBError::DBDeleteError => Self::DatabaseDeleteFailed("Test Failed"),
         }
     }
 }
