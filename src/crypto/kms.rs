@@ -40,7 +40,10 @@ impl KmsClient {
     /// Constructs a new KMS client.
     pub async fn new(config: &KmsConfig) -> Self {
         let region_provider = RegionProviderChain::first_try(Region::new(config.region.clone()));
-        let sdk_config = aws_config::from_env().region(region_provider).load().await;
+        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
 
         Self {
             inner_client: Client::new(&sdk_config),

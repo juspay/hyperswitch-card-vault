@@ -4,6 +4,24 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.2.0 (2023-12-26)
+
+### Features
+
+- **router:** Use only card number for card duplication check ([#57](https://github.com/juspay/hyperswitch-card-vault/pull/57)) ([`5781603`](https://github.com/juspay/hyperswitch-card-vault/commit/57816033433ee6355a856e0dacd57688847ba1f1))
+
+### Miscellaneous Tasks
+
+- **deps:** Update version of aws dependencies ([#54](https://github.com/juspay/hyperswitch-card-vault/pull/54)) ([`1142449`](https://github.com/juspay/hyperswitch-card-vault/commit/1142449795080293aa2fad780a53e553811de3e6))
+- **utils:**
+  - Add jwe operations in utils binary ([#60](https://github.com/juspay/hyperswitch-card-vault/pull/60)) ([`68f3455`](https://github.com/juspay/hyperswitch-card-vault/commit/68f34554838bb00141eb0e10256cf6664dd383d6))
+  - Fix jwe operations in utils binary ([#61](https://github.com/juspay/hyperswitch-card-vault/pull/61)) ([`94016bb`](https://github.com/juspay/hyperswitch-card-vault/commit/94016bb1983d5d7f7b624e57900e256bf5409bf0))
+
+**Full Changelog:** [`v0.1.3...v0.2.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.1.3...v0.2.0)
+
+- - -
+
+
 ## 0.1.3 (2023-11-24)
 
 ### Bug Fixes
