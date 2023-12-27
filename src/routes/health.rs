@@ -33,9 +33,12 @@ pub enum State {
     Failing,
 }
 
+#[cfg(feature = "key_custodian")]
 pub struct Custodian;
+
 pub struct Locker;
 
+#[cfg(feature = "key_custodian")]
 #[async_trait::async_trait]
 impl HealthCheck for Custodian {
     type State = app::SharedState;
