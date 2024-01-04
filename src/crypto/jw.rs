@@ -25,6 +25,18 @@ impl JWEncryption {
     }
 }
 
+impl JWEncryption {
+    pub fn new(
+        public_key: impl Into<masking::Secret<String>>,
+        private_key: impl Into<masking::Secret<String>>,
+    ) -> Self {
+        Self {
+            private_key: private_key.into(),
+            public_key: public_key.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JwsBody {
     pub header: String,
