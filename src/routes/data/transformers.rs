@@ -6,7 +6,7 @@ use crate::{
     storage,
 };
 
-use super::types;
+use super::types::{self, DataDuplicationCheck};
 
 impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
     for storage::types::LockerNew<'a>
@@ -38,12 +38,17 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
     }
 }
 
-impl From<storage::types::Locker> for super::types::StoreCardResponse {
-    fn from(value: storage::types::Locker) -> Self {
+impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
+    for super::types::StoreCardResponse
+{
+    fn from(
+        (duplication_check, value): (Option<DataDuplicationCheck>, storage::types::Locker),
+    ) -> Self {
         Self {
             status: types::Status::Ok,
             payload: Some(super::types::StoreCardRespPayload {
                 card_reference: value.locker_id.expose(),
+                duplication_check,
                 dedup: None,
             }),
         }
@@ -68,6 +73,18 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
                 enc_card_data,
             }),
         })
+    }
+}
+
+impl std::cmp::PartialEq<types::Data> for super::types::StoredData {
+    fn eq(&self, other: &types::Data) -> bool {
+        match (self, other) {
+            (Self::EncData(request_enc_card_data), types::Data::EncData { enc_card_data }) => {
+                request_enc_card_data == enc_card_data
+            }
+            (Self::CardData(request_card), types::Data::Card { card }) => request_card == card,
+            _ => false,
+        }
     }
 }
 
@@ -97,4 +114,24 @@ where
     let hash_data = hash_algorithm.encode(json_data)?;
 
     Ok(hash_data)
+}
+
+pub fn validate_card_metadata(
+    stored_payload: Option<&storage::types::Locker>,
+    request_data: &types::Data,
+) -> Result<Option<DataDuplicationCheck>, ContainerError<error::ApiError>> {
+    stored_payload
+        .map(|stored_data| {
+            let stored_data =
+                serde_json::from_slice::<types::StoredData>(stored_data.enc_data.peek())
+                    .change_error(error::ApiError::DecodingError)?;
+
+            let is_metadata_duplicated = stored_data.eq(request_data);
+
+            Ok(match is_metadata_duplicated {
+                true => DataDuplicationCheck::Duplicated,
+                false => DataDuplicationCheck::MetaDataChanged,
+            })
+        })
+        .transpose()
 }
