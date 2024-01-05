@@ -16,10 +16,37 @@ pub trait Encode<I, O> {
     fn encode(&self, input: I) -> Self::ReturnType<O>;
 }
 
+pub trait Decode<I, O> {
+    type ReturnType<'b, T>
+    where
+        Self: 'b;
+    fn decode(&self, input: O) -> Self::ReturnType<'_, I>;
+}
+
+pub trait FromEncoded: Sized {
+    fn from_encoded(input: String) -> Option<Self>;
+}
+
+impl FromEncoded for masking::Secret<String> {
+    fn from_encoded(input: String) -> Option<Self> {
+        Some(input.into())
+    }
+}
+
+impl FromEncoded for Vec<u8> {
+    fn from_encoded(input: String) -> Option<Self> {
+        hex::decode(input).ok()
+    }
+}
+
 pub mod aes;
+pub mod hollow;
 pub mod jw;
 #[cfg(feature = "kms")]
 pub mod kms;
+pub mod multiple;
+#[cfg(feature = "hashicorp-vault")]
+pub mod vault;
 
 #[cfg(feature = "kms")]
 pub mod consts {

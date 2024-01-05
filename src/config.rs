@@ -2,6 +2,9 @@ use super::logger::config::Log;
 #[cfg(feature = "kms")]
 use crate::crypto::kms;
 
+#[cfg(feature = "hashicorp-vault")]
+use crate::crypto::vault;
+
 use std::path::PathBuf;
 
 #[derive(Clone, serde::Deserialize, Debug)]
@@ -9,11 +12,23 @@ pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
-    #[cfg(feature = "kms")]
-    pub kms: kms::KmsConfig,
+    // #[cfg(feature = "kms")]
+    // pub kms: kms::KmsConfig,
+    #[serde(flatten)]
+    pub key_management_service: Option<EncryptionScheme>,
     pub log: Log,
     #[cfg(feature = "limit")]
     pub limit: Limit,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum EncryptionScheme {
+    #[cfg(feature = "kms")]
+    AwsKms(kms::KmsConfig),
+    #[cfg(feature = "hashicorp-vault")]
+    VaultKv2(vault::VaultConfig),
 }
 
 #[cfg(feature = "limit")]
@@ -60,10 +75,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let deserialized_str: String = serde::Deserialize::deserialize(deserializer)?;
-    #[cfg(not(feature = "kms"))]
-    let deserialized_str = hex::decode(deserialized_str)
-        .map_err(|_| serde::de::Error::custom("error while parsing hex"))?;
-    #[cfg(feature = "kms")]
+
     let deserialized_str = deserialized_str.into_bytes();
 
     Ok(deserialized_str)
