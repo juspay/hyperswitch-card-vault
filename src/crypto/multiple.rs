@@ -8,8 +8,8 @@ pub enum Multiple {
     #[cfg(feature = "kms")]
     AwsKms(super::kms::KmsClient),
     #[cfg(feature = "hashicorp-vault")]
-    VaultKv2(super::vault::HashiCorpVault<super::vault::Kv2>),
-    None(super::hollow::Empty),
+    VaultKv2(super::hcvault::HashiCorpVault<super::hcvault::Kv2>),
+    None(super::hollow::NoEncryption),
 }
 
 impl Multiple {
@@ -24,9 +24,9 @@ impl Multiple {
             }
             #[cfg(feature = "hashicorp-vault")]
             Some(crate::config::EncryptionScheme::VaultKv2(config)) => {
-                Ok(Self::VaultKv2(super::vault::HashiCorpVault::new(config)?))
+                Ok(Self::VaultKv2(super::hcvault::HashiCorpVault::new(config)?))
             }
-            None => Ok(Self::None(super::hollow::Empty)),
+            None => Ok(Self::None(super::hollow::NoEncryption)),
             _ => Err(error::ConfigurationError::KmsDecryptError("unreachable state").into()),
         }
     }

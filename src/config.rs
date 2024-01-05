@@ -3,7 +3,7 @@ use super::logger::config::Log;
 use crate::crypto::kms;
 
 #[cfg(feature = "hashicorp-vault")]
-use crate::crypto::vault;
+use crate::crypto::hcvault;
 
 use std::path::PathBuf;
 
@@ -12,8 +12,6 @@ pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
-    // #[cfg(feature = "kms")]
-    // pub kms: kms::KmsConfig,
     #[serde(flatten)]
     pub key_management_service: Option<EncryptionScheme>,
     pub log: Log,
@@ -28,7 +26,7 @@ pub enum EncryptionScheme {
     #[cfg(feature = "kms")]
     AwsKms(kms::KmsConfig),
     #[cfg(feature = "hashicorp-vault")]
-    VaultKv2(vault::VaultConfig),
+    VaultKv2(hcvault::HashiCorpVaultConfig),
 }
 
 #[cfg(feature = "limit")]

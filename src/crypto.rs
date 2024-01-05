@@ -40,13 +40,13 @@ impl FromEncoded for Vec<u8> {
 }
 
 pub mod aes;
+#[cfg(feature = "hashicorp-vault")]
+pub mod hcvault;
 pub mod hollow;
 pub mod jw;
 #[cfg(feature = "kms")]
 pub mod kms;
 pub mod multiple;
-#[cfg(feature = "hashicorp-vault")]
-pub mod vault;
 
 #[cfg(feature = "kms")]
 pub mod consts {

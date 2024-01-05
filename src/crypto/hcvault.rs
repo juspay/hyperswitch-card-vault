@@ -8,7 +8,7 @@ use crate::error::{ConfigurationError, KmsError};
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(default)]
-pub struct VaultConfig {
+pub struct HashiCorpVaultConfig {
     pub url: String,
 
     pub token: String,
@@ -16,7 +16,7 @@ pub struct VaultConfig {
 
 impl<Interface> HashiCorpVault<Interface> {
     pub fn new(
-        config: &VaultConfig,
+        config: &HashiCorpVaultConfig,
     ) -> error_stack::Result<Self, crate::error::ConfigurationError> {
         VaultClient::new(
             VaultClientSettingsBuilder::default()
