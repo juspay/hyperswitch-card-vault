@@ -7,7 +7,7 @@ default-run = "locker"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["release"]
+default = []
 release = ["aws-kms", "middleware", "key_custodian", "limit", "hashicorp-vault"]
 aws-kms = ["dep:aws-config", "dep:aws-sdk-kms"]
 hashicorp-vault = ["dep:vaultrs"]
