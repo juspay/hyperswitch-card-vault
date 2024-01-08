@@ -142,3 +142,85 @@ impl Config {
         config_path
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[derive(Clone, serde::Deserialize, Debug)]
+    struct TestDeser {
+        #[serde(flatten)]
+        pub key_management_service: Option<EncryptionScheme>,
+    }
+
+    #[test]
+    fn test_non_case() {
+        let data = r#"
+
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(parsed.key_management_service.is_none())
+    }
+
+    #[cfg(feature = "kms")]
+    #[test]
+    fn test_aws_kms_case() {
+        let data = r#"
+        [aws_kms]
+        key_id = "123"
+        region = "abc"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.key_management_service {
+            Some(EncryptionScheme::AwsKms(value)) => {
+                assert!(value.key_id == "123" && value.region == "abc")
+            }
+            _ => assert!(false)
+
+        }
+    }
+
+
+    #[cfg(feature = "hashicorp-vault")]
+    #[test]
+    fn test_hashicorp_case() {
+        let data = r#"
+        [vault_kv2]
+        url = "123"
+        token = "abc"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.key_management_service {
+            Some(EncryptionScheme::VaultKv2(value)) => {
+                assert!(value.url == "123" && value.token == "abc")
+            }
+            _ => assert!(false)
+
+        }
+    }
+
+
+
+
+
+}

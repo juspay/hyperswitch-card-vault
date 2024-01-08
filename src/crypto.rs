@@ -55,3 +55,29 @@ pub mod consts {
         base64::engine::general_purpose::STANDARD;
 }
 pub mod sha;
+
+#[cfg(test)]
+mod test {
+    use masking::ExposeInterface;
+
+    use super::*;
+    #[test]
+    fn test_from_encoded_string() {
+        let value = "123";
+        assert_eq!(
+            value,
+            masking::Secret::<String>::from_encoded(value.to_string())
+                .unwrap()
+                .expose()
+        );
+    }
+
+    #[test]
+    fn test_from_encoded_bytes() {
+        let value = "ff";
+        assert_eq!(
+            vec![255],
+            Vec::<u8>::from_encoded(value.to_string()).unwrap()
+        );
+    }
+}
