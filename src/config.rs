@@ -1,6 +1,6 @@
 use super::logger::config::Log;
-#[cfg(feature = "kms")]
-use crate::crypto::kms;
+#[cfg(feature = "aws-kms")]
+use crate::crypto::aws_kms;
 
 #[cfg(feature = "hashicorp-vault")]
 use crate::crypto::hcvault;
@@ -23,8 +23,8 @@ pub struct Config {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum EncryptionScheme {
-    #[cfg(feature = "kms")]
-    AwsKms(kms::KmsConfig),
+    #[cfg(feature = "aws-kms")]
+    AwsKms(aws_kms::KmsConfig),
     #[cfg(feature = "hashicorp-vault")]
     VaultKv2(hcvault::HashiCorpVaultConfig),
 }
@@ -144,7 +144,12 @@ impl Config {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::assertions_on_constants
+    )]
     use super::*;
 
     #[derive(Clone, serde::Deserialize, Debug)]
@@ -168,7 +173,7 @@ mod test {
         assert!(parsed.key_management_service.is_none())
     }
 
-    #[cfg(feature = "kms")]
+    #[cfg(feature = "aws-kms")]
     #[test]
     fn test_aws_kms_case() {
         let data = r#"
@@ -188,11 +193,9 @@ mod test {
             Some(EncryptionScheme::AwsKms(value)) => {
                 assert!(value.key_id == "123" && value.region == "abc")
             }
-            _ => assert!(false)
-
+            _ => assert!(false),
         }
     }
-
 
     #[cfg(feature = "hashicorp-vault")]
     #[test]
@@ -214,13 +217,7 @@ mod test {
             Some(EncryptionScheme::VaultKv2(value)) => {
                 assert!(value.url == "123" && value.token == "abc")
             }
-            _ => assert!(false)
-
+            _ => assert!(false),
         }
     }
-
-
-
-
-
 }

@@ -40,15 +40,15 @@ impl FromEncoded for Vec<u8> {
 }
 
 pub mod aes;
+#[cfg(feature = "aws-kms")]
+pub mod aws_kms;
 #[cfg(feature = "hashicorp-vault")]
 pub mod hcvault;
 pub mod hollow;
 pub mod jw;
-#[cfg(feature = "kms")]
-pub mod kms;
 pub mod multiple;
 
-#[cfg(feature = "kms")]
+#[cfg(feature = "aws-kms")]
 pub mod consts {
     /// General purpose base64 engine
     pub(crate) const BASE64_ENGINE: base64::engine::GeneralPurpose =
@@ -57,7 +57,8 @@ pub mod consts {
 pub mod sha;
 
 #[cfg(test)]
-mod test {
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use masking::ExposeInterface;
 
     use super::*;
