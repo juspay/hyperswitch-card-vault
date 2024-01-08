@@ -59,9 +59,10 @@ impl Engine for Kv2 {
             let path = split.next().ok_or(KmsError::IncompleteData)?;
             let key = split.next().unwrap_or("value");
 
-            let mut output = vaultrs::kv2::read::<HashMap<String, String>>(&client.client, mount, path)
-                .await
-                .change_context(KmsError::FetchFailed)?;
+            let mut output =
+                vaultrs::kv2::read::<HashMap<String, String>>(&client.client, mount, path)
+                    .await
+                    .change_context(KmsError::FetchFailed)?;
 
             Ok(output.remove(key).ok_or(KmsError::ParseError)?)
         })
