@@ -112,7 +112,8 @@ impl super::Encryption<Vec<u8>, JweBody> for JWEncryption {
 
     fn decrypt(&self, input: JweBody) -> Self::ReturnType<'_, Vec<u8>> {
         let jwe_encoded = input.get_dotted_jwe();
-        let jwe_decrypted = decrypt_jwe(&jwe_encoded, self.private_key.peek(), self.decryption_algo)?;
+        let jwe_decrypted =
+            decrypt_jwe(&jwe_encoded, self.private_key.peek(), self.decryption_algo)?;
 
         let jws_parsed: JwsBody = serde_json::from_str(&jwe_decrypted)
             .map_err(|_| error::CryptoError::InvalidData("Failed while extracting jws body"))?;

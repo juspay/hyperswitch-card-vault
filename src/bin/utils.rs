@@ -81,9 +81,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &public_key.ok_or(error::CryptoError::InvalidData("public key not found"))?,
             )?;
             jwe_operation(|x| {
-                JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP).encrypt(x).and_then(|x| {
-                 Ok(serde_json::to_vec(&x).map_err(error::CryptoError::SerdeJsonError)?)
-                })
+                JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP)
+                    .encrypt(x)
+                    .and_then(|x| {
+                        Ok(serde_json::to_vec(&x).map_err(error::CryptoError::SerdeJsonError)?)
+                    })
             })?;
         }
         SubCommand::JweDecrypt(JweD {
@@ -97,7 +99,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &public_key.ok_or(error::CryptoError::InvalidData("private key not found"))?,
             )?;
             jwe_operation(|x| {
-                serde_json::from_slice(&x).map_err(error::CryptoError::SerdeJsonError).map_err(Into::into).and_then(|x| JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP).decrypt(x))
+                serde_json::from_slice(&x)
+                    .map_err(error::CryptoError::SerdeJsonError)
+                    .map_err(Into::into)
+                    .and_then(|x| {
+                        JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP)
+                            .decrypt(x)
+                    })
                 // (x)
             })?;
         }

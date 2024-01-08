@@ -4,11 +4,7 @@ use crate::crypto::Encryption;
 use crate::error::{self, ContainerError, ResultContainerExt};
 use axum::body::Body;
 use axum::http::{request, response};
-use axum::{
-    extract,
-    http::Request,
-    middleware::Next,
-};
+use axum::{extract, http::Request, middleware::Next};
 
 use http_body_util::BodyExt;
 use josekit::jwe;
@@ -41,7 +37,6 @@ pub async fn middleware(
             "Failed to read response body for jws signing",
         ))?
         .to_bytes();
-
 
     let jwe_payload = keys.encrypt(response_body.to_vec())?;
 
