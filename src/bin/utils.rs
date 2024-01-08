@@ -4,9 +4,16 @@
 //! Simple Cli tool for generating keys to be used in the locker before deployment
 //!
 
-use tartarus::crypto::{
-    aes::{generate_aes256_key, GcmAes256},
-    Encryption,
+use std::io::{stdin, stdout, Read, Write};
+
+use josekit::jwe;
+use tartarus::{
+    crypto::{
+        aes::{generate_aes256_key, GcmAes256},
+        jw::JWEncryption,
+        Encryption,
+    },
+    error,
 };
 
 #[derive(argh::FromArgs, Debug)]
@@ -21,6 +28,8 @@ struct Cli {
 #[non_exhaustive]
 enum SubCommand {
     MasterKey(MasterKey),
+    JweEncrypt(JweE),
+    JweDecrypt(JweD),
 }
 
 #[derive(argh::FromArgs, Debug)]
@@ -32,11 +41,66 @@ struct MasterKey {
     without_custodian: bool,
 }
 
+#[derive(argh::FromArgs, Debug)]
+#[argh(subcommand, name = "jwe-encrypt")]
+/// Perform JWE operation
+struct JweE {
+    /// private key to be used to perform jwe operation
+    #[argh(option, long = "priv")]
+    private_key: Option<String>,
+    /// public key to be used to perform jwe operation
+    #[argh(option, long = "pub")]
+    public_key: Option<String>,
+}
+
+#[derive(argh::FromArgs, Debug)]
+#[argh(subcommand, name = "jwe-decrypt")]
+/// Perform JWE operation
+struct JweD {
+    /// private key to be used to perform jwe operation
+    #[argh(option, long = "priv")]
+    private_key: Option<String>,
+    /// public key to be used to perform jwe operation
+    #[argh(option, long = "pub")]
+    public_key: Option<String>,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Cli = argh::from_env();
 
     match args.nested {
         SubCommand::MasterKey(master_key_conf) => master_key_generator(master_key_conf)?,
+        SubCommand::JweEncrypt(JweE {
+            private_key,
+            public_key,
+        }) => {
+            let priv_key = read_file_to_string(
+                &private_key.ok_or(error::CryptoError::InvalidData("private key not found"))?,
+            )?;
+            let pub_key = read_file_to_string(
+                &public_key.ok_or(error::CryptoError::InvalidData("public key not found"))?,
+            )?;
+            jwe_operation(|x| {
+                JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP).encrypt(x).and_then(|x| {
+                 Ok(serde_json::to_vec(&x).map_err(error::CryptoError::SerdeJsonError)?)
+                })
+            })?;
+        }
+        SubCommand::JweDecrypt(JweD {
+            private_key,
+            public_key,
+        }) => {
+            let priv_key = read_file_to_string(
+                &private_key.ok_or(error::CryptoError::InvalidData("private key not found"))?,
+            )?;
+            let pub_key = read_file_to_string(
+                &public_key.ok_or(error::CryptoError::InvalidData("private key not found"))?,
+            )?;
+            jwe_operation(|x| {
+                serde_json::from_slice(&x).map_err(error::CryptoError::SerdeJsonError).map_err(Into::into).and_then(|x| JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP).decrypt(x))
+                // (x)
+            })?;
+        }
     }
 
     Ok(())
@@ -60,4 +124,25 @@ fn master_key_generator(master_key_conf: MasterKey) -> Result<(), Box<dyn std::e
 
         Ok(())
     }
+}
+
+fn read_file_to_string(name: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut file = std::fs::File::open(name)?;
+    let mut output = String::new();
+    file.read_to_string(&mut output)?;
+    Ok(output)
+}
+
+fn jwe_operation(
+    op: impl FnOnce(Vec<u8>) -> Result<Vec<u8>, error::ContainerError<error::CryptoError>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = String::new();
+    stdin().read_to_string(&mut input)?;
+
+    // let output = op(input.as_bytes().to_vec())?;
+    let output = op(input.trim().as_bytes().to_vec())?;
+
+    stdout().write_all(&output)?;
+
+    Ok(())
 }

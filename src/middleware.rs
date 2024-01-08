@@ -11,6 +11,7 @@ use axum::{
 };
 
 use http_body_util::BodyExt;
+use josekit::jwe;
 
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
@@ -23,6 +24,8 @@ pub async fn middleware(
     let keys = JWEncryption {
         private_key: state.config.secrets.locker_private_key,
         public_key: state.config.secrets.tenant_public_key,
+        encryption_algo: jwe::RSA_OAEP,
+        decryption_algo: jwe::RSA_OAEP_256,
     };
 
     let jwe_decrypted = keys.decrypt(jwe_body)?;
@@ -38,6 +41,7 @@ pub async fn middleware(
             "Failed to read response body for jws signing",
         ))?
         .to_bytes();
+
 
     let jwe_payload = keys.encrypt(response_body.to_vec())?;
 
