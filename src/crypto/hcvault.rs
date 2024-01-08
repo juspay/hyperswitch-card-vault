@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, pin::Pin};
+use std::{collections::HashMap, marker::PhantomData, pin::Pin};
 
 use error_stack::ResultExt;
 use futures_util::Future;
@@ -57,10 +57,13 @@ impl Engine for Kv2 {
             let mut split = location.split(':');
             let mount = split.next().ok_or(KmsError::IncompleteData)?;
             let path = split.next().ok_or(KmsError::IncompleteData)?;
+            let key = split.next().unwrap_or("value");
 
-            vaultrs::kv2::read(&client.client, mount, path)
+            let mut output = vaultrs::kv2::read::<HashMap<String, String>>(&client.client, mount, path)
                 .await
-                .change_context(KmsError::FetchFailed)
+                .change_context(KmsError::FetchFailed)?;
+
+            Ok(output.remove(key).ok_or(KmsError::ParseError)?)
         })
     }
 }

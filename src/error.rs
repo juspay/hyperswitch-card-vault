@@ -142,6 +142,9 @@ pub enum KmsError {
 
     #[error("Failed while fetching data from the server")]
     FetchFailed,
+
+    #[error("Failed while parsing the response")]
+    ParseError,
 }
 
 impl axum::response::IntoResponse for ApiError {
