@@ -25,6 +25,21 @@ master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308" 
 tenant_public_key = ""  # The tenant public key to which the communication will be established with
 locker_private_key = "" # the locker private key to used used and the private key present with the tenant
 
-[kms]
+# To protect secret/sensitive values like:
+# - database.passwod
+# - secrets.master_key
+# - secrets.tenant_public_key
+# - secrets.locker_private_key
+# 
+# Following possible encryption schemes are used, of of them are mutually exclusive, the sections are:
+# - aws_kms (AWS KMS Symmetric Encryption)
+# - vault_kv2 (HashiCorp Vault Secrets Engine KV version 2)
+
+
+[aws_kms]
 region = "us-west-2" # the kms details needed to perform kms decryption of the above mentioned environment variables
 key_id = "abc"
+
+[vault_kv2]
+url = "http://127.0.0.1:8200" # The URL of the hosted HashiCorp vault
+token = "hvs.abc" # The secret token to access and communicate with the vault
