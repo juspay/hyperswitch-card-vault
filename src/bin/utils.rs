@@ -84,7 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP)
                     .encrypt(payload)
                     .and_then(|payload| {
-                        Ok(serde_json::to_vec(&payload).map_err(error::CryptoError::SerdeJsonError)?)
+                        Ok(serde_json::to_vec(&payload)
+                            .map_err(error::CryptoError::SerdeJsonError)?)
                     })
             })?;
         }
