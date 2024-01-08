@@ -16,7 +16,7 @@ pub enum ConfigurationError {
     #[error("invalid host for socket")]
     AddressError(#[from] std::net::AddrParseError),
     #[error("invalid host for socket")]
-    IOErro(#[from] std::io::Error),
+    IOError(#[from] std::io::Error),
     #[error("Error while connecting/creating database pool")]
     DatabaseError,
     #[error("Failed to KMS decrypt: {0}")]
