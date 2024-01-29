@@ -7,13 +7,14 @@ default-run = "locker"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
-release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault"]
+default = ["caching"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
 middleware = []
 key_custodian = []
+caching = ["dep:moka"]
 
 [dependencies]
 aws-config = { version = "1.0.1", optional = true }
@@ -60,6 +61,7 @@ hex = "0.4.3"
 time = "0.3.30"
 async-trait = "0.1.74"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng"] }
+moka = { version = "0.12.1", features = ["future"], optional = true }
 
 argh = "0.1.12"
 
