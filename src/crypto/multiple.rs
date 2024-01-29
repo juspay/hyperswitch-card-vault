@@ -5,9 +5,9 @@ use futures_util::Future;
 use crate::error::{self, KmsError};
 
 pub enum Multiple {
-    #[cfg(feature = "aws-kms")]
+    #[cfg(feature = "kms-aws")]
     AwsKms(super::aws_kms::KmsClient),
-    #[cfg(feature = "hashicorp-vault")]
+    #[cfg(feature = "kms-hashicorp-vault")]
     VaultKv2(super::hcvault::HashiCorpVault<super::hcvault::Kv2>),
     None(super::hollow::NoEncryption),
 }
@@ -18,11 +18,11 @@ impl Multiple {
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[allow(unreachable_patterns)]
         match config {
-            #[cfg(feature = "aws-kms")]
+            #[cfg(feature = "kms-aws")]
             Some(crate::config::EncryptionScheme::AwsKms(config)) => {
                 Ok(Self::AwsKms(super::aws_kms::KmsClient::new(config).await))
             }
-            #[cfg(feature = "hashicorp-vault")]
+            #[cfg(feature = "kms-hashicorp-vault")]
             Some(crate::config::EncryptionScheme::VaultKv2(config)) => {
                 Ok(Self::VaultKv2(super::hcvault::HashiCorpVault::new(config)?))
             }
@@ -37,9 +37,9 @@ impl<I: super::FromEncoded> super::Decode<I, String> for Multiple {
 
     fn decode(&self, input: String) -> Self::ReturnType<'_, I> {
         match self {
-            #[cfg(feature = "aws-kms")]
+            #[cfg(feature = "kms-aws")]
             Self::AwsKms(client) => client.decode(input),
-            #[cfg(feature = "hashicorp-vault")]
+            #[cfg(feature = "kms-hashicorp-vault")]
             Self::VaultKv2(client) => client.decode(input),
             Self::None(client) => Box::pin(async move {
                 client

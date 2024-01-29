@@ -40,15 +40,15 @@ impl FromEncoded for Vec<u8> {
 }
 
 pub mod aes;
-#[cfg(feature = "aws-kms")]
+#[cfg(feature = "kms-aws")]
 pub mod aws_kms;
-#[cfg(feature = "hashicorp-vault")]
+#[cfg(feature = "kms-hashicorp-vault")]
 pub mod hcvault;
 pub mod hollow;
 pub mod jw;
 pub mod multiple;
 
-#[cfg(feature = "aws-kms")]
+#[cfg(feature = "kms-aws")]
 pub mod consts {
     /// General purpose base64 engine
     pub(crate) const BASE64_ENGINE: base64::engine::GeneralPurpose =

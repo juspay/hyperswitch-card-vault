@@ -1,8 +1,8 @@
 use super::logger::config::Log;
-#[cfg(feature = "aws-kms")]
+#[cfg(feature = "kms-aws")]
 use crate::crypto::aws_kms;
 
-#[cfg(feature = "hashicorp-vault")]
+#[cfg(feature = "kms-hashicorp-vault")]
 use crate::crypto::hcvault;
 
 use std::path::PathBuf;
@@ -23,9 +23,9 @@ pub struct Config {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum EncryptionScheme {
-    #[cfg(feature = "aws-kms")]
+    #[cfg(feature = "kms-aws")]
     AwsKms(aws_kms::KmsConfig),
-    #[cfg(feature = "hashicorp-vault")]
+    #[cfg(feature = "kms-hashicorp-vault")]
     VaultKv2(hcvault::HashiCorpVaultConfig),
 }
 
@@ -173,7 +173,7 @@ mod tests {
         assert!(parsed.key_management_service.is_none())
     }
 
-    #[cfg(feature = "aws-kms")]
+    #[cfg(feature = "kms-aws")]
     #[test]
     fn test_aws_kms_case() {
         let data = r#"
@@ -197,7 +197,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "hashicorp-vault")]
+    #[cfg(feature = "kms-hashicorp-vault")]
     #[test]
     fn test_hashicorp_case() {
         let data = r#"

@@ -8,9 +8,9 @@ default-run = "locker"
 
 [features]
 default = []
-release = ["aws-kms", "middleware", "key_custodian", "limit", "hashicorp-vault"]
-aws-kms = ["dep:aws-config", "dep:aws-sdk-kms"]
-hashicorp-vault = ["dep:vaultrs"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault"]
+kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
+kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
 middleware = []
 key_custodian = []
