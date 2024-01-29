@@ -1,7 +1,5 @@
 use axum::routing;
 use error_stack::ResultExt;
-use hyper::server::conn;
-#[cfg(feature = "kms")]
 use masking::PeekInterface;
 #[cfg(feature = "key_custodian")]
 use tokio::sync::{mpsc::Sender, RwLock};
@@ -11,14 +9,10 @@ use tower_http::trace as tower_trace;
 use std::sync::Arc;
 
 use crate::{
-    config, error, routes,
+    config,
+    crypto::{self, Decode},
+    error, routes,
     storage::{self},
-};
-
-#[cfg(feature = "kms")]
-use crate::crypto::{
-    kms::{self, Base64Encoded, KmsData, Raw},
-    Encryption,
 };
 
 ///
@@ -57,7 +51,7 @@ pub async fn server1_builder(
     state: Arc<RwLock<AppState>>,
     server_tx: Sender<()>,
 ) -> Result<
-    hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
+    axum::serve::Serve<routing::IntoMakeService<axum::Router>, axum::Router>,
     error::ConfigurationError,
 >
 where
@@ -76,7 +70,9 @@ where
         .with_state(shared_state)
         .route("/health", routing::get(routes::health::health));
 
-    let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
+    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
+    let server = axum::serve(tcp_listener, router.into_make_service());
+
     Ok(server)
 }
 
@@ -87,7 +83,7 @@ where
 pub async fn server2_builder(
     state: &AppState,
 ) -> Result<
-    hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
+    axum::serve::Serve<routing::IntoMakeService<axum::Router>, axum::Router>,
     error::ConfigurationError,
 >
 where
@@ -126,8 +122,8 @@ where
                         .level(tracing::Level::ERROR),
                 ),
         );
-
-    let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
+    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
+    let server = axum::serve(tcp_listener, router.into_make_service());
     Ok(server)
 }
 
@@ -145,66 +141,39 @@ impl AppState {
     pub async fn new(
         config: &mut config::Config,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
-        #[cfg(feature = "kms")]
-        {
-            let kms_client = kms::get_kms_client(&config.kms).await;
+        let client = Self::kms_client_builder(config).await?;
 
-            let master_key_kms_input: KmsData<Base64Encoded> = KmsData::new(
+        config.secrets.master_key = client
+            .decode(
                 String::from_utf8(config.secrets.master_key.clone())
-                    .expect("Failed while converting bytes to String"),
-            );
-            let kms_decrypted_master_key: KmsData<Raw> = kms_client
-                .decrypt(master_key_kms_input)
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
-            config.secrets.master_key = hex::decode(
-                String::from_utf8(kms_decrypted_master_key.data)
-                    .expect("Failed while converting bytes to String"),
+                    .expect("Failed while converting master key to `String`"),
             )
-            .expect("Failed to hex decode master_key");
+            .await
+            .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
 
-            #[cfg(feature = "middleware")]
-            {
-                let tenant_public_key_kms_input: KmsData<Base64Encoded> =
-                    KmsData::new(config.secrets.tenant_public_key.peek().clone());
-                let kms_decrypted_tenant_public_key: KmsData<Raw> = kms_client
-                    .decrypt(tenant_public_key_kms_input)
-                    .await
-                    .change_context(error::ConfigurationError::KmsDecryptError(
-                        "tenant_public_key",
-                    ))?;
-                config.secrets.tenant_public_key =
-                    String::from_utf8(kms_decrypted_tenant_public_key.data)
-                        .expect("Failed while converting bytes to String")
-                        .into();
-            }
-
-            #[cfg(feature = "middleware")]
-            {
-                let locker_private_key_kms_input: KmsData<Base64Encoded> =
-                    KmsData::new(config.secrets.locker_private_key.peek().clone());
-                let kms_decrypted_locker_private_key: KmsData<Raw> = kms_client
-                    .decrypt(locker_private_key_kms_input)
-                    .await
-                    .change_context(error::ConfigurationError::KmsDecryptError(
-                        "locker_private_key",
-                    ))?;
-                config.secrets.locker_private_key =
-                    String::from_utf8(kms_decrypted_locker_private_key.data)
-                        .expect("Failed while converting bytes to String")
-                        .into();
-            }
-
-            let db_password_kms_input: KmsData<Base64Encoded> =
-                KmsData::new(config.database.password.peek().clone());
-            let kms_decrypted_db_password: KmsData<Raw> = kms_client
-                .decrypt(db_password_kms_input)
+        #[cfg(feature = "middleware")]
+        {
+            config.secrets.tenant_public_key = client
+                .decode(config.secrets.tenant_public_key.peek().clone())
                 .await
-                .change_context(error::ConfigurationError::KmsDecryptError("db_password"))?;
-            config.database.password = String::from_utf8(kms_decrypted_db_password.data)
-                .expect("Failed while converting bytes to String")
-                .into();
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "tenant_public_key",
+                ))?;
+
+            config.secrets.locker_private_key = client
+                .decode(config.secrets.locker_private_key.peek().clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "locker_private_key",
+                ))?;
         }
+
+        config.database.password = client
+            .decode(config.database.password.peek().clone())
+            .await
+            .change_context(error::ConfigurationError::KmsDecryptError(
+                "database_password",
+            ))?;
         Ok(Self {
             db: storage::Storage::new(&config.database)
                 .await
@@ -212,5 +181,11 @@ impl AppState {
 
             config: config.clone(),
         })
+    }
+
+    pub async fn kms_client_builder(
+        config: &config::Config,
+    ) -> error_stack::Result<crypto::multiple::Multiple, error::ConfigurationError> {
+        crypto::multiple::Multiple::build(config.key_management_service.as_ref()).await
     }
 }
