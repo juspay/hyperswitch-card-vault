@@ -63,6 +63,3 @@ Sau7H1Bhzy5G7rwt05LNpU6nFcAGVaZtzl4/+FYfYIulubYjuSEh72yuBHHyvi1/
 -----END RSA PRIVATE KEY-----
 """
 
-[kms]
-region = "us-west-2"
-key_id = "abc"

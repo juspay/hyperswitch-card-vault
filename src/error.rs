@@ -19,6 +19,8 @@ pub enum ConfigurationError {
     DatabaseError,
     #[error("Failed to KMS decrypt: {0}")]
     KmsDecryptError(&'static str),
+    #[error("Failed while building Vault Client")]
+    VaultClientError,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -103,6 +105,46 @@ pub enum ApiError {
 
     #[error("Failed while validation: {0}")]
     ValidationError(&'static str),
+}
+
+/// Errors that could occur during KMS operations.
+#[derive(Debug, thiserror::Error)]
+pub enum KmsError {
+    /// An error occurred when base64 decoding input data.
+    #[error("Failed to base64 decode input data")]
+    Base64DecodingFailed,
+
+    /// An error occurred when hex decoding input data.
+    #[error("Failed to hex decode input data")]
+    HexDecodingFailed,
+
+    /// An error occurred when KMS decrypting input data.
+    #[error("Failed to KMS decrypt input data")]
+    DecryptionFailed,
+
+    /// The KMS decrypted output does not include a plaintext output.
+    #[error("Missing plaintext KMS decryption output")]
+    MissingPlaintextDecryptionOutput,
+
+    /// An error occurred UTF-8 decoding KMS decrypted output.
+    #[error("Failed to UTF-8 decode decryption output")]
+    Utf8DecodingFailed,
+
+    /// The KMS client has not been initialized.
+    #[error("The KMS client has not been initialized")]
+    KmsClientNotInitialized,
+
+    #[error("This KMS flow is not implemented")]
+    KmsNotImplemented,
+
+    #[error("Provided information about the value is incomplete")]
+    IncompleteData,
+
+    #[error("Failed while fetching data from the server")]
+    FetchFailed,
+
+    #[error("Failed while parsing the response")]
+    ParseError,
 }
 
 impl axum::response::IntoResponse for ApiError {

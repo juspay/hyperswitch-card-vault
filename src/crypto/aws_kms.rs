@@ -1,5 +1,6 @@
 use std::{marker::PhantomData, pin::Pin};
 
+use crate::error::KmsError;
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_kms::{config::Region, primitives::Blob, Client};
 use base64::Engine;
@@ -50,37 +51,6 @@ impl KmsClient {
             key_id: config.key_id.clone(),
         }
     }
-}
-
-/// Errors that could occur during KMS operations.
-#[derive(Debug, thiserror::Error)]
-pub enum KmsError {
-    /// An error occurred when base64 decoding input data.
-    #[error("Failed to base64 decode input data")]
-    Base64DecodingFailed,
-
-    /// An error occurred when hex decoding input data.
-    #[error("Failed to hex decode input data")]
-    HexDecodingFailed,
-
-    /// An error occurred when KMS decrypting input data.
-    #[error("Failed to KMS decrypt input data")]
-    DecryptionFailed,
-
-    /// The KMS decrypted output does not include a plaintext output.
-    #[error("Missing plaintext KMS decryption output")]
-    MissingPlaintextDecryptionOutput,
-
-    /// An error occurred UTF-8 decoding KMS decrypted output.
-    #[error("Failed to UTF-8 decode decryption output")]
-    Utf8DecodingFailed,
-
-    /// The KMS client has not been initialized.
-    #[error("The KMS client has not been initialized")]
-    KmsClientNotInitialized,
-
-    #[error("This KMS flow is not implemented")]
-    KmsNotImplemented,
 }
 
 impl KmsConfig {
@@ -232,5 +202,23 @@ impl Decoder for Raw {
 
     fn decode(input: Self::Data) -> Result<Vec<u8>, Self::Error> {
         Ok(input)
+    }
+}
+
+impl<I: super::FromEncoded> super::Decode<I, String> for KmsClient {
+    type ReturnType<'b, T> = Pin<Box<dyn Future<Output = error_stack::Result<T, KmsError>> + 'b>>;
+
+    fn decode(&self, input: String) -> Self::ReturnType<'_, I> {
+        Box::pin(async move {
+            let data: KmsData<Base64Encoded> = KmsData::new(input);
+            let output: KmsData<Raw> = self.decrypt(data).await?;
+            let output = I::from_encoded(
+                String::from_utf8(output.data).change_context(KmsError::Utf8DecodingFailed)?,
+            );
+
+            let output = output.ok_or(KmsError::HexDecodingFailed)?;
+
+            Ok(output)
+        })
     }
 }
