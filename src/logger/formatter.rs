@@ -106,7 +106,7 @@ where
     /// A `dst_writer` to forward all records.
     ///
     /// ## Example
-    /// ```rust
+    /// ```rust,ignore
     /// let formatting_layer = router_env::FormattingLayer::new(env::service_name!(),std::io::stdout);
     /// ```
     ///

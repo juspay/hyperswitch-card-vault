@@ -41,7 +41,7 @@ Thus, if the locker is building normally using the `Dockerfile` included, all of
 
   # Generating the public keys
   openssl rsa -in locker-private-key.pem -pubout -out locker-public-key.pem
-  openssl rsa -in locker-private-key.pem -pubout -out tenant-public-key.pem
+  openssl rsa -in tenant-private-key.pem -pubout -out tenant-public-key.pem
   ```
 
   This step is required if you have enabled the `middleware` feature.
@@ -166,8 +166,8 @@ LOCKER__SECRETS__MASTER_KEY=
 LOCKER__SECRETS__LOCKER_PRIVATE_KEY=
 LOCKER__SECRETS__TENANT_PUBLIC_KEY=
 
-LOCKER__KMS__KEY_ID=
-LOCKER__KMS__REGION=
+LOCKER__AWS_KMS__KEY_ID=
+LOCKER__AWS_KMS__REGION=
 ```
 
 Once created, you can start the locker by running

@@ -1,6 +1,9 @@
 use super::logger::config::Log;
-#[cfg(feature = "kms")]
-use crate::crypto::kms;
+#[cfg(feature = "kms-aws")]
+use crate::crypto::aws_kms;
+
+#[cfg(feature = "kms-hashicorp-vault")]
+use crate::crypto::hcvault;
 
 use std::path::PathBuf;
 
@@ -9,11 +12,21 @@ pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
-    #[cfg(feature = "kms")]
-    pub kms: kms::KmsConfig,
+    #[serde(flatten)]
+    pub key_management_service: Option<EncryptionScheme>,
     pub log: Log,
     #[cfg(feature = "limit")]
     pub limit: Limit,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum EncryptionScheme {
+    #[cfg(feature = "kms-aws")]
+    AwsKms(aws_kms::KmsConfig),
+    #[cfg(feature = "kms-hashicorp-vault")]
+    VaultKv2(hcvault::HashiCorpVaultConfig),
 }
 
 #[cfg(feature = "limit")]
@@ -60,10 +73,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let deserialized_str: String = serde::Deserialize::deserialize(deserializer)?;
-    #[cfg(not(feature = "kms"))]
-    let deserialized_str = hex::decode(deserialized_str)
-        .map_err(|_| serde::de::Error::custom("error while parsing hex"))?;
-    #[cfg(feature = "kms")]
+
     let deserialized_str = deserialized_str.into_bytes();
 
     Ok(deserialized_str)
@@ -130,5 +140,84 @@ impl Config {
             config_path.push(config_file_name);
         }
         config_path
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::assertions_on_constants
+    )]
+    use super::*;
+
+    #[derive(Clone, serde::Deserialize, Debug)]
+    struct TestDeser {
+        #[serde(flatten)]
+        pub key_management_service: Option<EncryptionScheme>,
+    }
+
+    #[test]
+    fn test_non_case() {
+        let data = r#"
+
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(parsed.key_management_service.is_none())
+    }
+
+    #[cfg(feature = "kms-aws")]
+    #[test]
+    fn test_aws_kms_case() {
+        let data = r#"
+        [aws_kms]
+        key_id = "123"
+        region = "abc"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.key_management_service {
+            Some(EncryptionScheme::AwsKms(value)) => {
+                assert!(value.key_id == "123" && value.region == "abc")
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[cfg(feature = "kms-hashicorp-vault")]
+    #[test]
+    fn test_hashicorp_case() {
+        let data = r#"
+        [vault_kv2]
+        url = "123"
+        token = "abc"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.key_management_service {
+            Some(EncryptionScheme::VaultKv2(value)) => {
+                assert!(value.url == "123" && value.token == "abc")
+            }
+            _ => assert!(false),
+        }
     }
 }
