@@ -2,6 +2,7 @@
 #![allow(clippy::missing_panics_doc)]
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use josekit::jwe;
 use tartarus::crypto::{aes, jw, Encryption};
 
 const ITERATION: u32 = 14;
@@ -67,7 +68,12 @@ pub fn criterion_aes(c: &mut Criterion) {
 }
 
 pub fn criterion_jwe_jws(c: &mut Criterion) {
-    let algo = jw::JWEncryption::new(JWE_PUBLIC_KEY.to_string(), JWE_PRIVATE_KEY.to_string());
+    let algo = jw::JWEncryption::new(
+        JWE_PRIVATE_KEY.to_string(),
+        JWE_PUBLIC_KEY.to_string(),
+        jwe::RSA_OAEP,
+        jwe::RSA_OAEP,
+    );
 
     {
         let mut group = c.benchmark_group("jw-encryption");
@@ -99,7 +105,8 @@ pub fn criterion_jwe_jws(c: &mut Criterion) {
     let mut group_2 = c.benchmark_group("jw-decryption");
     (1..ITERATION).for_each(|po| {
         let max: u64 = (2_u64).pow(po);
-        let value = (0..max).map(|_| rand::random::<u8>()).collect::<Vec<_>>();
+        let value = (0..max).map(|_| rand::random::<char>()).collect::<String>();
+        let value = value.as_bytes().to_vec();
         let encrypted_value = algo
             .encrypt(value.clone())
             .expect("Failed while jw decrypting");
