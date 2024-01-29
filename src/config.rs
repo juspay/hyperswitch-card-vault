@@ -17,6 +17,8 @@ pub struct Config {
     pub log: Log,
     #[cfg(feature = "limit")]
     pub limit: Limit,
+    #[cfg(feature = "caching")]
+    pub cache: Cache,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -52,6 +54,15 @@ pub struct Database {
     pub port: u16,
     pub dbname: String,
     pub pool_size: Option<usize>,
+}
+
+#[cfg(feature = "caching")]
+#[derive(Clone, serde::Deserialize, Debug)]
+pub struct Cache {
+    // time to idle (in secs)
+    pub tti: Option<u64>,
+    // maximum capacity of the cache
+    pub max_capacity: u64,
 }
 
 #[derive(Clone, serde::Deserialize, Debug)]

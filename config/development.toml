@@ -18,6 +18,10 @@ host = "localhost"
 port = 5432
 dbname = "locker"
 
+[cache]
+tti = 7200 # i.e. 2 hours
+max_capacity = 5000
+
 [secrets]
 tenant = "hyperswitch"
 master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"
