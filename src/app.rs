@@ -1,6 +1,5 @@
 use axum::routing;
 use error_stack::ResultExt;
-use hyper::server::conn;
 use masking::PeekInterface;
 #[cfg(feature = "key_custodian")]
 use tokio::sync::{mpsc::Sender, RwLock};
@@ -67,7 +66,7 @@ pub async fn server1_builder(
     state: Arc<RwLock<AppState>>,
     server_tx: Sender<()>,
 ) -> Result<
-    hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
+    axum::serve::Serve<routing::IntoMakeService<axum::Router>, axum::Router>,
     error::ConfigurationError,
 >
 where
@@ -86,7 +85,9 @@ where
         .with_state(shared_state)
         .route("/health", routing::get(routes::health::health));
 
-    let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
+    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
+    let server = axum::serve(tcp_listener, router.into_make_service());
+
     Ok(server)
 }
 
@@ -97,7 +98,7 @@ where
 pub async fn server2_builder(
     state: &AppState,
 ) -> Result<
-    hyper::Server<conn::AddrIncoming, routing::IntoMakeService<axum::Router>>,
+    axum::serve::Serve<routing::IntoMakeService<axum::Router>, axum::Router>,
     error::ConfigurationError,
 >
 where
@@ -136,8 +137,8 @@ where
                         .level(tracing::Level::ERROR),
                 ),
         );
-
-    let server = axum::Server::try_bind(&socket_addr)?.serve(router.into_make_service());
+    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
+    let server = axum::serve(tcp_listener, router.into_make_service());
     Ok(server)
 }
 

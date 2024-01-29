@@ -19,11 +19,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let state_lock = state.clone();
 
-        let (server1_tx, mut server1_rx) = tokio::sync::mpsc::channel::<()>(1);
+        let (server1_tx, server1_rx) = tokio::sync::mpsc::channel::<()>(1);
 
         let server1 = tartarus::app::server1_builder(state_lock, server1_tx.clone())
             .await?
-            .with_graceful_shutdown(graceful_shutdown_server1(&mut server1_rx));
+            .with_graceful_shutdown(graceful_shutdown_server1(server1_rx));
 
         logger::info!(
             "Key Custodian started [{:?}] [{:?}]",
@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(feature = "key_custodian")]
-async fn graceful_shutdown_server1(recv: &mut tokio::sync::mpsc::Receiver<()>) {
+async fn graceful_shutdown_server1(mut recv: tokio::sync::mpsc::Receiver<()>) {
     recv.recv().await;
     logger::info!("Shutting down the server1 gracefully.");
 }
