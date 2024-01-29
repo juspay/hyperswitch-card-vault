@@ -53,7 +53,7 @@ impl JwsBody {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct JweBody {
     pub header: String,
@@ -139,7 +139,6 @@ pub fn encrypt_jwe(
     public_key: impl AsRef<[u8]>,
     alg: jwe::alg::rsaes::RsaesJweAlgorithm,
 ) -> Result<String, error::CryptoError> {
-    // let alg = jwe::RSA_OAEP;
     let enc = "A256GCM";
     let mut src_header = jwe::JweHeader::new();
     src_header.set_content_encryption(enc);

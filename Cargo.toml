@@ -67,6 +67,7 @@ argh = "0.1.12"
 
 [dev-dependencies]
 rand = "0.8.5"
+criterion = "0.5.1"
 axum-test = "14.2.2"
 
 [build-dependencies]
@@ -83,3 +84,11 @@ name = "utils"
 strip = true
 lto = true
 codegen-units = 1
+
+[[bench]]
+name = "luhn-test"
+harness = false
+
+[[bench]]
+name = "encryption"
+harness = false
