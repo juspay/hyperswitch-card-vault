@@ -38,3 +38,42 @@ where
         Ok(output)
     }
 }
+
+#[async_trait::async_trait]
+impl<T> storage::MerchantInterface for super::Caching<T, types::HashTable>
+where
+    T: storage::MerchantInterface + storage::Cacheable<types::HashTable> + Sync,
+{
+    type Algorithm = T::Algorithm;
+    type Error = T::Error;
+
+    async fn find_by_merchant_id(
+        &self,
+        merchant_id: &str,
+        tenant_id: &str,
+        key: &Self::Algorithm,
+    ) -> Result<types::Merchant, ContainerError<Self::Error>> {
+        self.inner
+            .find_by_merchant_id(merchant_id, tenant_id, key)
+            .await
+    }
+
+    async fn find_or_create_by_merchant_id(
+        &self,
+        merchant_id: &str,
+        tenant_id: &str,
+        key: &Self::Algorithm,
+    ) -> Result<types::Merchant, ContainerError<Self::Error>> {
+        self.inner
+            .find_or_create_by_merchant_id(merchant_id, tenant_id, key)
+            .await
+    }
+
+    async fn insert_merchant(
+        &self,
+        new: types::MerchantNew<'_>,
+        key: &Self::Algorithm,
+    ) -> Result<types::Merchant, ContainerError<Self::Error>> {
+        self.inner.insert_merchant(new, key).await
+    }
+}
