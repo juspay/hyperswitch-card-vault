@@ -59,6 +59,8 @@ pub enum StorageError {
     DecryptionError,
     #[error("Error while encrypting the payload")]
     EncryptionError,
+    #[error("Element not found in storage")]
+    NotFoundError,
 }
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]

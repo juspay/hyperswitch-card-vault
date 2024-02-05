@@ -1,7 +1,7 @@
 use std::error::Error;
 
 pub struct ContainerError<E> {
-    pub(super) error: error_stack::Report<E>,
+    pub(crate) error: error_stack::Report<E>,
 }
 
 impl<T> std::fmt::Debug for ContainerError<T> {

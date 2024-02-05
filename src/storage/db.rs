@@ -33,12 +33,13 @@ impl MerchantInterface for Storage {
                 .get_result(&mut conn)
                 .await;
         output
-            .change_error(error::StorageError::FindError)
-            .map_err(From::from)
-            .and_then(|inner| {
-                Ok(inner.decrypt(key)?)
-                // .change_context(error::StorageError::DecryptionError)
+            .map_err(|error| match error {
+                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
+                _ => error::StorageError::FindError,
             })
+            .map_err(error::ContainerError::from)
+            .map_err(From::from)
+            .and_then(|inner| Ok(inner.decrypt(key)?))
     }
 
     async fn find_or_create_by_merchant_id(
