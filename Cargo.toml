@@ -7,33 +7,40 @@ default-run = "locker"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
-release = ["kms", "middleware", "key_custodian", "limit"]
-kms = ["dep:aws-config", "dep:aws-sdk-kms"]
+default = ["caching"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching"]
+kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
+kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
 middleware = []
 key_custodian = []
+caching = ["dep:moka"]
 
 [dependencies]
 aws-config = { version = "1.0.1", optional = true }
 aws-sdk-kms = { version = "1.3.0", optional = true }
 base64 = "0.21.2"
 futures = "0.3.28"
-tracing = { version = "0.1.40" }
-tracing-appender = { version = "0.2.2" }
-tracing-attributes = "0.1.27"
-tracing-subscriber = { version = "0.3.17", default-features = true, features = ["env-filter", "json", "registry"] }
 gethostname = "0.4.3"
 rustc-hash = "1.1"
 once_cell = "1.18.0"
+vaultrs = { version = "0.7.0", optional = true }
 
 # Tokio Dependencies
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
-axum = "0.6.20"
-hyper = "0.14.27"
+axum = "0.7.3"
+hyper = "1.0.1"
 tower = { version = "0.4.13", features = ["limit", "buffer", "load-shed"] }
-tower-http = { version = "0.4.4", features = ["trace"] }
-
+tower-http = { version = "0.5.0", features = ["trace"] }
+tracing = { version = "0.1.40" }
+tracing-appender = { version = "0.2.2" }
+tracing-attributes = "0.1.27"
+tracing-subscriber = { version = "0.3.17", default-features = true, features = [
+    "env-filter",
+    "json",
+    "registry",
+] }
+http-body-util = "0.1.0"
 
 diesel = { version = "2.1.3", features = ["postgres", "serde_json", "time"] }
 diesel-async = { version = "0.4.1", features = ["postgres", "deadpool"] }
@@ -43,7 +50,7 @@ serde_json = "1.0.107"
 josekit = "0.8.4"
 
 thiserror = "1.0.49"
-config = "0.13.3"
+config = "0.13.4"
 serde_path_to_error = "0.1.11"
 error-stack = "0.4.1"
 futures-util = "0.3.28"
@@ -54,12 +61,14 @@ hex = "0.4.3"
 time = "0.3.30"
 async-trait = "0.1.74"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng"] }
+moka = { version = "0.12.1", features = ["future"], optional = true }
 
 argh = "0.1.12"
 
 [dev-dependencies]
 rand = "0.8.5"
-axum-test = "13.0.1"
+criterion = "0.5.1"
+axum-test = "14.2.2"
 
 [build-dependencies]
 cargo_metadata = "0.15.4"
@@ -75,3 +84,11 @@ name = "utils"
 strip = true
 lto = true
 codegen-units = 1
+
+[[bench]]
+name = "luhn-test"
+harness = false
+
+[[bench]]
+name = "encryption"
+harness = false

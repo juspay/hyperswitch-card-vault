@@ -53,7 +53,7 @@ impl JwsBody {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct JweBody {
     pub header: String,
@@ -90,10 +90,10 @@ impl JweBody {
     }
 }
 
-impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
+impl super::Encryption<Vec<u8>, JweBody> for JWEncryption {
     type ReturnType<'a, T> = Result<T, ContainerError<error::CryptoError>>;
 
-    fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
+    fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, JweBody> {
         let payload = input;
         let jws_encoded = jws_sign_payload(&payload, self.private_key.peek().as_bytes())?;
         let jws_body = JwsBody::from_dotted_str(&jws_encoded).ok_or(
@@ -107,13 +107,11 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for JWEncryption {
         )?;
         let jwe_body = JweBody::from_str(&jwe_encrypted)
             .ok_or(error::CryptoError::InvalidData("JWE data incomplete"))?;
-        Ok(serde_json::to_vec(&jwe_body).map_err(error::CryptoError::from)?)
+        Ok(jwe_body)
     }
 
-    fn decrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
-        let jwe_body: JweBody = serde_json::from_slice(&input).map_err(error::CryptoError::from)?;
-        let jwe_encoded = jwe_body.get_dotted_jwe();
-        // let algo = jwe::RSA_OAEP_256;
+    fn decrypt(&self, input: JweBody) -> Self::ReturnType<'_, Vec<u8>> {
+        let jwe_encoded = input.get_dotted_jwe();
         let jwe_decrypted =
             decrypt_jwe(&jwe_encoded, self.private_key.peek(), self.decryption_algo)?;
 
@@ -141,7 +139,6 @@ pub fn encrypt_jwe(
     public_key: impl AsRef<[u8]>,
     alg: jwe::alg::rsaes::RsaesJweAlgorithm,
 ) -> Result<String, error::CryptoError> {
-    // let alg = jwe::RSA_OAEP;
     let enc = "A256GCM";
     let mut src_header = jwe::JweHeader::new();
     src_header.set_content_encryption(enc);

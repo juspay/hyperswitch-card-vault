@@ -10,6 +10,8 @@ pub enum MerchantDBError {
     DBFilterError,
     #[error("Error while inserting element in the database")]
     DBInsertError,
+    #[error("Element not found in database")]
+    NotFoundError,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
@@ -56,4 +58,14 @@ pub enum TestDBError {
     DBDeleteError,
     #[error("Unpredictable error occurred")]
     UnknownError,
+}
+
+pub trait NotFoundError {
+    fn is_not_found(&self) -> bool;
+}
+
+impl NotFoundError for super::ContainerError<MerchantDBError> {
+    fn is_not_found(&self) -> bool {
+        matches!(self.error.current_context(), MerchantDBError::NotFoundError)
+    }
 }

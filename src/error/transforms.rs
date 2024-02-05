@@ -40,6 +40,7 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
             super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
         }
     }
 }
@@ -57,6 +58,7 @@ impl<'a> From<&'a super::StorageError> for super::LockerDBError {
             }
             super::StorageError::InsertError => Self::DBInsertError,
             super::StorageError::DeleteError => Self::DBDeleteError,
+            super::StorageError::NotFoundError => Self::DBFilterError,
         }
     }
 }
@@ -73,6 +75,7 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
             super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::NotFoundError => Self::DBFilterError,
         }
     }
 }
@@ -120,6 +123,7 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
                                                          // occur because of master key failure
             super::MerchantDBError::DBError |
             super::MerchantDBError::DBFilterError |
+            super::MerchantDBError::NotFoundError |
             super::MerchantDBError::DBInsertError=> Self::MerchantError,
             super::MerchantDBError::UnknownError => Self::UnknownError
         }
