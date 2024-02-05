@@ -17,7 +17,6 @@ impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
     }
 }
 
-
 ///
 /// Type providing encoding functional to perform HMAC-SHA512 hashing
 ///
@@ -64,8 +63,6 @@ impl<const N: usize> std::fmt::Display for HmacSha512<N> {
     }
 }
 
-
-
 impl<const N: usize> super::Encode<Vec<u8>, Vec<u8>> for HmacSha512<N> {
     type ReturnType<T> = Result<T, error::ContainerError<error::CryptoError>>;
 
@@ -89,7 +86,7 @@ impl<const N: usize> AssertGt0 for HmacSha512<N> {
 
 #[cfg(test)]
 mod tests {
-    //! 
+    //!
     //! Testing HMAC-SHA512 encoding consists of 3 variables.
     //! 1. The input data
     //! 2. The Key
@@ -136,7 +133,7 @@ mod tests {
 
         let algo1 = HmacSha512::<1>::new(key1.as_bytes().to_vec().into());
         let algo2 = HmacSha512::<1>::new(key2.as_bytes().to_vec().into());
-        
+
         let hash1 = algo1.encode(data.as_bytes().to_vec()).unwrap();
         let hash2 = algo2.encode(data.as_bytes().to_vec()).unwrap();
 
@@ -165,7 +162,6 @@ mod tests {
 
         let algo1 = HmacSha512::<10>::new(key.as_bytes().to_vec().into());
         let algo2 = HmacSha512::<10>::new(key.as_bytes().to_vec().into());
-
 
         let hash1 = algo1.encode(data.as_bytes().to_vec()).unwrap();
         let hash2 = algo2.encode(data.as_bytes().to_vec()).unwrap();
