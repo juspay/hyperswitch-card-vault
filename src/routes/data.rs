@@ -7,6 +7,7 @@ use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 use axum::middleware;
 
 use masking::ExposeInterface;
+use tracing_attributes::instrument;
 
 use types::StoreCardResponse;
 
@@ -73,6 +74,7 @@ pub fn serve(
 }
 
 /// `/data/add` handling the requirement of storing cards
+#[instrument(skip_all)]
 pub async fn add_card(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::StoreCardRequest>,
@@ -156,6 +158,7 @@ pub async fn add_card(
 }
 
 /// `/data/delete` handling the requirement of deleting cards
+#[instrument(skip_all)]
 pub async fn delete_card(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::DeleteCardRequest>,
@@ -187,6 +190,7 @@ pub async fn delete_card(
 }
 
 /// `/data/retrieve` handling the requirement of retrieving cards
+#[instrument(skip_all)]
 pub async fn retrieve_card(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::RetrieveCardRequest>,

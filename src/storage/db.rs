@@ -3,6 +3,7 @@ use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use masking::ExposeInterface;
 use masking::Secret;
+use tracing_attributes::instrument;
 
 use crate::crypto::aes::{generate_aes256_key, GcmAes256};
 use crate::error::{self, ContainerError, ResultContainerExt};
@@ -16,6 +17,7 @@ impl MerchantInterface for Storage {
     type Algorithm = GcmAes256;
     type Error = error::MerchantDBError;
 
+    #[instrument(skip_all)]
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -42,6 +44,7 @@ impl MerchantInterface for Storage {
             .and_then(|inner| Ok(inner.decrypt(key)?))
     }
 
+    #[instrument(skip_all)]
     async fn find_or_create_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -77,6 +80,8 @@ impl MerchantInterface for Storage {
             },
         }
     }
+
+    #[instrument(skip_all)]
     async fn insert_merchant(
         &self,
         new: types::MerchantNew<'_>,
@@ -99,6 +104,7 @@ impl LockerInterface for Storage {
     type Algorithm = GcmAes256;
     type Error = error::LockerDBError;
 
+    #[instrument(skip_all)]
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
@@ -124,6 +130,7 @@ impl LockerInterface for Storage {
             .and_then(|inner: types::LockerInner| Ok(inner.decrypt(key)?))
     }
 
+    #[instrument(skip_all)]
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
         hash_id: &str,
@@ -154,6 +161,7 @@ impl LockerInterface for Storage {
         }
     }
 
+    #[instrument(skip_all)]
     async fn insert_or_get_from_locker(
         &self,
         new: types::LockerNew<'_>,
@@ -189,6 +197,7 @@ impl LockerInterface for Storage {
         }
     }
 
+    #[instrument(skip_all)]
     async fn delete_from_locker(
         &self,
         locker_id: Secret<String>,
@@ -217,6 +226,7 @@ impl LockerInterface for Storage {
 impl super::HashInterface for Storage {
     type Error = error::HashDBError;
 
+    #[instrument(skip_all)]
     async fn find_by_data_hash(
         &self,
         data_hash: &[u8],
@@ -236,6 +246,8 @@ impl super::HashInterface for Storage {
             },
         }
     }
+
+    #[instrument(skip_all)]
     async fn insert_hash(
         &self,
         data_hash: Vec<u8>,

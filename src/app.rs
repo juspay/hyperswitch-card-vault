@@ -123,6 +123,7 @@ where
         )
         .with_state(state.clone())
         .route("/health", routing::get(routes::health::health))
+        .layer(axum_tracing_opentelemetry::middleware::OtelAxumLayer::default())
         .layer(
             tower_trace::TraceLayer::new_for_http()
                 .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
