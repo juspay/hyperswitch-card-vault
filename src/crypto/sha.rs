@@ -17,7 +17,6 @@ impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
     }
 }
 
-
 ///
 /// Type providing encoding functional to perform HMAC-SHA512 hashing
 ///
@@ -29,7 +28,7 @@ impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
 ///
 /// let data = "Hello, World!";
 /// let key = "key";
-/// let algo = HmacSha512::<1>::new(key.as_bytes().to_vec());
+/// let algo = HmacSha512::<1>::new(key.as_bytes().to_vec().into());
 /// let hash = algo.encode(data.as_bytes().to_vec()).unwrap();
 ///
 /// ```
@@ -42,7 +41,7 @@ impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
 /// use tartarus::crypto::Encode;
 ///
 /// let key = "key";
-/// let algo = HmacSha512::<0>::new(key.as_bytes().to_vec());
+/// let algo = HmacSha512::<0>::new(key.as_bytes().to_vec().into());
 ///
 ///
 /// ```
@@ -52,7 +51,8 @@ pub struct HmacSha512<const N: usize = 1>(masking::Secret<Vec<u8>>);
 
 impl<const N: usize> HmacSha512<N> {
     pub fn new(key: masking::Secret<Vec<u8>>) -> Self {
-        _ = <Self as AssertGt0>::VALID;
+        #[allow(clippy::let_unit_value)]
+        let _ = <Self as AssertGt0>::VALID;
 
         Self(key)
     }
@@ -64,13 +64,11 @@ impl<const N: usize> std::fmt::Display for HmacSha512<N> {
     }
 }
 
-
-
 impl<const N: usize> super::Encode<Vec<u8>, Vec<u8>> for HmacSha512<N> {
     type ReturnType<T> = Result<T, error::ContainerError<error::CryptoError>>;
 
     fn encode(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
-        let key = hmac::Key::new(ring::hmac::HMAC_SHA512, &self.0.peek());
+        let key = hmac::Key::new(ring::hmac::HMAC_SHA512, self.0.peek());
         let first = hmac::sign(&key, &input);
 
         let signature = (0..=(N - 1)).fold(first, |input, _| hmac::sign(&key, input.as_ref()));
@@ -89,7 +87,8 @@ impl<const N: usize> AssertGt0 for HmacSha512<N> {
 
 #[cfg(test)]
 mod tests {
-    //! 
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    //!
     //! Testing HMAC-SHA512 encoding consists of 3 variables.
     //! 1. The input data
     //! 2. The Key
@@ -136,7 +135,7 @@ mod tests {
 
         let algo1 = HmacSha512::<1>::new(key1.as_bytes().to_vec().into());
         let algo2 = HmacSha512::<1>::new(key2.as_bytes().to_vec().into());
-        
+
         let hash1 = algo1.encode(data.as_bytes().to_vec()).unwrap();
         let hash2 = algo2.encode(data.as_bytes().to_vec()).unwrap();
 
@@ -165,7 +164,6 @@ mod tests {
 
         let algo1 = HmacSha512::<10>::new(key.as_bytes().to_vec().into());
         let algo2 = HmacSha512::<10>::new(key.as_bytes().to_vec().into());
-
 
         let hash1 = algo1.encode(data.as_bytes().to_vec()).unwrap();
         let hash2 = algo2.encode(data.as_bytes().to_vec()).unwrap();
