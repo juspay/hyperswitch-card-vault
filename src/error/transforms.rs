@@ -90,9 +90,9 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
             super::StorageError::FindError => Self::DBReadError,
             super::StorageError::InsertError => Self::DBWriteError,
             super::StorageError::DeleteError => Self::DBDeleteError,
-            super::StorageError::DecryptionError | super::StorageError::EncryptionError => {
-                Self::UnknownError
-            }
+            super::StorageError::DecryptionError
+            | super::StorageError::EncryptionError
+            | super::StorageError::NotFoundError => Self::UnknownError,
         }
     }
 }
