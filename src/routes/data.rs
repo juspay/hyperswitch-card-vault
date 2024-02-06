@@ -14,7 +14,7 @@ use crate::{
     app::AppState,
     crypto::{aes::GcmAes256, sha::Sha512},
     error::{self, ContainerError, ResultContainerExt},
-    storage::{HashInterface, LockerInterface, MerchantInterface},
+    storage::{FingerprintInterface, HashInterface, LockerInterface, MerchantInterface},
 };
 
 #[cfg(feature = "middleware")]
@@ -59,7 +59,8 @@ pub fn serve(
     let router = axum::Router::new()
         .route("/delete", delete_route)
         .route("/add", post(add_card))
-        .route("/retrieve", post(retrieve_card));
+        .route("/retrieve", post(retrieve_card))
+        .route("/fingerprint", post(get_or_insert_fingerprint));
 
     #[cfg(feature = "middleware")]
     {
@@ -216,4 +217,17 @@ pub async fn retrieve_card(
         .await?;
 
     Ok(Json(card.try_into()?))
+}
+
+/// `/data/fingerprint` handling the creation and retrieval of card fingerprint
+pub async fn get_or_insert_fingerprint(
+    extract::State(state): extract::State<AppState>,
+    Json(request): Json<types::FingerprintRequest>,
+) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
+    let fingerprint = state
+        .db
+        .insert_fingerprint(request.card, request.hash_key.into())
+        .await?;
+
+    Ok(Json(fingerprint.into()))
 }

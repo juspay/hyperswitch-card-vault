@@ -76,6 +76,14 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
     }
 }
 
+impl From<storage::types::Fingerprint> for super::types::FingerprintResponse {
+    fn from(value: storage::types::Fingerprint) -> Self {
+        Self {
+            card_fingerprint: value.card_fingerprint.expose(),
+        }
+    }
+}
+
 impl std::cmp::PartialEq<types::Data> for super::types::StoredData {
     fn eq(&self, other: &types::Data) -> bool {
         match (self, other) {

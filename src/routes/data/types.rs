@@ -9,7 +9,7 @@
 
 use masking::PeekInterface;
 
-use crate::error;
+use crate::{error, storage};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct Card {
@@ -100,6 +100,17 @@ pub struct DeleteCardRequest {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct DeleteCardResponse {
     pub status: Status,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct FingerprintRequest {
+    pub card: storage::types::Card,
+    pub hash_key: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct FingerprintResponse {
+    pub card_fingerprint: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]

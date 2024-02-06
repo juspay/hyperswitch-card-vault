@@ -156,6 +156,27 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/RetrieveDataRes"
                   - $ref: "#/components/schemas/JWERes"
+  /data/fingerprint:
+    post:
+      tags:
+        - Cards
+        - Data
+      summary: Get or insert the card fingerprint
+      description: Get or insert the card fingerprint
+      requestBody:
+        description: Provide card and hash key
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FingerprintReq"
+        required: true
+      responses:
+        "200":
+          description: Fingerprint Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FingerprintRes"
 components:
   schemas:
     Key:
@@ -207,6 +228,14 @@ components:
         card_reference:
           type: string
           example: 3ffdf1e5-7f38-4f26-936f-c66a6f4296fa
+    FingerprintReq:
+      type: object
+      properties:
+        card:
+          $ref: "#/components/schemas/Card"
+        hash_key:
+          type: string
+          example: Hash1
     JWEReq:
       type: object
       properties:
@@ -293,6 +322,18 @@ components:
         status:
           type: string
           enum: [Ok]
+    FingerprintRes:
+      type: object
+      description: Response received if the fingerprint insertion or retrieval was successful
+      properties:
+        status:
+          type: string
+          enum: [Ok]
+        payload:
+          type: object
+          properties:
+            fingerprint:
+              type: string
     JWERes:
       type: object
       description: JWE encrypted response equivalent
