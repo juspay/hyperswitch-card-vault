@@ -4,6 +4,25 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.3.0 (2024-02-05)
+
+### Features
+
+- **benches:** Introduce benchmarks for internal components ([#53](https://github.com/juspay/hyperswitch-card-vault/pull/53)) ([`8a7bbc3`](https://github.com/juspay/hyperswitch-card-vault/commit/8a7bbc3f6db41e938e19fd36bb55bd3b7ef585b0))
+- **caching:** Implement hash_table and merchant table caching ([#55](https://github.com/juspay/hyperswitch-card-vault/pull/55)) ([`f0d4cc4`](https://github.com/juspay/hyperswitch-card-vault/commit/f0d4cc45868977505fe34023161c31505aabc348))
+- **hashicorp-kv:** Add feature to extend key management service at runtime ([#65](https://github.com/juspay/hyperswitch-card-vault/pull/65)) ([`9260782`](https://github.com/juspay/hyperswitch-card-vault/commit/9260782cbe5dfc11e0674cdea7dda267c0710e8f))
+- **router:** Add `duplication_check` field in stored card response([#59](https://github.com/juspay/hyperswitch-card-vault/pull/59)) ([`358cdb8`](https://github.com/juspay/hyperswitch-card-vault/commit/358cdb8d89b594a0f273dd976867879357c19ef3))
+
+### Miscellaneous Tasks
+
+- **deps:** Update axum `0.6.20` to `0.7.3` ([#66](https://github.com/juspay/hyperswitch-card-vault/pull/66)) ([`7b8e116`](https://github.com/juspay/hyperswitch-card-vault/commit/7b8e1163a4a2a51fc2bc4404c6608a4d3a572ed4))
+- Fix caching issue for conditional merchant creation ([#68](https://github.com/juspay/hyperswitch-card-vault/pull/68)) ([`258b3ac`](https://github.com/juspay/hyperswitch-card-vault/commit/258b3ac416bcdfcc731cfa88967a42ea690347e1))
+
+**Full Changelog:** [`v0.2.0...v0.3.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.2.0...v0.3.0)
+
+- - -
+
+
 ## 0.2.0 (2023-12-26)
 
 ### Features
