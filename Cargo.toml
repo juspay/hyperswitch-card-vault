@@ -92,3 +92,8 @@ harness = false
 [[bench]]
 name = "encryption"
 harness = false
+
+
+[[bench]]
+name = "hashing"
+harness = false
