@@ -5,6 +5,7 @@ use diesel::{
     sql_types, AsExpression, Identifiable, Insertable, Queryable,
 };
 use masking::{ExposeInterface, Secret};
+use serde::Serialize;
 
 use crate::crypto::{self, Encryption};
 
@@ -95,6 +96,32 @@ pub struct HashTable {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable)]
+#[diesel(table_name = schema::fingerprint)]
+pub struct Fingerprint {
+    pub id: i32,
+    pub card_hash: Vec<u8>,
+    pub card_fingerprint: Secret<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Card {
+    pub card_number: masking::StrongSecret<String>,
+    name_on_card: Option<String>,
+    card_exp_month: Option<String>,
+    card_exp_year: Option<String>,
+    card_brand: Option<String>,
+    card_isin: Option<String>,
+    nick_name: Option<String>,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = schema::fingerprint)]
+pub(super) struct FingerprintTableNew {
+    pub card_hash: Vec<u8>,
+    pub card_fingerprint: Secret<String>,
 }
 
 #[derive(Debug, Insertable)]

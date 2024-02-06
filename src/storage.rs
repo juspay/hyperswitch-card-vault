@@ -22,6 +22,8 @@ pub mod caching;
 pub mod db;
 pub mod schema;
 pub mod types;
+pub mod consts;
+pub mod utils;
 
 pub trait State {}
 
@@ -183,3 +185,24 @@ pub trait HashInterface {
         data_hash: Vec<u8>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>>;
 }
+
+///
+/// Fingerprint:
+///
+/// Interface providing functional to interface with the fingerprint table in database
+#[async_trait::async_trait]
+pub trait FingerprintInterface {
+    type Error;
+
+    async fn find_by_card_hash(
+        &self,
+        card_hash: &[u8],
+    ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>>;
+
+    async fn insert_fingerprint(
+        &self,
+        card: types::Card,
+        hash_key: Secret<String>,
+    ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
+}
+

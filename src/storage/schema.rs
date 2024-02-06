@@ -1,6 +1,15 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    fingerprint (card_hash) {
+        id -> Int4,
+        card_hash -> Bytea,
+        #[max_length = 255]
+        card_fingerprint -> Varchar,
+    }
+}
+
+diesel::table! {
     hash_table (hash_id) {
         id -> Int4,
         #[max_length = 255]
@@ -40,4 +49,9 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(hash_table, locker, merchant,);
+diesel::allow_tables_to_appear_in_same_query!(
+    fingerprint,
+    hash_table,
+    locker,
+    merchant,
+);

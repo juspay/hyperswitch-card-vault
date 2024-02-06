@@ -80,6 +80,38 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
     }
 }
 
+error_transform!(super::StorageError => super::FingerprintDBError);
+impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
+    fn from(value: &'a super::StorageError) -> Self {
+        match value {
+            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
+                Self::DBError
+            }
+            super::StorageError::FindError => Self::DBFilterError,
+            super::StorageError::DecryptionError
+            | super::StorageError::EncryptionError
+            | super::StorageError::DeleteError => Self::UnknownError,
+            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::NotFoundError => Self::DBFilterError,
+        }
+    }
+}
+
+error_transform!(super::CryptoError => super::FingerprintDBError);
+impl<'a> From<&'a super::CryptoError> for super::FingerprintDBError {
+    fn from(value: &'a super::CryptoError) -> Self {
+        match value {
+            super::CryptoError::SerdeJsonError(_)
+            | super::CryptoError::JWError(_)
+            | super::CryptoError::InvalidData(_)
+            | super::CryptoError::EncodingError(_)
+            | super::CryptoError::NotImplemented
+            | super::CryptoError::EncryptionError
+            | super::CryptoError::DecryptionError => Self::UnknownError,
+        }
+    }
+}
+
 error_transform!(super::CryptoError => super::HashDBError);
 impl<'a> From<&'a super::CryptoError> for super::HashDBError {
     fn from(value: &'a super::CryptoError) -> Self {
