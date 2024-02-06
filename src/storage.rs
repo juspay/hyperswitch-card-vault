@@ -19,10 +19,10 @@ use masking::{PeekInterface, Secret};
 #[cfg(feature = "caching")]
 pub mod caching;
 
+pub mod consts;
 pub mod db;
 pub mod schema;
 pub mod types;
-pub mod consts;
 pub mod utils;
 
 pub trait State {}
@@ -205,4 +205,3 @@ pub trait FingerprintInterface {
         hash_key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
 }
-
