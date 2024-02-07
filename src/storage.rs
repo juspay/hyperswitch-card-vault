@@ -189,14 +189,14 @@ pub trait HashInterface {
 ///
 /// Fingerprint:
 ///
-/// Interface providing functional to interface with the fingerprint table in database
+/// Interface providing functions to interface with the fingerprint table in database
 #[async_trait::async_trait]
 pub trait FingerprintInterface {
     type Error;
 
     async fn find_by_card_hash(
         &self,
-        card_hash: &[u8],
+        card_hash: Secret<&[u8]>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>>;
 
     async fn insert_fingerprint(

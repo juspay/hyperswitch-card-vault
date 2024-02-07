@@ -4,7 +4,7 @@ diesel::table! {
     fingerprint (card_hash) {
         id -> Int4,
         card_hash -> Bytea,
-        #[max_length = 255]
+        #[max_length = 64]
         card_fingerprint -> Varchar,
     }
 }
