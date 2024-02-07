@@ -196,7 +196,7 @@ pub trait FingerprintInterface {
 
     async fn find_by_card_hash(
         &self,
-        card_hash: &[u8],
+        card_hash: Secret<&[u8]>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>>;
 
     async fn insert_fingerprint(

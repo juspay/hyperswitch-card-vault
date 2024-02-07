@@ -268,7 +268,7 @@ impl super::FingerprintInterface for Storage {
 
     async fn find_by_card_hash(
         &self,
-        card_hash: &[u8],
+        card_hash: Secret<&[u8]>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
@@ -294,7 +294,7 @@ impl super::FingerprintInterface for Storage {
 
         let card_hash = algo.encode(card.into_bytes())?;
 
-        let output = self.find_by_card_hash(&card_hash).await?;
+        let output = self.find_by_card_hash(Secret::new(&card_hash)).await?;
         match output {
             Some(inner) => Ok(inner),
             None => {
