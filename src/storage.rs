@@ -189,7 +189,7 @@ pub trait HashInterface {
 ///
 /// Fingerprint:
 ///
-/// Interface providing functional to interface with the fingerprint table in database
+/// Interface providing functions to interface with the fingerprint table in database
 #[async_trait::async_trait]
 pub trait FingerprintInterface {
     type Error;

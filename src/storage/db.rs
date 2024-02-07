@@ -291,10 +291,8 @@ impl super::FingerprintInterface for Storage {
         hash_key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         let algo = HmacSha512::<1>::new(hash_key.expose().into_bytes().into());
-        let card_data = serde_json::to_vec(&card)
-            .change_error(error::FingerprintDBError::EncodingError("byte-vec"))?;
 
-        let card_hash = algo.encode(card_data)?;
+        let card_hash = algo.encode(card.into_bytes())?;
 
         let output = self.find_by_card_hash(&card_hash).await?;
         match output {
@@ -303,7 +301,7 @@ impl super::FingerprintInterface for Storage {
                 let mut conn = self.get_conn().await?;
                 let query = diesel::insert_into(types::Fingerprint::table()).values(
                     types::FingerprintTableNew {
-                        card_hash,
+                        card_hash: card_hash.into(),
                         card_fingerprint: utils::generate_id(consts::ID_LENGTH).into(),
                     },
                 );

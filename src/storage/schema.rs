@@ -4,7 +4,7 @@ diesel::table! {
     fingerprint (card_hash) {
         id -> Int4,
         card_hash -> Bytea,
-        #[max_length = 255]
+        #[max_length = 64]
         card_fingerprint -> Varchar,
     }
 }
@@ -49,4 +49,9 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(fingerprint, hash_table, locker, merchant,);
+diesel::allow_tables_to_appear_in_same_query!(
+    fingerprint,
+    hash_table,
+    locker,
+    merchant,
+);

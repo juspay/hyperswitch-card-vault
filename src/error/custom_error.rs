@@ -56,8 +56,8 @@ pub enum FingerprintDBError {
     DBInsertError,
     #[error("Unpredictable error occurred")]
     UnknownError,
-    #[error("Error while encoding data: {0}")]
-    EncodingError(&'static str),
+    #[error("Error while encoding data")]
+    EncodingError,
 }
 
 pub trait NotFoundError {

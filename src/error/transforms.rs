@@ -87,12 +87,12 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
                 Self::DBError
             }
-            super::StorageError::FindError => Self::DBFilterError,
+            super::StorageError::FindError 
+            | super::StorageError::NotFoundError => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
             super::StorageError::InsertError => Self::DBInsertError,
-            super::StorageError::NotFoundError => Self::DBFilterError,
         }
     }
 }
@@ -104,10 +104,10 @@ impl<'a> From<&'a super::CryptoError> for super::FingerprintDBError {
             super::CryptoError::SerdeJsonError(_)
             | super::CryptoError::JWError(_)
             | super::CryptoError::InvalidData(_)
-            | super::CryptoError::EncodingError(_)
             | super::CryptoError::NotImplemented
             | super::CryptoError::EncryptionError
             | super::CryptoError::DecryptionError => Self::UnknownError,
+            super::CryptoError::EncodingError(_) => Self::EncodingError,
         }
     }
 }
