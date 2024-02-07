@@ -117,7 +117,7 @@ error_transform!(super::FingerprintDBError => super::ApiError);
 impl<'a> From<&'a super::FingerprintDBError> for super::ApiError {
     fn from(value: &'a super::FingerprintDBError) -> Self {
         match value {
-            super::FingerprintDBError::EncodingError(_) => Self::EncodingError,
+            super::FingerprintDBError::EncodingError => Self::EncodingError,
             super::FingerprintDBError::DBError => Self::DatabaseError,
             super::FingerprintDBError::DBFilterError => Self::RetrieveDataFailed("fingerprint"),
             super::FingerprintDBError::DBInsertError => Self::DatabaseInsertFailed("fingerprint"),

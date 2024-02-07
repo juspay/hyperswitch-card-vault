@@ -102,7 +102,7 @@ pub struct DeleteCardResponse {
     pub status: Status,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Deserialize)]
 pub struct FingerprintRequest {
     pub card_number: storage::types::CardNumber,
     pub hash_key: Secret<String>,
