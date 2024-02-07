@@ -87,8 +87,9 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
                 Self::DBError
             }
-            super::StorageError::FindError 
-            | super::StorageError::NotFoundError => Self::DBFilterError,
+            super::StorageError::FindError | super::StorageError::NotFoundError => {
+                Self::DBFilterError
+            }
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
