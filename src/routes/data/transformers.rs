@@ -79,7 +79,7 @@ impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
 impl From<storage::types::Fingerprint> for super::types::FingerprintResponse {
     fn from(value: storage::types::Fingerprint) -> Self {
         Self {
-            card_fingerprint: value.card_fingerprint.expose(),
+            card_fingerprint: value.card_fingerprint,
         }
     }
 }

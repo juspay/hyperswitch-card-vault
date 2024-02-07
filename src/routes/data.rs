@@ -219,14 +219,14 @@ pub async fn retrieve_card(
     Ok(Json(card.try_into()?))
 }
 
-/// `/data/fingerprint` handling the creation and retrieval of card fingerprint
+/// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
 pub async fn get_or_insert_fingerprint(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
     let fingerprint = state
         .db
-        .insert_fingerprint(request.card, request.hash_key.into())
+        .insert_fingerprint(request.card_number, request.hash_key)
         .await?;
 
     Ok(Json(fingerprint.into()))

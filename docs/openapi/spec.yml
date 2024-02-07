@@ -164,7 +164,7 @@ paths:
       summary: Get or insert the card fingerprint
       description: Get or insert the card fingerprint
       requestBody:
-        description: Provide card and hash key
+        description: Provide card number and hash key
         content:
           application/json:
             schema:
@@ -231,8 +231,9 @@ components:
     FingerprintReq:
       type: object
       properties:
-        card:
-          $ref: "#/components/schemas/Card"
+        card_number:
+          type: string
+          example: 4242424242424242
         hash_key:
           type: string
           example: Hash1

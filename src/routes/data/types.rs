@@ -7,7 +7,7 @@
 //     hash2_reference: Option<String>,
 // }
 
-use masking::PeekInterface;
+use masking::{PeekInterface, Secret};
 
 use crate::{error, storage};
 
@@ -104,13 +104,13 @@ pub struct DeleteCardResponse {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct FingerprintRequest {
-    pub card: storage::types::Card,
-    pub hash_key: String,
+    pub card_number: storage::types::CardNumber,
+    pub hash_key: Secret<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct FingerprintResponse {
-    pub card_fingerprint: String,
+    pub card_fingerprint: Secret<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
