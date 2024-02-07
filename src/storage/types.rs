@@ -105,7 +105,7 @@ pub struct Fingerprint {
     pub card_fingerprint: Secret<String>,
 }
 
-#[derive( Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub struct CardNumber(masking::StrongSecret<String>);
 
 impl CardNumber {
