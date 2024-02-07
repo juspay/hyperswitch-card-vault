@@ -46,6 +46,20 @@ pub enum HashDBError {
     UnknownError,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum FingerprintDBError {
+    #[error("Error while connecting to database")]
+    DBError,
+    #[error("Error while finding element in the database")]
+    DBFilterError,
+    #[error("Error while inserting element in the database")]
+    DBInsertError,
+    #[error("Unpredictable error occurred")]
+    UnknownError,
+    #[error("Error while encoding data")]
+    EncodingError,
+}
+
 pub trait NotFoundError {
     fn is_not_found(&self) -> bool;
 }
