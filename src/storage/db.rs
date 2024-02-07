@@ -11,7 +11,7 @@ use crate::error::{self, ContainerError, ResultContainerExt};
 
 use super::types::StorageDecryption;
 use super::types::StorageEncryption;
-use super::{schema, types, utils, LockerInterface, MerchantInterface, Storage};
+use super::{consts, schema, types, utils, LockerInterface, MerchantInterface, Storage};
 
 #[async_trait::async_trait]
 impl MerchantInterface for Storage {
@@ -287,7 +287,7 @@ impl super::FingerprintInterface for Storage {
     }
     async fn insert_fingerprint(
         &self,
-        card: types::Card,
+        card: types::CardNumber,
         hash_key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         let algo = HmacSha512::<1>::new(hash_key.expose().into_bytes().into());
@@ -304,7 +304,7 @@ impl super::FingerprintInterface for Storage {
                 let query = diesel::insert_into(types::Fingerprint::table()).values(
                     types::FingerprintTableNew {
                         card_hash,
-                        card_fingerprint: utils::generate_id().into(),
+                        card_fingerprint: utils::generate_id(consts::ID_LENGTH).into(),
                     },
                 );
 

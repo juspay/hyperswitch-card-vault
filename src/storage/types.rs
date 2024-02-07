@@ -5,7 +5,6 @@ use diesel::{
     sql_types, AsExpression, Identifiable, Insertable, Queryable,
 };
 use masking::{ExposeInterface, Secret};
-use serde::Serialize;
 
 use crate::crypto::{self, Encryption};
 
@@ -106,16 +105,8 @@ pub struct Fingerprint {
     pub card_fingerprint: Secret<String>,
 }
 
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
-pub struct Card {
-    pub card_number: masking::StrongSecret<String>,
-    name_on_card: Option<String>,
-    card_exp_month: Option<String>,
-    card_exp_year: Option<String>,
-    card_brand: Option<String>,
-    card_isin: Option<String>,
-    nick_name: Option<String>,
-}
+#[derive(serde::Serialize, Debug)]
+pub struct CardNumber(masking::StrongSecret<String>);
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::fingerprint)]

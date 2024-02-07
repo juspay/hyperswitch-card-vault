@@ -201,7 +201,7 @@ pub trait FingerprintInterface {
 
     async fn insert_fingerprint(
         &self,
-        card: types::Card,
+        card: types::CardNumber,
         hash_key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
 }
