@@ -231,9 +231,8 @@ components:
     FingerprintReq:
       type: object
       properties:
-        card_number:
-          type: string
-          example: 4242424242424242
+        card:
+          $ref: "#/components/schemas/FingerprintCardData"
         hash_key:
           type: string
           example: Hash1
@@ -279,6 +278,12 @@ components:
           type: string
         nick_name:
           type: string
+    FingerprintCardData:
+      type: object 
+      properties:
+        card_number:
+          type: string
+          example: 4242424242424242
     Key1Set:
       type: string
       description: Response after setting key1
