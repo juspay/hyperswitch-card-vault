@@ -227,7 +227,7 @@ pub async fn get_or_insert_fingerprint(
     crate::validations::luhn_on_string(request.card.card_number.inner().peek())
         .then_some(())
         .ok_or(error::ApiError::ValidationError("card number invalid"))?;
-    
+
     let fingerprint = state
         .db
         .insert_fingerprint(request.card.card_number, request.hash_key)
