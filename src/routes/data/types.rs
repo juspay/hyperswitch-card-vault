@@ -148,3 +148,11 @@ impl Validation for StoreCardRequest {
         }
     }
 }
+
+impl Validation for FingerprintRequest {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        self.card.card_number.validate()
+    }
+}

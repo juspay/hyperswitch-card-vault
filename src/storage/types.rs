@@ -6,7 +6,11 @@ use diesel::{
 };
 use masking::{ExposeInterface, PeekInterface, Secret};
 
-use crate::crypto::{self, Encryption};
+use crate::{
+    crypto::{self, Encryption},
+    error,
+    routes::data::types::Validation,
+};
 
 use super::schema;
 
@@ -107,6 +111,16 @@ pub struct Fingerprint {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CardNumber(masking::StrongSecret<String>);
+
+impl Validation for CardNumber {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        crate::validations::luhn_on_string(self.0.peek())
+            .then_some(())
+            .ok_or(error::ApiError::ValidationError("card number invalid"))
+    }
+}
 
 impl CardNumber {
     pub fn inner(&self) -> &masking::StrongSecret<String> {

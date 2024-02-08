@@ -6,7 +6,7 @@ use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 #[cfg(feature = "middleware")]
 use axum::middleware;
 
-use masking::{ExposeInterface, PeekInterface};
+use masking::ExposeInterface;
 
 use types::StoreCardResponse;
 
@@ -224,10 +224,8 @@ pub async fn get_or_insert_fingerprint(
     extract::State(state): extract::State<AppState>,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
-    crate::validations::luhn_on_string(request.card.card_number.inner().peek())
-        .then_some(())
-        .ok_or(error::ApiError::ValidationError("card number invalid"))?;
-    
+    request.validate()?;
+
     let fingerprint = state
         .db
         .insert_fingerprint(request.card.card_number, request.hash_key)
