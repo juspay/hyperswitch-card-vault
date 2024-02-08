@@ -109,6 +109,9 @@ pub struct Fingerprint {
 pub struct CardNumber(masking::StrongSecret<String>);
 
 impl CardNumber {
+    pub fn inner(&self) -> &masking::StrongSecret<String> {
+        &self.0
+    }
     pub fn into_bytes(self) -> Vec<u8> {
         self.0.peek().clone().into_bytes()
     }
