@@ -25,6 +25,9 @@ pub mod schema;
 pub mod types;
 pub mod utils;
 
+#[cfg(test)]
+pub mod test;
+
 pub trait State {}
 
 /// Storage State that is to be passed though the application

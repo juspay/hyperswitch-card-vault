@@ -307,3 +307,92 @@ impl<'a> StorageEncryption for LockerNew<'a> {
         })
     }
 }
+
+#[cfg(test)]
+impl MerchantNewInner<'_> {
+    pub fn into_test_inner(self) -> MerchantInner {
+        MerchantInner {
+            id: 0,
+            tenant_id: self.tenant_id.to_string(),
+            merchant_id: self.merchant_id.to_string(),
+            enc_key: self.enc_key,
+            created_at: time::PrimitiveDateTime::MIN,
+        }
+    }
+}
+
+#[cfg(test)]
+impl LockerNewInner<'_> {
+    pub fn into_test_inner(self) -> LockerInner {
+        LockerInner {
+            id: 0,
+            locker_id: self.locker_id,
+            tenant_id: self.tenant_id.to_string(),
+            merchant_id: self.merchant_id,
+            customer_id: self.customer_id,
+            enc_data: self.enc_data,
+            created_at: time::PrimitiveDateTime::MIN,
+            hash_id: self.hash_id.to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl LockerInner {
+    pub fn get_test_hash(&self) -> String {
+        self.hash_id.clone()
+    }
+    pub fn get_locker_key(&self) -> (String, String, String, String) {
+        (
+            self.tenant_id.to_string(),
+            self.merchant_id.to_string(),
+            self.customer_id.to_string(),
+            self.locker_id.peek().clone(),
+        )
+    }
+
+    pub fn get_hash_key(&self) -> (String, String, String, String) {
+        (
+            self.tenant_id.to_string(),
+            self.merchant_id.to_string(),
+            self.customer_id.to_string(),
+            self.hash_id.clone(),
+        )
+    }
+}
+
+#[cfg(test)]
+impl MerchantInner {
+    pub fn get_test_key(&self) -> (String, String) {
+        (self.tenant_id.to_string(), self.merchant_id.to_string())
+    }
+}
+
+#[cfg(test)]
+impl Clone for MerchantInner {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            tenant_id: self.tenant_id.clone(),
+            merchant_id: self.merchant_id.clone(),
+            enc_key: Encrypted::new(self.enc_key.get_inner().clone()),
+            created_at: self.created_at,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Clone for LockerInner {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            locker_id: self.locker_id.clone(),
+            tenant_id: self.tenant_id.clone(),
+            merchant_id: self.merchant_id.clone(),
+            customer_id: self.customer_id.clone(),
+            enc_data: Encrypted::new(self.enc_data.get_inner().clone()),
+            created_at: self.created_at,
+            hash_id: self.hash_id.clone(),
+        }
+    }
+}

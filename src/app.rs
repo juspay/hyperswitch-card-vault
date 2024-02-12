@@ -24,11 +24,17 @@ use crate::crypto::{
     Encryption,
 };
 
+#[cfg(test)]
+type IStorage = storage::test::TestStorage;
+
+#[cfg(not(test))]
+type IStorage = storage::Storage;
+
 #[cfg(feature = "caching")]
-type Storage = Caching<Caching<storage::Storage, types::HashTable>, types::Merchant>;
+type Storage = Caching<Caching<IStorage, types::HashTable>, types::Merchant>;
 
 #[cfg(not(feature = "caching"))]
-type Storage = storage::Storage;
+type Storage = IStorage;
 
 ///
 /// AppState:
@@ -108,7 +114,14 @@ where
 {
     let socket_addr =
         std::net::SocketAddr::new(state.config.server.host.parse()?, state.config.server.port);
-    let router = axum::Router::new()
+    let router = server2_routes(state);
+    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
+    let server = axum::serve(tcp_listener, router.into_make_service());
+    Ok(server)
+}
+
+pub fn server2_routes(state: &AppState) -> axum::Router {
+    axum::Router::new()
         .nest("/tenant", routes::tenant::serve())
         .nest(
             "/data",
@@ -142,10 +155,7 @@ where
                         .latency_unit(tower_http::LatencyUnit::Micros)
                         .level(tracing::Level::ERROR),
                 ),
-        );
-    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
-    let server = axum::serve(tcp_listener, router.into_make_service());
-    Ok(server)
+        )
 }
 
 #[allow(clippy::expect_used)]
@@ -196,6 +206,7 @@ impl AppState {
                 "database_password",
             ))?;
         Ok(Self {
+            #[cfg(not(test))]
             db: storage::Storage::new(&config.database)
                 .await
                 .map(
@@ -211,6 +222,23 @@ impl AppState {
                     std::convert::identity,
                 )
                 .change_context(error::ConfigurationError::DatabaseError)?,
+            #[cfg(test)]
+            db: Ok::<_, error_stack::Report<error::StorageError>>(
+                storage::test::TestStorage::default(),
+            )
+            .map(
+                #[cfg(feature = "caching")]
+                storage::caching::implement_cache("hash", &config.cache),
+                #[cfg(not(feature = "caching"))]
+                std::convert::identity,
+            )
+            .map(
+                #[cfg(feature = "caching")]
+                storage::caching::implement_cache("merchant", &config.cache),
+                #[cfg(not(feature = "caching"))]
+                std::convert::identity,
+            )
+            .change_context(error::ConfigurationError::DatabaseError)?,
 
             config: config.clone(),
         })
