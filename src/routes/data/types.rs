@@ -7,9 +7,9 @@
 //     hash2_reference: Option<String>,
 // }
 
-use masking::PeekInterface;
+use masking::{PeekInterface, Secret};
 
-use crate::error;
+use crate::{error, storage};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct Card {
@@ -102,6 +102,22 @@ pub struct DeleteCardResponse {
     pub status: Status,
 }
 
+#[derive(serde::Deserialize)]
+pub struct FingerprintRequest {
+    pub card: FingerprintCardData,
+    pub hash_key: Secret<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct FingerprintCardData {
+    pub card_number: storage::types::CardNumber,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct FingerprintResponse {
+    pub card_fingerprint: Secret<String>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum StoredData {
     EncData(String),
@@ -130,5 +146,13 @@ impl Validation for StoreCardRequest {
                 .then_some(())
                 .ok_or(error::ApiError::ValidationError("card number invalid")),
         }
+    }
+}
+
+impl Validation for FingerprintRequest {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        self.card.card_number.validate()
     }
 }

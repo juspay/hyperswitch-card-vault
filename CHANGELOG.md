@@ -4,6 +4,20 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.4.0 (2024-02-08)
+
+### Features
+
+- **fingerprint:**
+  - Add fingerprint table and db interface ([#75](https://github.com/juspay/hyperswitch-card-vault/pull/75)) ([`bf57a3c`](https://github.com/juspay/hyperswitch-card-vault/commit/bf57a3c182786fbf692eb38776730f9a9186af41))
+  - Add api for fingerprint ([#76](https://github.com/juspay/hyperswitch-card-vault/pull/76)) ([`48503ff`](https://github.com/juspay/hyperswitch-card-vault/commit/48503ff88181621f6d1d246b6e8e8056e5ec924d))
+- **hmac:** Add implementation for `hmac-sha512` ([#74](https://github.com/juspay/hyperswitch-card-vault/pull/74)) ([`e3eea9a`](https://github.com/juspay/hyperswitch-card-vault/commit/e3eea9a32f8165aadcd6075f032875e9d37d9b56))
+
+**Full Changelog:** [`v0.3.0...v0.4.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.3.0...v0.4.0)
+
+- - -
+
+
 ## 0.3.0 (2024-02-05)
 
 ### Features

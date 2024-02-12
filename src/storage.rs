@@ -19,9 +19,11 @@ use masking::{PeekInterface, Secret};
 #[cfg(feature = "caching")]
 pub mod caching;
 
+pub mod consts;
 pub mod db;
 pub mod schema;
 pub mod types;
+pub mod utils;
 
 pub trait State {}
 
@@ -188,4 +190,24 @@ pub trait HashInterface {
 pub trait TestInterface {
     type Error;
     async fn test(&self) -> Result<(), ContainerError<Self::Error>>;
+}
+
+///
+/// Fingerprint:
+///
+/// Interface providing functions to interface with the fingerprint table in database
+#[async_trait::async_trait]
+pub trait FingerprintInterface {
+    type Error;
+
+    async fn find_by_card_hash(
+        &self,
+        card_hash: Secret<&[u8]>,
+    ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>>;
+
+    async fn insert_fingerprint(
+        &self,
+        card: types::CardNumber,
+        hash_key: Secret<String>,
+    ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
 }
