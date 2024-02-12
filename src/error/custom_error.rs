@@ -47,6 +47,20 @@ pub enum HashDBError {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum TestDBError {
+    #[error("Error while connecting to database")]
+    DBError,
+    #[error("Error while writing to database")]
+    DBWriteError,
+    #[error("Error while reading element in the database")]
+    DBReadError,
+    #[error("Error while deleting element in the database")]
+    DBDeleteError,
+    #[error("Unpredictable error occurred")]
+    UnknownError,
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum FingerprintDBError {
     #[error("Error while connecting to database")]
     DBError,
