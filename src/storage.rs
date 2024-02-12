@@ -186,6 +186,12 @@ pub trait HashInterface {
     ) -> Result<types::HashTable, ContainerError<Self::Error>>;
 }
 
+#[async_trait::async_trait]
+pub trait TestInterface {
+    type Error;
+    async fn test(&self) -> Result<(), ContainerError<Self::Error>>;
+}
+
 ///
 /// Fingerprint:
 ///

@@ -4,6 +4,12 @@ pub struct ContainerError<E> {
     pub(crate) error: error_stack::Report<E>,
 }
 
+impl<E: Sync + Send + 'static> ContainerError<E> {
+    pub fn get_inner(&self) -> &E {
+        self.error.current_context()
+    }
+}
+
 impl<T> std::fmt::Debug for ContainerError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         <error_stack::Report<T> as std::fmt::Debug>::fmt(&self.error, f)
