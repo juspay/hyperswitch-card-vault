@@ -9,6 +9,7 @@ where
     T: storage::HashInterface
         + storage::Cacheable<types::HashTable, Key = Vec<u8>, Value = types::HashTable>
         + storage::Cacheable<types::Merchant>
+        + storage::Cacheable<types::Fingerprint>
         + Sync
         + Send,
 {
@@ -18,7 +19,7 @@ where
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        match self.lookup::<types::HashTable>(data_hash.to_vec()).await {
+        match self.lookup::<types::HashTable>(&data_hash.to_vec()).await {
             value @ Some(_) => Ok(value),
             None => Ok(match self.inner.find_by_data_hash(data_hash).await? {
                 None => None,

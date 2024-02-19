@@ -12,6 +12,7 @@ where
     T: storage::MerchantInterface
         + storage::Cacheable<types::Merchant, Key = (String, String), Value = types::Merchant>
         + storage::Cacheable<types::HashTable>
+        + storage::Cacheable<types::Fingerprint>
         + Sync
         + Send,
     ContainerError<<T as storage::MerchantInterface>::Error>: NotFoundError,
@@ -26,7 +27,7 @@ where
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let cached_data = self
-            .lookup::<types::Merchant>((tenant_id.to_string(), merchant_id.to_string()))
+            .lookup::<types::Merchant>(&(tenant_id.to_string(), merchant_id.to_string()))
             .await;
         match cached_data {
             Some(value) => Ok(value),
