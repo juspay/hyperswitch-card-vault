@@ -100,6 +100,11 @@ jobs:
         with:
           crate: cargo-hack
 
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@v2.2.0
+        with:
+          crate: cargo-nextest
+
       - uses: Swatinem/rust-cache@v2.7.0
 
       - name: Deny warnings
@@ -125,6 +130,12 @@ jobs:
       - name: Cargo hack
         shell: bash
         run: cargo hack check --each-feature --no-dev-deps
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          cargo nextest run --profile ci --all-features
+          cargo test --doc --all-features
 
   typos:
     name: Spell check
