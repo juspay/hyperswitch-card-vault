@@ -109,6 +109,9 @@ pub enum ApiError {
 
     #[error("Failed while validation: {0}")]
     ValidationError(&'static str),
+
+    #[error("Element not found in database")]
+    NotFoundError,
 }
 
 /// Errors that could occur during KMS operations.
@@ -164,7 +167,7 @@ impl axum::response::IntoResponse for ApiError {
             )
                 .into_response(),
             Self::DecryptingKeysFailed(err) => (
-                hyper::StatusCode::BAD_REQUEST,
+                hyper::StatusCode::UNAUTHORIZED,
                 axum::Json(ApiErrorResponse::new(
                     "TE_00",
                     format!("Failed while decrypting two custodian keys: {err}"),
@@ -192,9 +195,14 @@ impl axum::response::IntoResponse for ApiError {
                 axum::Json(ApiErrorResponse::new("TE_02", format!("{}", data), None)),
             )
                 .into_response(),
+            data @ Self::NotFoundError => (
+                hyper::StatusCode::NOT_FOUND,
+                axum::Json(ApiErrorResponse::new("TE_03", format!("{}", data), None)),
+            )
+                .into_response(),
             data @ Self::ValidationError(_) => (
                 hyper::StatusCode::BAD_REQUEST,
-                axum::Json(ApiErrorResponse::new("TE_03", format!("{}", data), None)),
+                axum::Json(ApiErrorResponse::new("TE_04", format!("{}", data), None)),
             )
                 .into_response(),
         }
