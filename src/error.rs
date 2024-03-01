@@ -190,7 +190,9 @@ impl axum::response::IntoResponse for ApiError {
                 axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
             )
                 .into_response(),
-            data @ Self::RequestMiddlewareError(_) | data @ Self::DecodingError | data @ Self::ValidationError(_) => (
+            data @ Self::RequestMiddlewareError(_)
+            | data @ Self::DecodingError
+            | data @ Self::ValidationError(_) => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new("TE_02", format!("{}", data), None)),
             )
