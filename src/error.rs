@@ -110,7 +110,7 @@ pub enum ApiError {
     #[error("Failed while validation: {0}")]
     ValidationError(&'static str),
 
-    #[error("Element not found in database")]
+    #[error("Requested resource not found")]
     NotFoundError,
 }
 
@@ -190,7 +190,7 @@ impl axum::response::IntoResponse for ApiError {
                 axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
             )
                 .into_response(),
-            data @ Self::RequestMiddlewareError(_) | data @ Self::DecodingError => (
+            data @ Self::RequestMiddlewareError(_) | data @ Self::DecodingError | data @ Self::ValidationError(_) => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new("TE_02", format!("{}", data), None)),
             )
@@ -198,11 +198,6 @@ impl axum::response::IntoResponse for ApiError {
             data @ Self::NotFoundError => (
                 hyper::StatusCode::NOT_FOUND,
                 axum::Json(ApiErrorResponse::new("TE_03", format!("{}", data), None)),
-            )
-                .into_response(),
-            data @ Self::ValidationError(_) => (
-                hyper::StatusCode::BAD_REQUEST,
-                axum::Json(ApiErrorResponse::new("TE_04", format!("{}", data), None)),
             )
                 .into_response(),
         }
