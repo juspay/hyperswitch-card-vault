@@ -86,13 +86,13 @@ jobs:
       - name: Get rust version from Cargo.toml
         shell: bash
         run: |
-          rust-version=$(yq -oy '.package.rust-version' Cargo.toml)
-          echo "rust-version=${rust-version}" >> $GITHUB_ENV
+          rust_version=$(yq -oy '.package.rust-version' Cargo.toml)
+          echo "rust_version=${rust_version}" >> $GITHUB_ENV
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "${rust-version}"
+          toolchain: "${rust_version}"
 
       - uses: Swatinem/rust-cache@v2.7.0
         with:
