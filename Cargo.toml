@@ -100,3 +100,23 @@ harness = false
 [[bench]]
 name = "hashing"
 harness = false
+
+[lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = "warn"
+# missing_debug_implementations = "warn"
+# missing_docs = "warn"
+
+[lints.clippy]
+as_conversions = "warn"
+expect_used = "warn"
+missing_panics_doc = "warn"
+panic = "warn"
+panic_in_result_fn = "warn"
+panicking_unwrap = "warn"
+todo = "warn"
+unimplemented = "warn"
+unreachable = "warn"
+unwrap_in_result = "warn"
+unwrap_used = "warn"
+use_self = "warn"

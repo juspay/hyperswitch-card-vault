@@ -8,6 +8,9 @@ on:
       - reopened
       - synchronize
 
+env:
+  RUSTFLAGS: "-D warnings"
+
 jobs:
   formatting:
     name: Check formatting
@@ -103,10 +106,6 @@ jobs:
         with:
           crate: cargo-hack
 
-      - name: Deny warnings
-        shell: bash
-        run: sed -i 's/rustflags = \[/rustflags = \[\n    "-Dwarnings",/' .cargo/config.toml
-
       - name: Run `cargo hack`
         shell: bash
         run: cargo hack check --each-feature --all-targets --package tartarus
@@ -159,10 +158,6 @@ jobs:
           crate: cargo-nextest
 
       - uses: Swatinem/rust-cache@v2.7.0
-
-      - name: Deny warnings
-        shell: bash
-        run: sed -i 's/rustflags = \[/rustflags = \[\n    "-Dwarnings",/' .cargo/config.toml
 
       - name: Run clippy
         shell: bash
