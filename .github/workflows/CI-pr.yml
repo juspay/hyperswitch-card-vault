@@ -107,43 +107,6 @@ jobs:
         shell: bash
         run: sed -i 's/rustflags = \[/rustflags = \[\n    "-Dwarnings",/' .cargo/config.toml
 
-      # - name: Check modified crates
-      #   shell: bash
-      #   run: |
-      #     set -x
-      #     # Obtain a list of workspace members
-      #     workspace_members="$(
-      #       cargo metadata --format-version 1 --no-deps \
-      #         | jq --compact-output --monochrome-output --raw-output '.workspace_members | sort | .[] | split(" ")[0]'
-      #     )"
-
-      #     PACKAGES_CHECKED=()
-      #     PACKAGES_SKIPPED=()
-
-      #     while IFS= read -r package_name; do
-      #       # Obtain comma-separated list of transitive workspace dependencies for each workspace member
-      #       change_paths="$(cargo tree --all-features --no-dedupe --prefix none --package "${package_name}" \
-      #         | grep 'crates/' \
-      #         | sort --unique \
-      #         | awk --field-separator ' ' '{ printf "crates/%s\n", $1 }' | paste -d ',' -s -)"
-
-      #       # Store change paths in an array by splitting `change_paths` by comma
-      #       IFS=',' read -ra change_paths <<< "${change_paths}"
-
-      #       # A package must be checked if any of its transitive dependencies (or itself) has been modified
-      #       if git diff --exit-code --quiet "origin/${GITHUB_BASE_REF}" -- "${change_paths[@]}"; then
-      #         printf '::debug::Skipping `%s` since none of these paths were modified: %s\n' "${package_name}" "${change_paths[*]}"
-      #         PACKAGES_SKIPPED+=("${package_name}")
-      #       else
-      #         printf '::debug::Checking `%s` since at least one of these paths was modified: %s\n' "${package_name}" "${change_paths[*]}"
-      #         PACKAGES_CHECKED+=("${package_name}")
-      #       fi
-      #     done <<< "${workspace_members}"
-
-      #     printf '::notice::Packages checked: %s; Packages skipped: %s\n' "${PACKAGES_CHECKED[*]}" "${PACKAGES_SKIPPED[*]}"
-      #     echo "PACKAGES_CHECKED=${PACKAGES_CHECKED[*]}" >> ${GITHUB_ENV}
-      #     echo "PACKAGES_SKIPPED=${PACKAGES_SKIPPED[*]}" >> ${GITHUB_ENV}
-
       - name: Run `cargo hack`
         shell: bash
         run: cargo hack check --each-feature --all-targets --package tartarus
