@@ -110,6 +110,7 @@ jobs:
       - name: Run `cargo hack`
         shell: bash
         run: cargo hack check --each-feature --all-targets --package tartarus
+        
   test:
     name: Run tests on stable toolchain
     runs-on: ubuntu-latest
