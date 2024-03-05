@@ -92,7 +92,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "${rust_version}"
+          toolchain: "${{ env.rust_version }}"
 
       - uses: Swatinem/rust-cache@v2.7.0
         with:
@@ -102,7 +102,6 @@ jobs:
         uses: baptiste0928/cargo-install@v2.2.0
         with:
           crate: cargo-hack
-          version: 0.6.5
 
       - name: Deny warnings
         shell: bash
