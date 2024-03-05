@@ -110,6 +110,7 @@ jobs:
       - name: Check modified crates
         shell: bash
         run: |
+          set -x
           # Obtain a list of workspace members
           workspace_members="$(
             cargo metadata --format-version 1 --no-deps \
