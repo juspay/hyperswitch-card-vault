@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+env:
+  RUSTFLAGS: "-D warnings"
+
 jobs:
   formatting:
     name: Check formatting
@@ -22,6 +25,42 @@ jobs:
       - name: Check formatting
         shell: bash
         run: cargo +nightly fmt --all --check
+
+  check-msrv:
+    name: Check compilation on MSRV toolchain
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install mold linker
+        uses: rui314/setup-mold@v1
+        if: ${{ runner.os == 'Linux' }}
+        with:
+          make-default: true
+
+      - name: Get rust version from Cargo.toml
+        shell: bash
+        run: |
+          rust_version=$(yq -oy '.package.rust-version' Cargo.toml)
+          echo "rust_version=${rust_version}" >> $GITHUB_ENV
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "${{ env.rust_version }}"
+
+      - uses: Swatinem/rust-cache@v2.7.0
+
+      - name: Install cargo-hack
+        uses: baptiste0928/cargo-install@v2.2.0
+        with:
+          crate: cargo-hack
+
+      - name: Run `cargo hack`
+        shell: bash
+        run: cargo hack check --each-feature --all-targets --package tartarus
 
   test:
     name: Run tests on stable toolchain
@@ -48,11 +87,12 @@ jobs:
         with:
           crate: cargo-hack
 
-      - uses: Swatinem/rust-cache@v2.7.0
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@v2.2.0
+        with:
+          crate: cargo-nextest
 
-      - name: Deny warnings
-        shell: bash
-        run: sed -i 's/rustflags = \[/rustflags = \[\n    "-Dwarnings",/' .cargo/config.toml
+      - uses: Swatinem/rust-cache@v2.7.0
 
       - name: Run clippy
         shell: bash
@@ -61,6 +101,12 @@ jobs:
       - name: Cargo hack
         shell: bash
         run: cargo hack check --each-feature --no-dev-deps
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          cargo nextest run --profile ci --all-features
+          cargo test --doc --all-features
 
   typos:
     name: Spell check
