@@ -65,12 +65,9 @@ pub enum StorageError {
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]
 pub enum ApiError {
-    #[error("failed while making merchant create")]
-    TenentCreateError,
-    #[error("failed while calling store data")]
-    StoreDataFailed(&'static str),
     #[error("failed while retrieving stored data")]
     RetrieveDataFailed(&'static str),
+
     #[error("failed to decrypt two custodian keys: {0}")]
     DecryptingKeysFailed(&'static str),
 
@@ -85,9 +82,6 @@ pub enum ApiError {
 
     #[error("Failed while decoding data")]
     DecodingError,
-
-    #[error("Failed while retrieving data from \"{0}\"")]
-    DatabaseRetrieveFailed(&'static str),
 
     #[error("Failed while inserting data into \"{0}\"")]
     DatabaseInsertFailed(&'static str),
@@ -104,7 +98,7 @@ pub enum ApiError {
     #[error("Error while encrypting with merchant key")]
     MerchantKeyError,
 
-    #[error("Failed whie connecting to database")]
+    #[error("Failed while connecting to database")]
     DatabaseError,
 
     #[error("Failed while validation: {0}")]
@@ -154,40 +148,64 @@ pub enum KmsError {
     ParseError,
 }
 
+/// Error code constants.
+mod error_codes {
+    /// Processing error: Indicates an error that occurred during processing of a task or operation.
+    pub const TE_00: &'static str = "TE_00";
+
+    /// Database error: Denotes an error related to database operations or connectivity.
+    pub const TE_01: &'static str = "TE_01";
+
+    /// Resource not found: Signifies that the requested resource could not be located.
+    pub const TE_02: &'static str = "TE_02";
+
+    /// Validation error: Represents an error occurring during data validation or integrity checks.
+    pub const TE_03: &'static str = "TE_03";
+}
+
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         match self {
-            Self::TenentCreateError => (
-                hyper::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ApiErrorResponse::new(
-                    "TE_00",
-                    "Failed while creating the tenant".to_string(),
-                    None,
-                )),
-            )
-                .into_response(),
             Self::DecryptingKeysFailed(err) => (
                 hyper::StatusCode::UNAUTHORIZED,
                 axum::Json(ApiErrorResponse::new(
-                    "TE_00",
+                    error_codes::TE_00,
                     format!("Failed while decrypting two custodian keys: {err}"),
                     None,
                 )),
             )
                 .into_response(),
-            data @ Self::StoreDataFailed(_)
-            | data @ Self::MerchantError
-            | data @ Self::RetrieveDataFailed(_)
-            | data @ Self::EncodingError
-            | data @ Self::ResponseMiddlewareError(_)
-            | data @ Self::DatabaseRetrieveFailed(_)
-            | data @ Self::DatabaseInsertFailed(_)
-            | data @ Self::UnknownError
-            | data @ Self::DatabaseError
-            | data @ Self::MerchantKeyError
-            | data @ Self::DatabaseDeleteFailed(_) => (
+            data @ Self::EncodingError => (
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(ApiErrorResponse::new("TE_01", format!("{}", data), None)),
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_00,
+                    format!("{}", data),
+                    None,
+                )),
+            )
+                .into_response(),
+            data @ Self::ResponseMiddlewareError(_)
+            | data @ Self::UnknownError
+            | data @ Self::MerchantKeyError => (
+                hyper::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_00,
+                    format!("{}", data),
+                    None,
+                )),
+            )
+                .into_response(),
+
+            data @ Self::DatabaseInsertFailed(_)
+            | data @ Self::DatabaseError
+            | data @ Self::DatabaseDeleteFailed(_)
+            | data @ Self::RetrieveDataFailed(_) => (
+                hyper::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_01,
+                    format!("{}", data),
+                    None,
+                )),
             )
                 .into_response(),
             data @ Self::RequestMiddlewareError(_)
@@ -199,7 +217,31 @@ impl axum::response::IntoResponse for ApiError {
                 .into_response(),
             data @ Self::NotFoundError => (
                 hyper::StatusCode::NOT_FOUND,
-                axum::Json(ApiErrorResponse::new("TE_03", format!("{}", data), None)),
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_02,
+                    format!("{}", data),
+                    None,
+                )),
+            )
+                .into_response(),
+            data @ Self::MerchantError => (
+                hyper::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_02,
+                    format!("{}", data),
+                    None,
+                )),
+            )
+                .into_response(),
+            data @ Self::RequestMiddlewareError(_)
+            | data @ Self::ValidationError(_)
+            | data @ Self::DecodingError => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_03,
+                    format!("{}", data),
+                    None,
+                )),
             )
                 .into_response(),
         }
