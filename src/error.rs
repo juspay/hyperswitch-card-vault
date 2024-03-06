@@ -212,7 +212,11 @@ impl axum::response::IntoResponse for ApiError {
             | data @ Self::DecodingError
             | data @ Self::ValidationError(_) => (
                 hyper::StatusCode::BAD_REQUEST,
-                axum::Json(ApiErrorResponse::new(error_codes::TE_03, format!("{}", data), None)),
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_03,
+                    format!("{}", data),
+                    None,
+                )),
             )
                 .into_response(),
             data @ Self::NotFoundError => (
