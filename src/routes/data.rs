@@ -194,6 +194,8 @@ pub async fn retrieve_card(
 ) -> Result<Json<types::RetrieveCardResponse>, ContainerError<error::ApiError>> {
     let master_key = GcmAes256::new(state.config.secrets.master_key.clone());
 
+    let testing = GcmAes256::new(state.config.secrets.master_key.clone());
+
     let merchant = state
         .db
         .find_by_merchant_id(
