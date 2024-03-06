@@ -111,7 +111,7 @@ impl LockerInterface for Storage {
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
-        types::LockerInner::table()
+        let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
             .filter(
                 schema::locker::locker_id
                     .eq(locker_id.expose())
@@ -120,10 +120,16 @@ impl LockerInterface for Storage {
                     .and(schema::locker::customer_id.eq(customer_id)),
             )
             .get_result(&mut conn)
-            .await
-            .change_error(error::StorageError::FindError)
+            .await;
+
+        output
+            .map_err(|error| match error {
+                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
+                _ => error::StorageError::FindError,
+            })
+            .map_err(error::ContainerError::from)
             .map_err(From::from)
-            .and_then(|inner: types::LockerInner| Ok(inner.decrypt(key)?))
+            .and_then(|inner| Ok(inner.decrypt(key)?))
     }
 
     async fn find_by_hash_id_merchant_id_customer_id(
