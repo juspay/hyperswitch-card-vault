@@ -151,16 +151,16 @@ pub enum KmsError {
 /// Error code constants.
 mod error_codes {
     /// Processing error: Indicates an error that occurred during processing of a task or operation.
-    pub const TE_00: &'static str = "TE_00";
+    pub const TE_00: &str = "TE_00";
 
     /// Database error: Denotes an error related to database operations or connectivity.
-    pub const TE_01: &'static str = "TE_01";
+    pub const TE_01: &str = "TE_01";
 
     /// Resource not found: Signifies that the requested resource could not be located.
-    pub const TE_02: &'static str = "TE_02";
+    pub const TE_02: &str = "TE_02";
 
     /// Validation error: Represents an error occurring during data validation or integrity checks.
-    pub const TE_03: &'static str = "TE_03";
+    pub const TE_03: &str = "TE_03";
 }
 
 impl axum::response::IntoResponse for ApiError {
@@ -228,17 +228,6 @@ impl axum::response::IntoResponse for ApiError {
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new(
                     error_codes::TE_02,
-                    format!("{}", data),
-                    None,
-                )),
-            )
-                .into_response(),
-            data @ Self::RequestMiddlewareError(_)
-            | data @ Self::ValidationError(_)
-            | data @ Self::DecodingError => (
-                hyper::StatusCode::BAD_REQUEST,
-                axum::Json(ApiErrorResponse::new(
-                    error_codes::TE_03,
                     format!("{}", data),
                     None,
                 )),
