@@ -45,6 +45,12 @@ pub struct Server {
     pub port: u16,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub enum RecycleMethod {
+    Fast,
+    Verified,
+}
+
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct Database {
     pub username: String,
@@ -54,6 +60,7 @@ pub struct Database {
     pub port: u16,
     pub dbname: String,
     pub pool_size: Option<usize>,
+    pub recycle_method: Option<RecycleMethod>,
 }
 
 #[cfg(feature = "caching")]

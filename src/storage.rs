@@ -46,8 +46,22 @@ impl Storage {
             database.port,
             database.dbname
         );
+        let recycle_method = match database.recycle_method {
+            Some(crate::config::RecycleMethod::Fast) => pooled_connection::RecyclingMethod::Fast,
+            Some(crate::config::RecycleMethod::Verified) => {
+                pooled_connection::RecyclingMethod::Verified
+            }
+            None => Default::default(),
+        };
+
+        let mut manager_conf = pooled_connection::ManagerConfig::default();
+        manager_conf.recycling_method = recycle_method;
+
         let config =
-            pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
+            pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new_with_config(
+                database_url,
+                manager_conf,
+            );
         let pool = Pool::builder(config);
 
         let pool = match database.pool_size {
