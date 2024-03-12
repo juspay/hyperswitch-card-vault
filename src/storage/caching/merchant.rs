@@ -6,7 +6,6 @@ use crate::{
     storage::{self, types},
 };
 
-#[async_trait::async_trait]
 impl<T> storage::MerchantInterface for super::Caching<T, types::Merchant>
 where
     T: storage::MerchantInterface
@@ -84,7 +83,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<T> storage::HashInterface for super::Caching<T, types::Merchant>
 where
     T: storage::HashInterface + storage::Cacheable<types::Merchant> + Sync,

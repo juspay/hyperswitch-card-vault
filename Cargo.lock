@@ -2874,7 +2874,6 @@ name = "tartarus"
 version = "0.1.3"
 dependencies = [
  "argh",
- "async-trait",
  "aws-config",
  "aws-sdk-kms",
  "axum",

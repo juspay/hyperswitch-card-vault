@@ -3,15 +3,14 @@ use axum::{extract, response::IntoResponse};
 use crate::{app, error, storage::TestInterface};
 
 /// '/health` API handler`
-pub async fn health<Base: HealthCheck<State = State>, State>(
+pub(crate) async fn health<Base: HealthCheck<State = State>, State>(
     extract::State(state): extract::State<Base::State>,
 ) -> (hyper::StatusCode, &'static str) {
     crate::logger::info!("Health was called");
     Base::health(state).await
 }
 
-#[async_trait::async_trait]
-pub trait HealthCheck {
+pub(crate) trait HealthCheck {
     type State;
     async fn health(state: Self::State) -> (hyper::StatusCode, &'static str);
     async fn diagnostics(state: Self::State) -> (hyper::StatusCode, axum::Json<Diagnostics>);
@@ -39,7 +38,6 @@ pub struct Custodian;
 pub struct Locker;
 
 #[cfg(feature = "key_custodian")]
-#[async_trait::async_trait]
 impl HealthCheck for Custodian {
     type State = app::SharedState;
 
@@ -52,7 +50,6 @@ impl HealthCheck for Custodian {
     }
 }
 
-#[async_trait::async_trait]
 impl HealthCheck for Locker {
     type State = app::AppState;
 
