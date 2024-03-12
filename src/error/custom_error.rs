@@ -30,6 +30,8 @@ pub enum LockerDBError {
     DBInsertError,
     #[error("Error while deleting element in the database")]
     DBDeleteError,
+    #[error("Element not found in database")]
+    NotFoundError,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
