@@ -60,7 +60,6 @@ masking = { git = "https://github.com/juspay/hyperswitch", version = "0.1.0" }
 ring = { version = "0.16.20", features = ["std"] }
 hex = "0.4.3"
 time = "0.3.30"
-async-trait = "0.1.74"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng"] }
 moka = { version = "0.12.1", features = ["future"], optional = true }
 

@@ -13,7 +13,6 @@ use super::types::StorageDecryption;
 use super::types::StorageEncryption;
 use super::{consts, schema, types, utils, LockerInterface, MerchantInterface, Storage};
 
-#[async_trait::async_trait]
 impl MerchantInterface for Storage {
     type Algorithm = GcmAes256;
     type Error = error::MerchantDBError;
@@ -96,7 +95,6 @@ impl MerchantInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl LockerInterface for Storage {
     type Algorithm = GcmAes256;
     type Error = error::LockerDBError;
@@ -221,7 +219,6 @@ impl LockerInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl super::HashInterface for Storage {
     type Error = error::HashDBError;
 
@@ -268,7 +265,6 @@ impl super::HashInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl super::TestInterface for Storage {
     type Error = error::TestDBError;
 
@@ -311,7 +307,6 @@ impl super::TestInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl super::FingerprintInterface for Storage {
     type Error = error::FingerprintDBError;
 
