@@ -58,7 +58,7 @@ impl<'a> From<&'a super::StorageError> for super::LockerDBError {
             }
             super::StorageError::InsertError => Self::DBInsertError,
             super::StorageError::DeleteError => Self::DBDeleteError,
-            super::StorageError::NotFoundError => Self::DBFilterError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
         }
     }
 }
@@ -169,8 +169,8 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
                                                          // occur because of master key failure
             super::MerchantDBError::DBError |
             super::MerchantDBError::DBFilterError |
-            super::MerchantDBError::NotFoundError |
             super::MerchantDBError::DBInsertError=> Self::MerchantError,
+            super::MerchantDBError::NotFoundError=> Self::NotFoundError,
             super::MerchantDBError::UnknownError => Self::UnknownError
         }
     }
@@ -187,6 +187,7 @@ impl<'a> From<&'a super::LockerDBError> for super::ApiError {
             super::LockerDBError::DBInsertError => Self::DatabaseInsertFailed("locker"),
             super::LockerDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
             super::LockerDBError::UnknownError => Self::UnknownError,
+            super::LockerDBError::NotFoundError => Self::NotFoundError,
         }
     }
 }
@@ -221,14 +222,15 @@ impl<'a> From<&'a super::CryptoError> for super::ApiError {
     fn from(value: &'a super::CryptoError) -> Self {
         match value {
             super::CryptoError::SerdeJsonError(_) => Self::DecodingError,
-            super::CryptoError::JWError(_) => {
+            super::CryptoError::DecryptionError | super::CryptoError::JWError(_) => {
                 Self::RequestMiddlewareError("Failed while encrypting/decrypting")
             }
             super::CryptoError::InvalidData(_) => Self::DecodingError,
             super::CryptoError::EncodingError(_) => Self::EncodingError,
-            super::CryptoError::EncryptionError
-            | super::CryptoError::DecryptionError
-            | super::CryptoError::NotImplemented => Self::UnknownError,
+            super::CryptoError::EncryptionError => {
+                Self::ResponseMiddlewareError("Failed while encrypting response")
+            }
+            super::CryptoError::NotImplemented => Self::UnknownError,
         }
     }
 }

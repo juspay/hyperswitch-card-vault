@@ -101,8 +101,7 @@ impl Cacheable<types::Fingerprint> for Storage {
 /// MerchantInterface:
 ///
 /// Interface providing functional to interface with the merchant table in database
-#[async_trait::async_trait]
-pub trait MerchantInterface {
+pub(crate) trait MerchantInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>> + Sync;
     type Error;
 
@@ -135,8 +134,7 @@ pub trait MerchantInterface {
 /// LockerInterface:
 ///
 /// Interface for interacting with the locker database table
-#[async_trait::async_trait]
-pub trait LockerInterface {
+pub(crate) trait LockerInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
     type Error;
 
@@ -178,8 +176,7 @@ pub trait LockerInterface {
 
 /// Trait defining behaviour of the application with the hash table, providing APIs to interact
 /// with it
-#[async_trait::async_trait]
-pub trait HashInterface {
+pub(crate) trait HashInterface {
     type Error;
 
     async fn find_by_data_hash(
@@ -192,8 +189,7 @@ pub trait HashInterface {
     ) -> Result<types::HashTable, ContainerError<Self::Error>>;
 }
 
-#[async_trait::async_trait]
-pub trait TestInterface {
+pub(crate) trait TestInterface {
     type Error;
     async fn test(&self) -> Result<(), ContainerError<Self::Error>>;
 }
@@ -202,8 +198,7 @@ pub trait TestInterface {
 /// Fingerprint:
 ///
 /// Interface providing functions to interface with the fingerprint table in database
-#[async_trait::async_trait]
-pub trait FingerprintInterface {
+pub(crate) trait FingerprintInterface {
     type Error;
 
     async fn find_by_card_hash(
