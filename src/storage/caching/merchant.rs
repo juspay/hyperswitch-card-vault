@@ -6,10 +6,11 @@ use crate::{
     storage::{self, types},
 };
 
-impl<T> storage::MerchantInterface for super::Caching<T, types::Merchant>
+impl<T> storage::MerchantInterface for super::Caching<T>
 where
     T: storage::MerchantInterface
         + storage::Cacheable<types::Merchant, Key = (String, String), Value = types::Merchant>
+        + storage::Cacheable<types::HashTable>
         + Sync
         + Send,
     ContainerError<<T as storage::MerchantInterface>::Error>: NotFoundError,
@@ -24,7 +25,7 @@ where
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let cached_data = self
-            .lookup((tenant_id.to_string(), merchant_id.to_string()))
+            .lookup::<types::Merchant>((tenant_id.to_string(), merchant_id.to_string()))
             .await;
         match cached_data {
             Some(value) => Ok(value),
@@ -33,7 +34,7 @@ where
                     .inner
                     .find_by_merchant_id(merchant_id, tenant_id, key)
                     .await?;
-                self.cache_data(
+                self.cache_data::<types::Merchant>(
                     (output.tenant_id.to_string(), output.merchant_id.to_string()),
                     output.clone(),
                 )
@@ -77,29 +78,8 @@ where
         let merchant_id = new.merchant_id.to_string();
         let tenant_id = new.tenant_id.to_string();
         let output = self.inner.insert_merchant(new, key).await?;
-        self.cache_data((tenant_id, merchant_id), output.clone())
+        self.cache_data::<types::Merchant>((tenant_id, merchant_id), output.clone())
             .await;
         Ok(output)
-    }
-}
-
-impl<T> storage::HashInterface for super::Caching<T, types::Merchant>
-where
-    T: storage::HashInterface + storage::Cacheable<types::Merchant> + Sync,
-{
-    type Error = T::Error;
-
-    async fn find_by_data_hash(
-        &self,
-        data_hash: &[u8],
-    ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        self.inner.find_by_data_hash(data_hash).await
-    }
-
-    async fn insert_hash(
-        &self,
-        data_hash: Vec<u8>,
-    ) -> Result<types::HashTable, ContainerError<Self::Error>> {
-        self.inner.insert_hash(data_hash).await
     }
 }
