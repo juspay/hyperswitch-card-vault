@@ -6,7 +6,6 @@ use crate::{
     storage::{self, types},
 };
 
-#[async_trait::async_trait]
 impl<T> storage::MerchantInterface for super::Caching<T>
 where
     T: storage::MerchantInterface

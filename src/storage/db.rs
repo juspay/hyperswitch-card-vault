@@ -13,7 +13,6 @@ use super::types::StorageDecryption;
 use super::types::StorageEncryption;
 use super::{consts, schema, types, utils, LockerInterface, MerchantInterface, Storage};
 
-#[async_trait::async_trait]
 impl MerchantInterface for Storage {
     type Algorithm = GcmAes256;
     type Error = error::MerchantDBError;
@@ -96,7 +95,6 @@ impl MerchantInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl LockerInterface for Storage {
     type Algorithm = GcmAes256;
     type Error = error::LockerDBError;
@@ -111,7 +109,7 @@ impl LockerInterface for Storage {
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
-        types::LockerInner::table()
+        let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
             .filter(
                 schema::locker::locker_id
                     .eq(locker_id.expose())
@@ -120,10 +118,16 @@ impl LockerInterface for Storage {
                     .and(schema::locker::customer_id.eq(customer_id)),
             )
             .get_result(&mut conn)
-            .await
-            .change_error(error::StorageError::FindError)
+            .await;
+
+        output
+            .map_err(|error| match error {
+                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
+                _ => error::StorageError::FindError,
+            })
+            .map_err(error::ContainerError::from)
             .map_err(From::from)
-            .and_then(|inner: types::LockerInner| Ok(inner.decrypt(key)?))
+            .and_then(|inner| Ok(inner.decrypt(key)?))
     }
 
     async fn find_by_hash_id_merchant_id_customer_id(
@@ -215,7 +219,6 @@ impl LockerInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl super::HashInterface for Storage {
     type Error = error::HashDBError;
 
@@ -262,7 +265,6 @@ impl super::HashInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl super::TestInterface for Storage {
     type Error = error::TestDBError;
 
@@ -305,7 +307,6 @@ impl super::TestInterface for Storage {
     }
 }
 
-#[async_trait::async_trait]
 impl super::FingerprintInterface for Storage {
     type Error = error::FingerprintDBError;
 
