@@ -5,6 +5,9 @@ check-filename = true
 encrypter = "encrypter"
 requestor = "requestor"
 Hashi = "Hashi"
+KMS = "KMS"
+kms = "kms"
+Kms = "Kms"
 
 [files]
 extend-exclude = ["loadtest/scripts/http-rs.js"]
