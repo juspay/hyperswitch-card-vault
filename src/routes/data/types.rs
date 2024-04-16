@@ -9,7 +9,7 @@
 
 use masking::{PeekInterface, Secret};
 
-use crate::{error, storage};
+use crate::{error, storage, utils};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct Card {
@@ -54,6 +54,8 @@ pub struct StoreCardRequest {
     // pub enc_card_data: Option<String>,
     #[serde(flatten)]
     pub data: Data,
+    #[serde(default, with = "crate::utils::date_time::iso8601")]
+    pub ttl: Option<time::PrimitiveDateTime>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
@@ -142,9 +144,16 @@ impl Validation for StoreCardRequest {
     fn validate(&self) -> Result<(), Self::Error> {
         match &self.data {
             Data::EncData { .. } => Ok(()),
-            Data::Card { card } => crate::validations::luhn_on_string(card.card_number.peek())
-                .then_some(())
-                .ok_or(error::ApiError::ValidationError("card number invalid")),
+            Data::Card { card } => {
+                if let Some(ttl) = self.ttl {
+                    if ttl <= utils::date_time::now() {
+                        return Err(error::ApiError::InvalidTtl);
+                    }
+                }
+                crate::validations::luhn_on_string(card.card_number.peek())
+                    .then_some(())
+                    .ok_or(error::ApiError::ValidationError("card number invalid"))
+            }
         }
     }
 }

@@ -15,6 +15,7 @@ use crate::{
     crypto::{aes::GcmAes256, sha::Sha512},
     error::{self, ContainerError, ResultContainerExt},
     storage::{FingerprintInterface, HashInterface, LockerInterface, MerchantInterface},
+    utils,
 };
 
 #[cfg(feature = "middleware")]
@@ -215,6 +216,21 @@ pub async fn retrieve_card(
             &merchant_dek,
         )
         .await?;
+
+    if let Some(ttl) = card.ttl {
+        if utils::date_time::now() > ttl {
+            state
+                .db
+                .delete_from_locker(
+                    card.locker_id,
+                    &card.tenant_id,
+                    &card.merchant_id,
+                    &card.customer_id,
+                )
+                .await?;
+            return Err(error::ApiError::NotFoundError.into());
+        }
+    }
 
     Ok(Json(card.try_into()?))
 }

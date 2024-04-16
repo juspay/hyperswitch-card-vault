@@ -34,6 +34,7 @@ diesel::table! {
         created_at -> Timestamp,
         #[max_length = 255]
         hash_id -> Varchar,
+        ttl -> Nullable<Timestamp>,
     }
 }
 
