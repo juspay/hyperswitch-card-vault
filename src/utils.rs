@@ -4,9 +4,10 @@ pub mod date_time {
 
     /// Use the well-known ISO 8601 format when serializing and deserializing an
     /// [`Option<PrimitiveDateTime>`][PrimitiveDateTime].
+    /// Example: `2024-04-16T17:35:00.000Z`
     ///
     /// [PrimitiveDateTime]: ::time::PrimitiveDateTime
-    pub mod iso8601 {
+    pub mod optional_iso8601 {
         use std::num::NonZeroU8;
 
         use serde::{ser::Error as _, Deserializer, Serialize, Serializer};

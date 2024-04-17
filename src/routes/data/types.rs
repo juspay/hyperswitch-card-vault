@@ -54,7 +54,7 @@ pub struct StoreCardRequest {
     // pub enc_card_data: Option<String>,
     #[serde(flatten)]
     pub data: Data,
-    #[serde(default, with = "crate::utils::date_time::iso8601")]
+    #[serde(default, with = "crate::utils::date_time::optional_iso8601")]
     pub ttl: Option<time::PrimitiveDateTime>,
 }
 
@@ -142,18 +142,21 @@ impl Validation for StoreCardRequest {
     type Error = error::ApiError;
 
     fn validate(&self) -> Result<(), Self::Error> {
+        self.ttl
+            .map(|ttl| -> Result<(), Self::Error> {
+                if ttl <= utils::date_time::now() {
+                    Err(error::ApiError::InvalidTtl)
+                } else {
+                    Ok(())
+                }
+            })
+            .transpose()?;
+
         match &self.data {
             Data::EncData { .. } => Ok(()),
-            Data::Card { card } => {
-                if let Some(ttl) = self.ttl {
-                    if ttl <= utils::date_time::now() {
-                        return Err(error::ApiError::InvalidTtl);
-                    }
-                }
-                crate::validations::luhn_on_string(card.card_number.peek())
-                    .then_some(())
-                    .ok_or(error::ApiError::ValidationError("card number invalid"))
-            }
+            Data::Card { card } => crate::validations::luhn_on_string(card.card_number.peek())
+                .then_some(())
+                .ok_or(error::ApiError::ValidationError("card number invalid")),
         }
     }
 }
