@@ -1,5 +1,5 @@
 mod cargo_workspace {
-    /// Verify that the cargo metadata workspace members format matches that expected by
+    /// Verify that the cargo metadata workspace packages format matches that expected by
     /// [`set_cargo_workspace_members_env`] to set the `CARGO_WORKSPACE_MEMBERS` environment variable.
     ///
     /// This function should be typically called within build scripts, before the
@@ -7,24 +7,20 @@ mod cargo_workspace {
     ///
     /// # Panics
     ///
-    /// Panics if running the `cargo metadata` command fails, or if the workspace members package ID
-    /// format cannot be determined.
+    /// Panics if running the `cargo metadata` command fails, or if the workspace member package names
+    /// cannot be determined.
     pub fn verify_cargo_metadata_format() {
         #[allow(clippy::expect_used)]
         let metadata = cargo_metadata::MetadataCommand::new()
             .exec()
             .expect("Failed to obtain cargo metadata");
-        let workspace_members = metadata.workspace_members;
 
-        let package_id_entry_prefix =
-            format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         assert!(
-            workspace_members
+            metadata
+                .workspace_packages()
                 .iter()
-                .any(|package_id| package_id.repr.starts_with(&package_id_entry_prefix)),
-            "Unknown workspace members package ID format. \
-         Please run `cargo metadata --format-version=1 | jq '.workspace_members'` and update this \
-         build script to match the updated package ID format."
+                .any(|package| package.name == env!("CARGO_PKG_NAME")),
+            "Unable to determine workspace member package names from `cargo metadata`"
         );
     }
 
@@ -44,17 +40,11 @@ mod cargo_workspace {
         let metadata = cargo_metadata::MetadataCommand::new()
             .exec()
             .expect("Failed to obtain cargo metadata");
-        let workspace_members = metadata.workspace_members;
 
-        let workspace_members = workspace_members
+        let workspace_members = metadata
+            .workspace_packages()
             .iter()
-            .map(|package_id| {
-                package_id
-                    .repr
-                    .split_once(' ')
-                    .expect("Unknown cargo metadata package ID format")
-                    .0
-            })
+            .map(|package| package.name.as_str())
             .collect::<Vec<_>>()
             .join(",");
 

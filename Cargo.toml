@@ -73,7 +73,7 @@ criterion = "0.5.1"
 axum-test = "14.2.2"
 
 [build-dependencies]
-cargo_metadata = "0.15.4"
+cargo_metadata = "0.18.1"
 
 
 [[bin]]
