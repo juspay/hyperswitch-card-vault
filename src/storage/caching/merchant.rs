@@ -26,7 +26,7 @@ where
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let cached_data = self
-            .lookup::<types::Merchant>(&(tenant_id.to_string(), merchant_id.to_string()))
+            .lookup::<types::Merchant>((tenant_id.to_string(), merchant_id.to_string()))
             .await;
         match cached_data {
             Some(value) => Ok(value),

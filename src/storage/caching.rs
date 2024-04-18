@@ -93,14 +93,14 @@ where
     #[inline(always)]
     pub async fn lookup<U>(
         &self,
-        key: &<T as super::Cacheable<U>>::Key,
+        key: <T as super::Cacheable<U>>::Key,
     ) -> Option<<T as super::Cacheable<U>>::Value>
     where
         T: super::Cacheable<U>,
         Self: GetCache<T, U>,
     {
         self.get_cache()
-            .get(key)
+            .get(&key)
             .await
             .map(|value: Arc<<T as super::Cacheable<U>>::Value>| {
                 let data = value.as_ref();

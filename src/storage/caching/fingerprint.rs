@@ -21,7 +21,7 @@ where
         card_hash: Secret<&[u8]>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         let key = card_hash.peek().to_vec();
-        let cached_data = self.lookup::<types::Fingerprint>(&key).await;
+        let cached_data = self.lookup::<types::Fingerprint>(key.clone()).await;
         match cached_data {
             Some(data) => Ok(Some(data)),
             None => {
