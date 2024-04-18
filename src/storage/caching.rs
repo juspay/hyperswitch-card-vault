@@ -1,29 +1,24 @@
 use std::sync::Arc;
 
+use super::types;
+
+pub(super) type Cache<T, U> =
+    moka::future::Cache<<T as super::Cacheable<U>>::Key, Arc<<T as super::Cacheable<U>>::Value>>;
+
 #[derive(Clone)]
-pub struct Caching<T, U>
+pub struct Caching<T>
 where
-    T: super::Cacheable<U>,
+    T: super::Cacheable<types::Merchant> + super::Cacheable<types::HashTable>,
 {
     inner: T,
-    cache: moka::future::Cache<T::Key, Arc<T::Value>>,
+    merchant_cache: Cache<T, types::Merchant>,
+    hash_table_cache: Cache<T, types::HashTable>,
 }
 
-// impl<U, T: super::Cacheable<U>> super::Cacheable<U> for Caching<T, U> {
-//     type Key = T::Key;
-//     type Value = T::Value;
-// }
-
-impl<U1, U2, T> super::Cacheable<U2> for Caching<T, U1>
+impl<T> std::ops::Deref for Caching<T>
 where
-    T: super::Cacheable<U2> + super::Cacheable<U1>,
+    T: super::Cacheable<types::Merchant> + super::Cacheable<types::HashTable>,
 {
-    type Key = <T as super::Cacheable<U2>>::Key;
-
-    type Value = <T as super::Cacheable<U2>>::Value;
-}
-
-impl<T: super::Cacheable<U>, U> std::ops::Deref for Caching<T, U> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -31,42 +26,87 @@ impl<T: super::Cacheable<U>, U> std::ops::Deref for Caching<T, U> {
     }
 }
 
-impl<T, U> Caching<T, U>
+fn new_cache<T, U>(config: &crate::config::Cache, name: &str) -> Cache<T, U>
 where
     T: super::Cacheable<U>,
 {
-    #[inline(always)]
-    pub async fn lookup(&self, key: T::Key) -> Option<T::Value> {
-        self.cache.get(&key).await.map(|value| {
-            let data = value.as_ref();
-            data.clone()
-        })
-    }
+    let cache = moka::future::CacheBuilder::new(config.max_capacity).name(name);
+    let cache = match config.tti {
+        Some(value) => cache.time_to_idle(std::time::Duration::from_secs(value)),
+        None => cache,
+    };
 
-    #[inline(always)]
-    pub async fn cache_data(&self, key: T::Key, value: T::Value) {
-        self.cache.insert(key, value.into()).await;
+    cache.build()
+}
+
+pub trait GetCache<T, U>
+where
+    T: super::Cacheable<U>,
+{
+    fn get_cache(&self) -> &Cache<T, U>;
+}
+
+impl<T> GetCache<T, types::Merchant> for Caching<T>
+where
+    T: super::Cacheable<types::Merchant> + super::Cacheable<types::HashTable>,
+{
+    fn get_cache(&self) -> &Cache<T, types::Merchant> {
+        &self.merchant_cache
     }
 }
 
-pub fn implement_cache<'a, T, U>(
-    name: &'a str,
-    config: &'a crate::config::Cache,
-) -> impl Fn(T) -> Caching<T, U> + 'a
+impl<T> GetCache<T, types::HashTable> for Caching<T>
 where
-    T: super::Cacheable<U>,
+    T: super::Cacheable<types::Merchant> + super::Cacheable<types::HashTable>,
 {
-    // Caching { inner, cache }
-    move |inner| {
-        let cache = moka::future::CacheBuilder::new(config.max_capacity).name(name);
-        let cache = match config.tti {
-            Some(value) => cache.time_to_idle(std::time::Duration::from_secs(value)),
-            None => cache,
-        };
+    fn get_cache(&self) -> &Cache<T, types::HashTable> {
+        &self.hash_table_cache
+    }
+}
 
-        Caching {
-            inner,
-            cache: cache.build(),
+impl<T> Caching<T>
+where
+    T: super::Cacheable<types::Merchant> + super::Cacheable<types::HashTable>,
+{
+    #[inline(always)]
+    pub async fn lookup<U>(
+        &self,
+        key: <T as super::Cacheable<U>>::Key,
+    ) -> Option<<T as super::Cacheable<U>>::Value>
+    where
+        T: super::Cacheable<U>,
+        Self: GetCache<T, U>,
+    {
+        self.get_cache()
+            .get(&key)
+            .await
+            .map(|value: Arc<<T as super::Cacheable<U>>::Value>| {
+                let data = value.as_ref();
+                data.clone()
+            })
+    }
+
+    #[inline(always)]
+    pub async fn cache_data<U>(
+        &self,
+        key: <T as super::Cacheable<U>>::Key,
+        value: <T as super::Cacheable<U>>::Value,
+    ) where
+        T: super::Cacheable<U>,
+        Self: GetCache<T, U>,
+    {
+        self.get_cache().insert(key, value.into()).await;
+    }
+
+    pub fn implement_cache(config: &'_ crate::config::Cache) -> impl Fn(T) -> Self + '_ {
+        move |inner: T| {
+            let merchant_cache = new_cache::<T, types::Merchant>(config, "merchant");
+            let hash_table_cache = new_cache::<T, types::HashTable>(config, "hash_table");
+            Self {
+                inner,
+                merchant_cache,
+                hash_table_cache,
+            }
         }
     }
 }
