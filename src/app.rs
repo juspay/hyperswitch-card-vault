@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[cfg(feature = "caching")]
-use crate::storage::{caching::Caching, types};
+use crate::storage::caching::Caching;
 
 #[cfg(feature = "kms")]
 use crate::crypto::{
@@ -25,7 +25,7 @@ use crate::crypto::{
 };
 
 #[cfg(feature = "caching")]
-type Storage = Caching<Caching<storage::Storage, types::HashTable>, types::Merchant>;
+type Storage = Caching<storage::Storage>;
 
 #[cfg(not(feature = "caching"))]
 type Storage = storage::Storage;
@@ -200,13 +200,7 @@ impl AppState {
                 .await
                 .map(
                     #[cfg(feature = "caching")]
-                    storage::caching::implement_cache("hash", &config.cache),
-                    #[cfg(not(feature = "caching"))]
-                    std::convert::identity,
-                )
-                .map(
-                    #[cfg(feature = "caching")]
-                    storage::caching::implement_cache("merchant", &config.cache),
+                    Caching::implement_cache(&config.cache),
                     #[cfg(not(feature = "caching"))]
                     std::convert::identity,
                 )
