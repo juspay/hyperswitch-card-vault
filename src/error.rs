@@ -106,6 +106,9 @@ pub enum ApiError {
 
     #[error("Requested resource not found")]
     NotFoundError,
+
+    #[error("TTL is invalid")]
+    InvalidTtl,
 }
 
 /// Errors that could occur during KMS operations.
@@ -210,7 +213,8 @@ impl axum::response::IntoResponse for ApiError {
                 .into_response(),
             data @ Self::RequestMiddlewareError(_)
             | data @ Self::DecodingError
-            | data @ Self::ValidationError(_) => (
+            | data @ Self::ValidationError(_)
+            | data @ Self::InvalidTtl => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new(
                     error_codes::TE_03,

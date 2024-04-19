@@ -58,6 +58,7 @@ pub(super) struct LockerInner {
     enc_data: Encrypted,
     created_at: time::PrimitiveDateTime,
     hash_id: String,
+    ttl: Option<time::PrimitiveDateTime>,
 }
 
 #[derive(Debug)]
@@ -69,6 +70,7 @@ pub struct Locker {
     pub enc_data: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
+    pub ttl: Option<time::PrimitiveDateTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +81,7 @@ pub struct LockerNew<'a> {
     pub customer_id: String,
     pub enc_data: Secret<Vec<u8>>,
     pub hash_id: &'a str,
+    pub ttl: Option<time::PrimitiveDateTime>,
 }
 
 #[derive(Debug, Insertable)]
@@ -90,6 +93,7 @@ pub(super) struct LockerNewInner<'a> {
     customer_id: String,
     enc_data: Encrypted,
     hash_id: &'a str,
+    ttl: Option<time::PrimitiveDateTime>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable)]
@@ -283,6 +287,7 @@ impl StorageDecryption for LockerInner {
             enc_data: algo.decrypt(self.enc_data.into_inner().expose())?.into(),
             created_at: self.created_at,
             hash_id: self.hash_id,
+            ttl: self.ttl,
         })
     }
 }
@@ -304,6 +309,7 @@ impl<'a> StorageEncryption for LockerNew<'a> {
             customer_id: self.customer_id,
             enc_data: algo.encrypt(self.enc_data.expose())?.into(),
             hash_id: self.hash_id,
+            ttl: self.ttl,
         })
     }
 }

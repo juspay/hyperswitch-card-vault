@@ -7,4 +7,5 @@ pub mod logger;
 pub mod middleware;
 pub mod routes;
 pub mod storage;
+pub mod utils;
 pub mod validations;
