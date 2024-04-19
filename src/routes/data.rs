@@ -15,6 +15,7 @@ use crate::{
     crypto::{aes::GcmAes256, sha::Sha512},
     error::{self, ContainerError, ResultContainerExt},
     storage::{FingerprintInterface, HashInterface, LockerInterface, MerchantInterface},
+    utils,
 };
 
 #[cfg(feature = "middleware")]
@@ -208,13 +209,36 @@ pub async fn retrieve_card(
     let card = state
         .db
         .find_by_locker_id_merchant_id_customer_id(
-            request.card_reference.into(),
+            request.card_reference.clone().into(),
             &state.config.secrets.tenant,
             &request.merchant_id,
             &request.merchant_customer_id,
             &merchant_dek,
         )
         .await?;
+
+    card.ttl
+        .map(|ttl| -> Result<(), error::ApiError> {
+            if utils::date_time::now() > ttl {
+                let tenant_id = card.tenant_id.clone();
+                tokio::spawn(async move {
+                    state
+                        .db
+                        .delete_from_locker(
+                            request.card_reference.into(),
+                            &tenant_id,
+                            &request.merchant_id,
+                            &request.merchant_customer_id,
+                        )
+                        .await
+                });
+
+                Err(error::ApiError::NotFoundError)
+            } else {
+                Ok(())
+            }
+        })
+        .transpose()?;
 
     Ok(Json(card.try_into()?))
 }
