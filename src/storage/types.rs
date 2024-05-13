@@ -4,7 +4,7 @@ use diesel::{
     serialize::ToSql,
     sql_types, AsExpression, Identifiable, Insertable, Queryable,
 };
-use masking::{ExposeInterface, PeekInterface, Secret};
+use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use crate::{
     crypto::{self, Encryption},
@@ -113,8 +113,8 @@ pub struct Fingerprint {
     pub card_fingerprint: Secret<String>,
 }
 
-#[derive(Debug, serde::Deserialize)]
-pub struct CardNumber(masking::StrongSecret<String>);
+#[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+pub struct CardNumber(StrongSecret<String>);
 
 impl Validation for CardNumber {
     type Error = error::ApiError;
@@ -129,6 +129,14 @@ impl Validation for CardNumber {
 impl CardNumber {
     pub fn into_bytes(self) -> Vec<u8> {
         self.0.peek().clone().into_bytes()
+    }
+}
+
+impl std::ops::Deref for CardNumber {
+    type Target = StrongSecret<String>;
+
+    fn deref(&self) -> &StrongSecret<String> {
+        &self.0
     }
 }
 
