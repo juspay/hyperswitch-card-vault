@@ -1,25 +1,28 @@
 use crate::error::ApiError;
 
-const MIN_CARD_NUMBER_LENGTH: usize = 12;
+///
+/// Minimum limit of a card number will not deceed 8 by ISO standards
+///
+const MIN_CARD_NUMBER_LENGTH: usize = 8;
 
 ///
 /// Maximum limit of a card number will not exceed 19 by ISO standards
 ///
 const MAX_CARD_NUMBER_LENGTH: usize = 19;
 
-#[allow(clippy::expect_used)]
 ///
 /// # Panics
 ///
 /// Never, as a single character will never be greater than 10, or `u8`
 ///
-pub fn luhn_on_string(number: &str) -> Result<bool, ApiError> {
+pub fn validate_card_number(number: &str) -> Result<bool, ApiError> {
     let number = number.split_whitespace().collect::<String>();
 
-    let data = number
-        .chars()
-        .try_fold(Vec::with_capacity(20), |mut data, character| {
+    let data = number.chars().try_fold(
+        Vec::with_capacity(MAX_CARD_NUMBER_LENGTH),
+        |mut data, character| {
             data.push(
+                #[allow(clippy::expect_used)]
                 character
                     .to_digit(10)
                     .ok_or(ApiError::ValidationError(
@@ -29,7 +32,8 @@ pub fn luhn_on_string(number: &str) -> Result<bool, ApiError> {
                     .expect("error while converting a single character to u8"), // safety, a single character will never be greater `u8`
             );
             Ok::<Vec<u8>, ApiError>(data)
-        })?;
+        },
+    )?;
 
     Ok(
         (data.len() >= MIN_CARD_NUMBER_LENGTH && data.len() <= MAX_CARD_NUMBER_LENGTH)

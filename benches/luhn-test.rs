@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::fmt::Write;
-use tartarus::validations::luhn_on_string;
+use tartarus::validations::validate_card_number;
 
 #[allow(clippy::expect_used)]
 fn card_number_generator() -> String {
@@ -16,11 +16,11 @@ pub fn criterion_luhn(c: &mut Criterion) {
         b.iter(|| black_box(card_number_generator()))
     });
     c.bench_function("luhn-validation", |b| {
-        b.iter(|| black_box(luhn_on_string(&black_box(card_number_generator()))))
+        b.iter(|| black_box(validate_card_number(&black_box(card_number_generator()))))
     });
     let card_number = card_number_generator();
     c.bench_function("luhn", |b| {
-        b.iter(|| black_box(luhn_on_string(black_box(&card_number))))
+        b.iter(|| black_box(validate_card_number(black_box(&card_number))))
     });
 }
 
