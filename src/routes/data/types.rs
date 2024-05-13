@@ -154,7 +154,7 @@ impl Validation for StoreCardRequest {
 
         match &self.data {
             Data::EncData { .. } => Ok(()),
-            Data::Card { card } => crate::validations::luhn_on_string(card.card_number.peek())
+            Data::Card { card } => crate::validations::luhn_on_string(card.card_number.peek())?
                 .then_some(())
                 .ok_or(error::ApiError::ValidationError("card number invalid")),
         }

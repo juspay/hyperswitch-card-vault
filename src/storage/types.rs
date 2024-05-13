@@ -120,7 +120,7 @@ impl Validation for CardNumber {
     type Error = error::ApiError;
 
     fn validate(&self) -> Result<(), Self::Error> {
-        crate::validations::luhn_on_string(self.0.peek())
+        crate::validations::luhn_on_string(self.0.peek())?
             .then_some(())
             .ok_or(error::ApiError::ValidationError("card number invalid"))
     }
