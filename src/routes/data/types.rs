@@ -7,13 +7,13 @@
 //     hash2_reference: Option<String>,
 // }
 
-use masking::{PeekInterface, Secret};
+use masking::Secret;
 
 use crate::{error, storage, utils};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct Card {
-    pub card_number: masking::StrongSecret<String>,
+    pub card_number: storage::types::CardNumber,
     name_on_card: Option<String>,
     card_exp_month: Option<String>,
     card_exp_year: Option<String>,
@@ -154,9 +154,7 @@ impl Validation for StoreCardRequest {
 
         match &self.data {
             Data::EncData { .. } => Ok(()),
-            Data::Card { card } => crate::validations::luhn_on_string(card.card_number.peek())
-                .then_some(())
-                .ok_or(error::ApiError::ValidationError("card number invalid")),
+            Data::Card { card } => card.card_number.validate(),
         }
     }
 }
