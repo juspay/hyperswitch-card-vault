@@ -8,6 +8,7 @@ where
     T: storage::HashInterface
         + storage::Cacheable<types::HashTable, Key = Vec<u8>, Value = types::HashTable>
         + storage::Cacheable<types::Merchant>
+        + storage::Cacheable<types::Fingerprint>
         + Sync
         + Send,
 {

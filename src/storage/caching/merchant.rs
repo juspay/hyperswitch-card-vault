@@ -11,6 +11,7 @@ where
     T: storage::MerchantInterface
         + storage::Cacheable<types::Merchant, Key = (String, String), Value = types::Merchant>
         + storage::Cacheable<types::HashTable>
+        + storage::Cacheable<types::Fingerprint>
         + Sync
         + Send,
     ContainerError<<T as storage::MerchantInterface>::Error>: NotFoundError,

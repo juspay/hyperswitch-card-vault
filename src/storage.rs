@@ -91,6 +91,12 @@ impl Cacheable<types::HashTable> for Storage {
     type Value = types::HashTable;
 }
 
+#[cfg(feature = "caching")]
+impl Cacheable<types::Fingerprint> for Storage {
+    type Key = Vec<u8>;
+    type Value = types::Fingerprint;
+}
+
 ///
 /// MerchantInterface:
 ///
