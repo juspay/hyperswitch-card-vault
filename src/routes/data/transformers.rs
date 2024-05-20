@@ -34,7 +34,7 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
             customer_id: value.merchant_customer_id,
             enc_data: data.into(),
             hash_id,
-            ttl: value.ttl,
+            ttl: *value.ttl,
         })
     }
 }

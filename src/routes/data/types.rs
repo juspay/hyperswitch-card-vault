@@ -54,8 +54,7 @@ pub struct StoreCardRequest {
     // pub enc_card_data: Option<String>,
     #[serde(flatten)]
     pub data: Data,
-    #[serde(default, with = "crate::utils::date_time::optional_iso8601")]
-    pub ttl: Option<time::PrimitiveDateTime>,
+    pub ttl: Ttl,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
@@ -63,6 +62,34 @@ pub struct StoreCardRequest {
 pub enum Data {
     EncData { enc_card_data: String },
     Card { card: Card },
+}
+
+/// The data expires at the specified date and time.
+#[derive(Debug, serde::Serialize, Default)]
+pub struct Ttl(pub Option<time::PrimitiveDateTime>);
+
+impl<'de> serde::Deserialize<'de> for Ttl {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let duration_in_sec = Option::<usize>::deserialize(deserializer)?
+            .map(i64::try_from)
+            .transpose()
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(Self(duration_in_sec.map(|ttl| {
+            let current_time = crate::utils::date_time::now();
+            current_time.saturating_add(time::Duration::seconds(ttl))
+        })))
+    }
+}
+
+impl std::ops::Deref for Ttl {
+    type Target = Option<time::PrimitiveDateTime>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

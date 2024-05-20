@@ -204,6 +204,10 @@ components:
         enc_card_data:
           type: string
           example: "qwe4tyusdfg"
+        ttl:
+          type: "integer"
+          example: 60
+
     RetrieveDataReq:
       type: object
       properties:
