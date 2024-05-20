@@ -13,6 +13,7 @@ pub(crate) async fn health<Base: HealthCheck<State = State>, State>(
 pub(crate) trait HealthCheck {
     type State;
     async fn health(state: Self::State) -> (hyper::StatusCode, &'static str);
+    #[allow(dead_code)]
     async fn diagnostics(state: Self::State) -> (hyper::StatusCode, axum::Json<Diagnostics>);
 }
 
