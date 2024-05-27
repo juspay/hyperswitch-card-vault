@@ -7,7 +7,7 @@ use diesel::{
 use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use crate::{
-    crypto::{self, Encryption},
+    crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
     routes::data::types::Validation,
 };
@@ -224,32 +224,31 @@ where
 
 pub(super) trait StorageDecryption: Sized {
     type Output;
-    type Algorithm: crypto::Encryption<Vec<u8>, Vec<u8>>;
+    type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
     fn decrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
 }
 
 pub(super) trait StorageEncryption: Sized {
     type Output;
-    type Algorithm: crypto::Encryption<Vec<u8>, Vec<u8>>;
+    type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
     fn encrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
 }
 
 impl StorageDecryption for MerchantInner {
     type Output = Merchant;
 
-    type Algorithm = crypto::aes::GcmAes256;
+    type Algorithm = GcmAes256;
 
     fn decrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
-    {
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
         Ok(Self::Output {
             merchant_id: self.merchant_id,
             enc_key: algo.decrypt(self.enc_key.into_inner().expose())?.into(),
@@ -262,13 +261,12 @@ impl StorageDecryption for MerchantInner {
 impl<'a> StorageEncryption for MerchantNew<'a> {
     type Output = MerchantNewInner<'a>;
 
-    type Algorithm = crypto::aes::GcmAes256;
+    type Algorithm = GcmAes256;
 
     fn encrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
-    {
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
         Ok(Self::Output {
             merchant_id: self.merchant_id,
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
@@ -280,13 +278,12 @@ impl<'a> StorageEncryption for MerchantNew<'a> {
 impl StorageDecryption for LockerInner {
     type Output = Locker;
 
-    type Algorithm = crypto::aes::GcmAes256;
+    type Algorithm = GcmAes256;
 
     fn decrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
-    {
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
         Ok(Self::Output {
             locker_id: self.locker_id,
             tenant_id: self.tenant_id,
@@ -303,13 +300,12 @@ impl StorageDecryption for LockerInner {
 impl<'a> StorageEncryption for LockerNew<'a> {
     type Output = LockerNewInner<'a>;
 
-    type Algorithm = crypto::aes::GcmAes256;
+    type Algorithm = GcmAes256;
 
     fn encrypt(
         self,
         algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as crypto::Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>
-    {
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
         Ok(Self::Output {
             locker_id: self.locker_id,
             tenant_id: self.tenant_id,

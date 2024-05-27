@@ -1,9 +1,9 @@
-use super::logger::config::Log;
-#[cfg(feature = "kms-aws")]
-use crate::crypto::aws_kms;
+use error_stack::ResultExt;
+use masking::ExposeInterface;
 
-#[cfg(feature = "kms-hashicorp-vault")]
-use crate::crypto::hcvault;
+use super::logger::config::Log;
+
+use crate::{crypto::secrets_manager::secrets_management::SecretsManagementConfig, error};
 
 use std::path::PathBuf;
 
@@ -12,23 +12,13 @@ pub struct Config {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
-    #[serde(flatten)]
-    pub key_management_service: Option<EncryptionScheme>,
+    #[serde[default]]
+    pub secrets_management: SecretsManagementConfig,
     pub log: Log,
     #[cfg(feature = "limit")]
     pub limit: Limit,
     #[cfg(feature = "caching")]
     pub cache: Cache,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum EncryptionScheme {
-    #[cfg(feature = "kms-aws")]
-    AwsKms(aws_kms::KmsConfig),
-    #[cfg(feature = "kms-hashicorp-vault")]
-    VaultKv2(hcvault::HashiCorpVaultConfig),
 }
 
 #[cfg(feature = "limit")]
@@ -101,7 +91,7 @@ pub fn workspace_path() -> PathBuf {
 
 impl Config {
     /// Function to build the configuration by picking it from default locations
-    pub fn new() -> Result<Self, config::ConfigError> {
+    pub async fn new() -> Result<Self, config::ConfigError> {
         Self::new_with_config_path(None)
     }
 
@@ -152,6 +142,64 @@ impl Config {
         }
         config_path
     }
+
+    /// # Panics
+    ///
+    /// Will panic even if fetching raw secret fails for at least one config value
+    #[allow(clippy::expect_used)]
+    pub async fn fetch_raw_secrets(
+        &mut self,
+    ) -> error_stack::Result<(), error::ConfigurationError> {
+        let secret_management_client = self
+            .secrets_management
+            .get_secret_management_client()
+            .await
+            .expect("Failed to create secret management client");
+
+        self.database.password = secret_management_client
+            .get_secret(self.database.password.clone())
+            .await
+            .change_context(error::ConfigurationError::KmsDecryptError(
+                "database_password",
+            ))?;
+
+        self.secrets.master_key = hex::decode(
+            secret_management_client
+                .get_secret(
+                    String::from_utf8(self.secrets.master_key.clone())
+                        .expect("Failed while converting master key to `String`")
+                        .into(),
+                )
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
+                .expose(),
+        )
+        .expect("Failed to decode master key from hex");
+
+        #[cfg(feature = "middleware")]
+        {
+            self.secrets.tenant_public_key = secret_management_client
+                .get_secret(self.secrets.tenant_public_key.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "tenant_public_key",
+                ))?;
+
+            self.secrets.locker_private_key = secret_management_client
+                .get_secret(self.secrets.locker_private_key.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "locker_private_key",
+                ))?;
+        }
+
+        Ok(())
+    }
+
+    pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
+        self.secrets_management.validate()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -165,8 +213,8 @@ mod tests {
 
     #[derive(Clone, serde::Deserialize, Debug)]
     struct TestDeser {
-        #[serde(flatten)]
-        pub key_management_service: Option<EncryptionScheme>,
+        #[serde(default)]
+        pub secrets_management: SecretsManagementConfig,
     }
 
     #[test]
@@ -181,14 +229,20 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert!(parsed.key_management_service.is_none())
+        assert_eq!(
+            parsed.secrets_management,
+            SecretsManagementConfig::NoEncryption
+        )
     }
 
     #[cfg(feature = "kms-aws")]
     #[test]
     fn test_aws_kms_case() {
         let data = r#"
-        [aws_kms]
+        [secrets_management]
+        secrets_manager = "aws_kms"
+
+        [secrets_management.aws_kms]
         key_id = "123"
         region = "abc"
         "#;
@@ -200,9 +254,9 @@ mod tests {
         )
         .unwrap();
 
-        match parsed.key_management_service {
-            Some(EncryptionScheme::AwsKms(value)) => {
-                assert!(value.key_id == "123" && value.region == "abc")
+        match parsed.secrets_management {
+            SecretsManagementConfig::AwsKms { aws_kms } => {
+                assert!(aws_kms.key_id == "123" && aws_kms.region == "abc")
             }
             _ => assert!(false),
         }
@@ -212,7 +266,10 @@ mod tests {
     #[test]
     fn test_hashicorp_case() {
         let data = r#"
-        [vault_kv2]
+        [secrets_management]
+        secrets_manager = "hashi_corp_vault"
+
+        [secrets_management.hashi_corp_vault]
         url = "123"
         token = "abc"
         "#;
@@ -224,9 +281,9 @@ mod tests {
         )
         .unwrap();
 
-        match parsed.key_management_service {
-            Some(EncryptionScheme::VaultKv2(value)) => {
-                assert!(value.url == "123" && value.token == "abc")
+        match parsed.secrets_management {
+            SecretsManagementConfig::HashiCorpVault { hashi_corp_vault } => {
+                assert!(hashi_corp_vault.url == "123" && hashi_corp_vault.token.expose() == "abc")
             }
             _ => assert!(false),
         }

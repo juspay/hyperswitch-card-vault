@@ -1,4 +1,7 @@
-use crate::error::{self, ContainerError};
+use crate::{
+    crypto::encryption_manager::encryption_interface::Encryption,
+    error::{self, ContainerError},
+};
 use josekit::{jwe, jws};
 use masking::PeekInterface;
 
@@ -90,7 +93,7 @@ impl JweBody {
     }
 }
 
-impl super::Encryption<Vec<u8>, JweBody> for JWEncryption {
+impl Encryption<Vec<u8>, JweBody> for JWEncryption {
     type ReturnType<'a, T> = Result<T, ContainerError<error::CryptoError>>;
 
     fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, JweBody> {

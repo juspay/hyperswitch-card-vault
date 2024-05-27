@@ -4,10 +4,14 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use masking::ExposeInterface;
 use masking::Secret;
 
-use crate::crypto::aes::{generate_aes256_key, GcmAes256};
-use crate::crypto::sha::HmacSha512;
-use crate::crypto::Encode;
-use crate::error::{self, ContainerError, ResultContainerExt};
+use crate::{
+    crypto::{
+        encryption_manager::managers::aes::generate_aes256_key,
+        encryption_manager::managers::aes::GcmAes256,
+        hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
+    },
+    error::{self, ContainerError, ResultContainerExt},
+};
 
 use super::types::StorageDecryption;
 use super::types::StorageEncryption;
