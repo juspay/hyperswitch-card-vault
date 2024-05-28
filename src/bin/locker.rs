@@ -7,9 +7,7 @@ use tartarus::{app::AppState, logger};
 #[allow(clippy::expect_used)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = tartarus::config::Config::new()
-        .await
-        .expect("Failed while parsing config");
+    let mut config = tartarus::config::Config::new().expect("Failed while parsing config");
 
     let _guard = logger::setup(
         &config.log,

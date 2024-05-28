@@ -91,7 +91,7 @@ pub fn workspace_path() -> PathBuf {
 
 impl Config {
     /// Function to build the configuration by picking it from default locations
-    pub async fn new() -> Result<Self, config::ConfigError> {
+    pub fn new() -> Result<Self, config::ConfigError> {
         Self::new_with_config_path(None)
     }
 
