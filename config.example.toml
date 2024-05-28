@@ -41,10 +41,9 @@ locker_private_key = "" # the locker private key to used used and the private ke
 # - vault_kv2 (HashiCorp Vault Secrets Engine KV version 2)
 
 
-[aws_kms]
-region = "us-west-2" # the kms details needed to perform kms decryption of the above mentioned environment variables
-key_id = "abc"
+[secrets_management]
+secrets_manager = "aws_kms" # Secrets manager client to be used
 
-[vault_kv2]
-url = "http://127.0.0.1:8200" # The URL of the hosted HashiCorp vault
-token = "hvs.abc" # The secret token to access and communicate with the vault
+[secrets_management.aws_kms]
+key_id = "kms_key_id" # The AWS key ID used by the KMS SDK for decrypting data.
+region = "kms_region" # The AWS region used by the KMS SDK for decrypting data.
