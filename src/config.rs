@@ -37,19 +37,22 @@ pub struct TenantConfig {
 }
 
 impl TenantConfig {
-    pub fn from_global_config(
-        global_config: &GlobalConfig,
-        tenant_id: String,
-    ) -> error_stack::Result<Self, error::ApiError> {
-        Ok(Self {
+    ///
+    /// # Panics
+    ///
+    /// Never, as tenant_id would already be validated from [`crate::custom_extractors::TenantId`] custom extractor
+    ///
+    pub fn from_global_config(global_config: &GlobalConfig, tenant_id: String) -> Self {
+        Self {
             tenant_id: tenant_id.clone(),
             locker_secrets: global_config.secrets.clone(),
+            #[allow(clippy::unwrap_used)]
             tenant_secrets: global_config
                 .tenant_secrets
                 .get(&tenant_id)
                 .cloned()
-                .ok_or(error::ApiError::TenantError("Tenant not found"))?,
-        })
+                .unwrap(),
+        }
     }
 }
 

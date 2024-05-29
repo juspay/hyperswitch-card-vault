@@ -29,12 +29,44 @@ type Storage = storage::Storage;
 /// TenantAppState:
 ///
 ///
-/// The tenant specific appstate that is
+/// The tenant specific appstate that is passed to main storage endpoints
 ///
 #[derive(Clone)]
 pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
+}
+
+#[allow(clippy::expect_used)]
+impl TenantAppState {
+    ///
+    /// Construct new app state with configuration
+    ///
+    /// # Panics
+    ///
+    /// - If the master key cannot be parsed as a string
+    /// - If the public/private key cannot be parsed as a string after kms decrypt
+    /// - If the database password cannot be parsed as a string after kms decrypt
+    ///
+    pub async fn new(
+        global_config: GlobalConfig,
+        tenant_config: TenantConfig,
+    ) -> error_stack::Result<Self, error::ConfigurationError> {
+        let db = storage::Storage::new(&global_config.database, &tenant_config.tenant_id)
+            .await
+            .map(
+                #[cfg(feature = "caching")]
+                Caching::implement_cache(&global_config.cache),
+                #[cfg(not(feature = "caching"))]
+                std::convert::identity,
+            )
+            .change_context(error::ConfigurationError::DatabaseError)?;
+
+        Ok(Self {
+            db,
+            config: tenant_config,
+        })
+    }
 }
 
 /// Temporary State to store keys
@@ -99,36 +131,4 @@ where
     let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
     let server = axum::serve(tcp_listener, router.into_make_service());
     Ok(server)
-}
-
-#[allow(clippy::expect_used)]
-impl TenantAppState {
-    ///
-    /// Construct new app state with configuration
-    ///
-    /// # Panics
-    ///
-    /// - If the master key cannot be parsed as a string
-    /// - If the public/private key cannot be parsed as a string after kms decrypt
-    /// - If the database password cannot be parsed as a string after kms decrypt
-    ///
-    pub async fn new(
-        global_config: GlobalConfig,
-        tenant_config: TenantConfig,
-    ) -> error_stack::Result<Self, error::ConfigurationError> {
-        let db = storage::Storage::new(&global_config.database, &tenant_config.tenant_id)
-            .await
-            .map(
-                #[cfg(feature = "caching")]
-                Caching::implement_cache(&global_config.cache),
-                #[cfg(not(feature = "caching"))]
-                std::convert::identity,
-            )
-            .change_context(error::ConfigurationError::DatabaseError)?;
-
-        Ok(Self {
-            db,
-            config: tenant_config,
-        })
-    }
 }

@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .expect("Failed to fetch raw application secrets");
 
-    let global_app_state = GlobalAppState::new(&global_config);
+    let global_app_state = GlobalAppState::new(&global_config).await;
 
     let server = tartarus::app::server_builder(global_app_state).await?;
     logger::info!(
