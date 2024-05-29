@@ -1,5 +1,6 @@
 #[cfg(feature = "kms-hashicorp-vault")]
 use error_stack::ResultExt;
+use masking::Secret;
 
 #[cfg(feature = "kms-aws")]
 use crate::crypto::secrets_manager::managers::aws_kms::core::{AwsKmsClient, AwsKmsConfig};
@@ -40,6 +41,30 @@ pub enum SecretsManagementConfig {
     NoEncryption,
 }
 
+enum SecretsManagerClient {
+    #[cfg(feature = "kms-aws")]
+    AwsKms(AwsKmsClient),
+    #[cfg(feature = "kms-hashicorp-vault")]
+    HashiCorp(HashiCorpVault),
+    NoEncryption(NoEncryption),
+}
+
+#[async_trait::async_trait]
+impl SecretManager for SecretsManagerClient {
+    async fn get_secret(
+        &self,
+        input: Secret<String>,
+    ) -> error_stack::Result<Secret<String>, SecretsManagementError> {
+        match self {
+            #[cfg(feature = "kms-aws")]
+            Self::AwsKms(config) => config.get_secret(input).await,
+            #[cfg(feature = "kms-hashicorp-vault")]
+            Self::HashiCorp(config) => config.get_secret(input).await,
+            Self::NoEncryption(config) => config.get_secret(input).await,
+        }
+    }
+}
+
 impl SecretsManagementConfig {
     /// Verifies that the client configuration is usable
     pub fn validate(&self) -> Result<(), ConfigurationError> {
@@ -55,15 +80,17 @@ impl SecretsManagementConfig {
     /// Retrieves the appropriate secret management client based on the configuration.
     pub async fn get_secret_management_client(
         &self,
-    ) -> error_stack::Result<Box<dyn SecretManager>, SecretsManagementError> {
+    ) -> error_stack::Result<impl SecretManager, SecretsManagementError> {
         match self {
             #[cfg(feature = "kms-aws")]
-            Self::AwsKms { aws_kms } => Ok(Box::new(AwsKmsClient::new(aws_kms).await)),
+            Self::AwsKms { aws_kms } => Ok(SecretsManagerClient::AwsKms(
+                AwsKmsClient::new(aws_kms).await,
+            )),
             #[cfg(feature = "kms-hashicorp-vault")]
             Self::HashiCorpVault { hashi_corp_vault } => HashiCorpVault::new(hashi_corp_vault)
                 .change_context(SecretsManagementError::ClientCreationFailed)
-                .map(|inner| -> Box<dyn SecretManager> { Box::new(inner) }),
-            Self::NoEncryption => Ok(Box::new(NoEncryption)),
+                .map(SecretsManagerClient::HashiCorp),
+            Self::NoEncryption => Ok(SecretsManagerClient::NoEncryption(NoEncryption)),
         }
     }
 }

@@ -3,7 +3,12 @@ use masking::ExposeInterface;
 
 use super::logger::config::Log;
 
-use crate::{crypto::secrets_manager::secrets_management::SecretsManagementConfig, error};
+use crate::{
+    crypto::secrets_manager::{
+        secrets_interface::SecretManager, secrets_management::SecretsManagementConfig,
+    },
+    error,
+};
 
 use std::path::PathBuf;
 
