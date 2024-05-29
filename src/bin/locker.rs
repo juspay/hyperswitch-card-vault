@@ -1,59 +1,35 @@
-use std::sync::Arc;
-
-use tokio::sync::RwLock;
-
-use tartarus::{app::AppState, logger};
+use tartarus::{logger, tenant::GlobalAppState};
 
 #[allow(clippy::expect_used)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = tartarus::config::Config::new().expect("Failed while parsing config");
+    let mut global_config =
+        tartarus::config::GlobalConfig::new().expect("Failed while parsing config");
 
     let _guard = logger::setup(
-        &config.log,
+        &global_config.log,
         tartarus::service_name!(),
         [tartarus::service_name!(), "tower_http"],
     );
 
     #[allow(clippy::expect_used)]
-    config
+    global_config
         .validate()
         .expect("Failed to validate application configuration");
-    config
+    global_config
         .fetch_raw_secrets()
         .await
         .expect("Failed to fetch raw application secrets");
 
-    let state = Arc::new(RwLock::new(AppState::new(&config).await?));
+    let global_app_state = GlobalAppState::new(&global_config);
 
-    #[cfg(feature = "key_custodian")]
-    {
-        let state_lock = state.clone();
-
-        let (server1_tx, server1_rx) = tokio::sync::mpsc::channel::<()>(1);
-
-        let server1 = tartarus::app::server1_builder(state_lock, server1_tx.clone())
-            .await?
-            .with_graceful_shutdown(graceful_shutdown_server1(server1_rx));
-
-        logger::info!(
-            "Key Custodian started [{:?}] [{:?}]",
-            config.server,
-            config.log
-        );
-        server1.await.expect("Failed while running the server 1");
-    }
-
-    let new_state = state.read().await.to_owned();
-    let server2 = tartarus::app::server2_builder(&new_state).await?;
-    logger::info!("Locker started [{:?}] [{:?}]", config.server, config.log);
-    server2.await.expect("Failed while running the server 2");
+    let server = tartarus::app::server_builder(global_app_state).await?;
+    logger::info!(
+        "Locker started [{:?}] [{:?}]",
+        global_config.server,
+        global_config.log
+    );
+    server.await.expect("Failed while running the server 2");
 
     Ok(())
-}
-
-#[cfg(feature = "key_custodian")]
-async fn graceful_shutdown_server1(mut recv: tokio::sync::mpsc::Receiver<()>) {
-    recv.recv().await;
-    logger::info!("Shutting down the server1 gracefully.");
 }

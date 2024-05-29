@@ -1,5 +1,4 @@
 use crate::{
-    app::AppState,
     crypto::encryption_manager::{
         encryption_interface::Encryption,
         managers::jw::{self, JWEncryption},
@@ -7,9 +6,10 @@ use crate::{
     error::{self, ContainerError, ResultContainerExt},
 };
 
+use crate::custom_extractors::TenantStateResolver;
 use axum::body::Body;
 use axum::http::{request, response};
-use axum::{extract, http::Request, middleware::Next};
+use axum::{http::Request, middleware::Next};
 
 use http_body_util::BodyExt;
 use josekit::jwe;
@@ -17,14 +17,14 @@ use josekit::jwe;
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
 pub async fn middleware(
-    extract::State(state): extract::State<AppState>,
+    TenantStateResolver(state): TenantStateResolver,
     parts: request::Parts,
     axum::Json(jwe_body): axum::Json<jw::JweBody>,
     next: Next,
 ) -> Result<(response::Parts, axum::Json<jw::JweBody>), ContainerError<error::ApiError>> {
     let keys = JWEncryption {
-        private_key: state.config.secrets.locker_private_key,
-        public_key: state.config.secrets.tenant_public_key,
+        private_key: state.config.locker_secrets.locker_private_key.clone(),
+        public_key: state.config.tenant_secrets.public_key.clone(),
         encryption_algo: jwe::RSA_OAEP,
         decryption_algo: jwe::RSA_OAEP_256,
     };

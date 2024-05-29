@@ -23,20 +23,6 @@ tti = 7200 # i.e. 2 hours
 max_capacity = 5000
 
 [secrets]
-tenant = "hyperswitch"
-master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"
-
-tenant_public_key = """
------BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Z/K0JWds8iHhWCa+rj0
-rhOQX1nVs/ArQ1D0vh3UlSPR2vZUTrkdP7i3amv4d2XDC+3+5/YWExTkpxqnfl1T
-9J37leN2guAARed6oYoTDEP/OoKtnUrKK2xk/+V5DNOWcRiSpcCrJOOIEoACOlPI
-rXQSg16KDZQb0QTMntnsiPIJDbsOGcdKytRAcNaokiKLnia1v13N3bk6dSplrj1Y
-zawslZfgqD0eov4FjzBMoA19yNtlVLLf6kOkLcFQjTKXJLP1tLflLUBPTg8fm9wg
-APK2BjMQ2AMkUxx0ubbtw/9CeJ+bFWrqGnEhlvfDMlyAV77sAiIdQ4mXs3TLcLb/
-AQIDAQAB
------END PUBLIC KEY-----
-"""
 locker_private_key = """
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAwa6siKaSYqD1o4J3AbHqKm8oVTvep7GoN/C45qY60C7DO72H
@@ -67,3 +53,15 @@ Sau7H1Bhzy5G7rwt05LNpU6nFcAGVaZtzl4/+FYfYIulubYjuSEh72yuBHHyvi1/
 -----END RSA PRIVATE KEY-----
 """
 
+[tenant_secrets]
+"hyperswitch" = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = """
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Z/K0JWds8iHhWCa+rj0
+rhOQX1nVs/ArQ1D0vh3UlSPR2vZUTrkdP7i3amv4d2XDC+3+5/YWExTkpxqnfl1T
+9J37leN2guAARed6oYoTDEP/OoKtnUrKK2xk/+V5DNOWcRiSpcCrJOOIEoACOlPI
+rXQSg16KDZQb0QTMntnsiPIJDbsOGcdKytRAcNaokiKLnia1v13N3bk6dSplrj1Y
+zawslZfgqD0eov4FjzBMoA19yNtlVLLf6kOkLcFQjTKXJLP1tLflLUBPTg8fm9wg
+APK2BjMQ2AMkUxx0ubbtw/9CeJ+bFWrqGnEhlvfDMlyAV77sAiIdQ4mXs3TLcLb/
+AQIDAQAB
+-----END PUBLIC KEY-----
+""" }

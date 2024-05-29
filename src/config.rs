@@ -1,19 +1,21 @@
 use error_stack::ResultExt;
 use masking::ExposeInterface;
-
-use super::logger::config::Log;
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 
 use crate::{
     crypto::secrets_manager::{
         secrets_interface::SecretManager, secrets_management::SecretsManagementConfig,
     },
     error,
+    logger::config::Log,
 };
 
-use std::path::PathBuf;
-
 #[derive(Clone, serde::Deserialize, Debug)]
-pub struct Config {
+pub struct GlobalConfig {
     pub server: Server,
     pub database: Database,
     pub secrets: Secrets,
@@ -24,6 +26,31 @@ pub struct Config {
     pub limit: Limit,
     #[cfg(feature = "caching")]
     pub cache: Cache,
+    pub tenant_secrets: TenantsSecrets,
+}
+
+#[derive(Clone, Debug)]
+pub struct TenantConfig {
+    pub tenant_id: String,
+    pub locker_secrets: Secrets,
+    pub tenant_secrets: TenantSecrets,
+}
+
+impl TenantConfig {
+    pub fn from_global_config(
+        global_config: &GlobalConfig,
+        tenant_id: String,
+    ) -> error_stack::Result<Self, error::ApiError> {
+        Ok(Self {
+            tenant_id: tenant_id.clone(),
+            locker_secrets: global_config.secrets.clone(),
+            tenant_secrets: global_config
+                .tenant_secrets
+                .get(&tenant_id)
+                .cloned()
+                .ok_or(error::ApiError::TenantError("Tenant not found"))?,
+        })
+    }
 }
 
 #[cfg(feature = "limit")]
@@ -62,16 +89,17 @@ pub struct Cache {
 
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct Secrets {
-    pub tenant: String,
-    // KMS encrypted
-    #[serde(deserialize_with = "deserialize_hex")]
-    pub master_key: Vec<u8>,
     // KMS encrypted
     #[cfg(feature = "middleware")]
     pub locker_private_key: masking::Secret<String>,
-    // KMS encrypted
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct TenantSecrets {
+    #[serde(deserialize_with = "deserialize_hex")]
+    pub master_key: Vec<u8>,
     #[cfg(feature = "middleware")]
-    pub tenant_public_key: masking::Secret<String>,
+    pub public_key: masking::Secret<String>,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -85,6 +113,23 @@ where
     Ok(deserialized_str)
 }
 
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct TenantsSecrets(HashMap<String, TenantSecrets>);
+
+impl Deref for TenantsSecrets {
+    type Target = HashMap<String, TenantSecrets>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for TenantsSecrets {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 /// Get the origin directory of the project
 pub fn workspace_path() -> PathBuf {
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -94,7 +139,7 @@ pub fn workspace_path() -> PathBuf {
     }
 }
 
-impl Config {
+impl GlobalConfig {
     /// Function to build the configuration by picking it from default locations
     pub fn new() -> Result<Self, config::ConfigError> {
         Self::new_with_config_path(None)
@@ -150,7 +195,10 @@ impl Config {
 
     /// # Panics
     ///
-    /// Will panic even if fetching raw secret fails for at least one config value
+    /// - If secret management client cannot be constructed
+    /// - If master key cannot be utf8 decoded to String
+    /// - If master key cannot be hex decoded
+    ///
     #[allow(clippy::expect_used)]
     pub async fn fetch_raw_secrets(
         &mut self,
@@ -168,27 +216,29 @@ impl Config {
                 "database_password",
             ))?;
 
-        self.secrets.master_key = hex::decode(
-            secret_management_client
-                .get_secret(
-                    String::from_utf8(self.secrets.master_key.clone())
-                        .expect("Failed while converting master key to `String`")
-                        .into(),
-                )
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
-                .expose(),
-        )
-        .expect("Failed to decode master key from hex");
+        for tenant_secrets in self.tenant_secrets.values_mut() {
+            tenant_secrets.master_key = hex::decode(
+                secret_management_client
+                    .get_secret(
+                        String::from_utf8(tenant_secrets.master_key.clone())
+                            .expect("Failed while converting master key to `String`")
+                            .into(),
+                    )
+                    .await
+                    .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
+                    .expose(),
+            )
+            .expect("Failed to hex decode master key")
+        }
 
         #[cfg(feature = "middleware")]
         {
-            self.secrets.tenant_public_key = secret_management_client
-                .get_secret(self.secrets.tenant_public_key.clone())
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "tenant_public_key",
-                ))?;
+            for tenant_secrets in self.tenant_secrets.values_mut() {
+                tenant_secrets.public_key = secret_management_client
+                    .get_secret(tenant_secrets.public_key.clone())
+                    .await
+                    .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
+            }
 
             self.secrets.locker_private_key = secret_management_client
                 .get_secret(self.secrets.locker_private_key.clone())
