@@ -37,6 +37,7 @@ where
     for<'a> U: From<&'a T> + Sync + Send,
     Self: ErrorTransform<ContainerError<T>>,
 {
+    #[track_caller]
     fn from(value: ContainerError<T>) -> Self {
         let new_error = value.error.current_context().into();
         Self {
