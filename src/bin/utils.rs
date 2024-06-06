@@ -8,10 +8,12 @@ use std::io::{stdin, stdout, Read, Write};
 
 use josekit::jwe;
 use tartarus::{
-    crypto::{
-        aes::{generate_aes256_key, GcmAes256},
-        jw::JWEncryption,
-        Encryption,
+    crypto::encryption_manager::{
+        encryption_interface::Encryption,
+        managers::{
+            aes::{generate_aes256_key, GcmAes256},
+            jw::JWEncryption,
+        },
     },
     error,
 };

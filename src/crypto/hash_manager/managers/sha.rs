@@ -1,14 +1,14 @@
 use masking::PeekInterface;
 use ring::hmac;
 
-use crate::error;
+use crate::{crypto::hash_manager::hash_interface::Encode, error};
 
 ///
 /// Type providing encoding functional to perform hashing
 ///
 pub struct Sha512;
 
-impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
+impl Encode<Vec<u8>, Vec<u8>> for Sha512 {
     type ReturnType<T> = Result<T, error::ContainerError<error::CryptoError>>;
 
     fn encode(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
@@ -23,8 +23,8 @@ impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
 /// # Example
 ///
 ///```
-/// use tartarus::crypto::sha::HmacSha512;
-/// use tartarus::crypto::Encode;
+/// use tartarus::crypto::hash_manager::managers::sha::HmacSha512;
+/// use tartarus::crypto::hash_manager::hash_interface::Encode;
 ///
 /// let data = "Hello, World!";
 /// let key = "key";
@@ -37,8 +37,8 @@ impl super::Encode<Vec<u8>, Vec<u8>> for Sha512 {
 ///
 /// ```compile_fail
 ///
-/// use tartarus::crypto::sha::HmacSha512;
-/// use tartarus::crypto::Encode;
+/// use tartarus::crypto::hash_manager::managers::sha::HmacSha512;
+/// use tartarus::crypto::hash_manager::hash_interface::Encode;
 ///
 /// let key = "key";
 /// let algo = HmacSha512::<0>::new(key.as_bytes().to_vec().into());
@@ -64,7 +64,7 @@ impl<const N: usize> std::fmt::Display for HmacSha512<N> {
     }
 }
 
-impl<const N: usize> super::Encode<Vec<u8>, Vec<u8>> for HmacSha512<N> {
+impl<const N: usize> Encode<Vec<u8>, Vec<u8>> for HmacSha512<N> {
     type ReturnType<T> = Result<T, error::ContainerError<error::CryptoError>>;
 
     fn encode(&self, input: Vec<u8>) -> Self::ReturnType<Vec<u8>> {
@@ -94,8 +94,6 @@ mod tests {
     //! 2. The Key
     //! 3. The `N` value
     //!
-
-    use crate::crypto::Encode;
 
     use super::*;
 

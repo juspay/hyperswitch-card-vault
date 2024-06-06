@@ -1,7 +1,7 @@
 use futures_util::TryFutureExt;
 
 use crate::{
-    crypto::aes::generate_aes256_key,
+    crypto::encryption_manager::managers::aes::generate_aes256_key,
     error::{ContainerError, NotFoundError},
     storage::{self, types},
 };

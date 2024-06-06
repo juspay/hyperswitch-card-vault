@@ -7,13 +7,24 @@ use tartarus::{app::AppState, logger};
 #[allow(clippy::expect_used)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = tartarus::config::Config::new().expect("failed while parsing config");
-    let state = Arc::new(RwLock::new(AppState::new(&mut config).await?));
+    let mut config = tartarus::config::Config::new().expect("Failed while parsing config");
+
     let _guard = logger::setup(
         &config.log,
         tartarus::service_name!(),
         [tartarus::service_name!(), "tower_http"],
     );
+
+    #[allow(clippy::expect_used)]
+    config
+        .validate()
+        .expect("Failed to validate application configuration");
+    config
+        .fetch_raw_secrets()
+        .await
+        .expect("Failed to fetch raw application secrets");
+
+    let state = Arc::new(RwLock::new(AppState::new(&config).await?));
 
     #[cfg(feature = "key_custodian")]
     {

@@ -3,7 +3,10 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use josekit::jwe;
-use tartarus::crypto::{aes, jw, Encryption};
+use tartarus::crypto::encryption_manager::{
+    encryption_interface::Encryption,
+    managers::{aes, jw},
+};
 
 const ITERATION: u32 = 14;
 const JWE_PRIVATE_KEY: &str = include_str!("bench-private-key.pem");

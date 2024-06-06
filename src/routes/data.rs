@@ -12,7 +12,7 @@ use types::StoreCardResponse;
 
 use crate::{
     app::AppState,
-    crypto::{aes::GcmAes256, sha::Sha512},
+    crypto::{encryption_manager::managers::aes::GcmAes256, hash_manager::managers::sha::Sha512},
     error::{self, ContainerError, ResultContainerExt},
     storage::{FingerprintInterface, HashInterface, LockerInterface, MerchantInterface},
     utils,

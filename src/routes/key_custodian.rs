@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     app::{AppState, Keys, SharedState},
-    crypto::{aes::GcmAes256, Encryption},
+    crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error::{self, ResultContainerExt},
     logger,
 };

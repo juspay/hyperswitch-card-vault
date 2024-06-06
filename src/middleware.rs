@@ -1,7 +1,12 @@
-use crate::app::AppState;
-use crate::crypto::jw::{self, JWEncryption};
-use crate::crypto::Encryption;
-use crate::error::{self, ContainerError, ResultContainerExt};
+use crate::{
+    app::AppState,
+    crypto::encryption_manager::{
+        encryption_interface::Encryption,
+        managers::jw::{self, JWEncryption},
+    },
+    error::{self, ContainerError, ResultContainerExt},
+};
+
 use axum::body::Body;
 use axum::http::{request, response};
 use axum::{extract, http::Request, middleware::Next};
