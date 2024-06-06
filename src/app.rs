@@ -1,4 +1,4 @@
-use axum::routing;
+use axum::{extract::Request, routing};
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
 
@@ -8,6 +8,7 @@ use crate::{
     config::{self, GlobalConfig, TenantConfig},
     error, routes, storage,
     tenant::GlobalAppState,
+    utils,
 };
 
 #[cfg(feature = "caching")]
@@ -116,6 +117,7 @@ where
 
     let router = router.with_state(global_app_state.clone()).layer(
         tower_trace::TraceLayer::new_for_http()
+            .make_span_with(|request: &Request<_>| utils::record_tenant_id_from_header(request))
             .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
             .on_response(
                 tower_trace::DefaultOnResponse::new()
