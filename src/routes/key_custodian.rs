@@ -70,7 +70,7 @@ pub async fn key1(
         .entry(tenant_id.to_string())
         .and_modify(|key_state_data| key_state_data.key1 = Some(payload.key));
 
-    logger::info!("Received key1 for tenant - {tenant_id}");
+    logger::info!("Received key1");
     Json(CustodianRespPayload {
         message: "Received Key1".into(),
     })
@@ -87,7 +87,7 @@ pub async fn key2(
         .entry(tenant_id.to_string())
         .and_modify(|key_state_data| key_state_data.key2 = Some(payload.key));
 
-    logger::info!("Received key2 for tenant - {tenant_id}");
+    logger::info!("Received key2");
     Json(CustodianRespPayload {
         message: "Received Key2".into(),
     })
@@ -123,15 +123,13 @@ pub async fn decrypt(
 
             global_app_state.set_app_state(tenant_app_state).await;
 
-            logger::info!("Decryption of Custodian key is successful for tenant: {tenant_id}");
+            logger::info!("Decryption of Custodian key is successful");
             Ok(Json(CustodianRespPayload {
                 message: "Decryption of Custodian key is successful".into(),
             }))
         }
         _ => {
-            logger::error!(
-                "Both the custodian keys are not present to decrypt for tenant: {tenant_id}"
-            );
+            logger::error!("Both the custodian keys are not present to decrypt");
             Err(error::ApiError::DecryptingKeysFailed(
                 "Both the custodain keys are not present to decrypt",
             ))
@@ -159,7 +157,10 @@ async fn aes_decrypt_custodian_key(
         hex::decode(custodian_key)
             .change_error(error::ApiError::DecryptingKeysFailed("Hex dcoding failed"))?,
     )
-    .decrypt(tenant_config.tenant_secrets.master_key.clone())?;
+    .decrypt(tenant_config.tenant_secrets.master_key.clone())
+    .change_error(error::ApiError::DecryptingKeysFailed(
+        "AES decryption failed",
+    ))?;
 
     tenant_config.tenant_secrets.master_key = aes_decrypted_master_key;
     Ok(())
