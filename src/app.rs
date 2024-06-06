@@ -1,6 +1,5 @@
 use axum::routing;
 use error_stack::ResultExt;
-use masking::PeekInterface;
 #[cfg(feature = "key_custodian")]
 use tokio::sync::{mpsc::Sender, RwLock};
 use tower_http::trace as tower_trace;
@@ -9,9 +8,7 @@ use tower_http::trace as tower_trace;
 use std::sync::Arc;
 
 use crate::{
-    config,
-    crypto::{self, Decode},
-    error, routes,
+    config, error, routes,
     storage::{self},
 };
 
@@ -160,41 +157,8 @@ impl AppState {
     /// - If the database password cannot be parsed as a string after kms decrypt
     ///
     pub async fn new(
-        config: &mut config::Config,
+        config: &config::Config,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
-        let client = Self::kms_client_builder(config).await?;
-
-        config.secrets.master_key = client
-            .decode(
-                String::from_utf8(config.secrets.master_key.clone())
-                    .expect("Failed while converting master key to `String`"),
-            )
-            .await
-            .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
-
-        #[cfg(feature = "middleware")]
-        {
-            config.secrets.tenant_public_key = client
-                .decode(config.secrets.tenant_public_key.peek().clone())
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "tenant_public_key",
-                ))?;
-
-            config.secrets.locker_private_key = client
-                .decode(config.secrets.locker_private_key.peek().clone())
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "locker_private_key",
-                ))?;
-        }
-
-        config.database.password = client
-            .decode(config.database.password.peek().clone())
-            .await
-            .change_context(error::ConfigurationError::KmsDecryptError(
-                "database_password",
-            ))?;
         Ok(Self {
             db: storage::Storage::new(&config.database)
                 .await
@@ -208,11 +172,5 @@ impl AppState {
 
             config: config.clone(),
         })
-    }
-
-    pub async fn kms_client_builder(
-        config: &config::Config,
-    ) -> error_stack::Result<crypto::multiple::Multiple, error::ConfigurationError> {
-        crypto::multiple::Multiple::build(config.key_management_service.as_ref()).await
     }
 }

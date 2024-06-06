@@ -35,16 +35,23 @@ locker_private_key = "" # the locker private key to used used and the private ke
 # - secrets.master_key
 # - secrets.tenant_public_key
 # - secrets.locker_private_key
-# 
+#
 # Following possible encryption schemes are used, of of them are mutually exclusive, the sections are:
 # - aws_kms (AWS KMS Symmetric Encryption)
-# - vault_kv2 (HashiCorp Vault Secrets Engine KV version 2)
+# - hashi_corp_vault (HashiCorp Vault Secrets Engine KV version 2)
 
+# Aws kms as secrets manager
+# [secrets_management]
+# secrets_manager = "aws_kms" # Secrets manager client to be used
 
-[aws_kms]
-region = "us-west-2" # the kms details needed to perform kms decryption of the above mentioned environment variables
-key_id = "abc"
+# [secrets_management.aws_kms]
+# key_id = "kms_key_id" # The AWS key ID used by the KMS SDK for decrypting data.
+# region = "kms_region" # The AWS region used by the KMS SDK for decrypting data.
 
-[vault_kv2]
-url = "http://127.0.0.1:8200" # The URL of the hosted HashiCorp vault
-token = "hvs.abc" # The secret token to access and communicate with the vault
+# HashiCorp vault as secrets manager
+# [secrets_management]
+# secrets_manager = "hashi_corp_vault" # Secrets manager client to be used
+
+# [secrets_management.aws_kms]
+# url = "http://127.0.0.1:8200" # The URL of the hosted HashiCorp vault
+# token = "hvs.abc" # The secret token to access and communicate with the vault

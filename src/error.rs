@@ -23,6 +23,8 @@ pub enum ConfigurationError {
     KmsDecryptError(&'static str),
     #[error("Failed while building Vault Client")]
     VaultClientError,
+    #[error("Invalid configuration value provided: {0}")]
+    InvalidConfigurationValueError(String),
 }
 
 #[derive(Debug, thiserror::Error)]

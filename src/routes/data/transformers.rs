@@ -1,7 +1,7 @@
 use masking::{ExposeInterface, PeekInterface};
 
 use crate::{
-    crypto::Encode,
+    crypto::hash_manager::hash_interface::Encode,
     error::{self, ContainerError, ResultContainerExt},
     storage,
 };

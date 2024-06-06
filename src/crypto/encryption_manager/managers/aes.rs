@@ -1,7 +1,9 @@
-use crate::error::{self, ContainerError};
+use crate::{
+    crypto::encryption_manager::encryption_interface::Encryption,
+    error::{self, ContainerError},
+};
 use error_stack::ResultExt;
 use ring::aead::{self, BoundKey};
-
 ///
 /// GcmAes256
 ///
@@ -69,7 +71,7 @@ impl ring::aead::NonceSequence for NonceSequence {
     }
 }
 
-impl super::Encryption<Vec<u8>, Vec<u8>> for GcmAes256 {
+impl Encryption<Vec<u8>, Vec<u8>> for GcmAes256 {
     type ReturnType<'b, T> = Result<T, ContainerError<error::CryptoError>>;
     fn encrypt(&self, mut input: Vec<u8>) -> Self::ReturnType<'_, Vec<u8>> {
         let nonce_sequence =
@@ -104,7 +106,6 @@ impl super::Encryption<Vec<u8>, Vec<u8>> for GcmAes256 {
         let result = key
             .open_within(aead::Aad::empty(), output, ring::aead::NONCE_LEN..)
             .change_context(error::CryptoError::DecryptionError)?;
-
         Ok(result.to_vec())
     }
 }
@@ -129,7 +130,6 @@ pub fn generate_aes256_key() -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
-    use crate::crypto::Encryption;
 
     use super::*;
 

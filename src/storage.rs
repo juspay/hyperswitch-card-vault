@@ -1,6 +1,6 @@
 use crate::{
     config::Database,
-    crypto::Encryption,
+    crypto::encryption_manager::encryption_interface::Encryption,
     error::{self, ContainerError},
 };
 
