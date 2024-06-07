@@ -4,7 +4,7 @@ level = "DEBUG" # level to be set for the logging framework
 log_format = "default" # format to be used for logging default | json
 
 [server]
-host = "127.0.0.1" # The host that the server should be exposed to 
+host = "127.0.0.1" # The host that the server should be exposed to
 port = 8080 # The port where the server should be hosted on
 
 [limit]
@@ -24,11 +24,13 @@ port = 5432 # the port of the database
 dbname = "locker" # the name of the database where the cards are stored
 
 [secrets]
-tenant = "hyperswitch" # the tenant that we are currently configured for
-master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308" # master key that is used for database encryption this could be aes encrypted by key custodian
-
-tenant_public_key = ""  # The tenant public key to which the communication will be established with
 locker_private_key = "" # the locker private key to used used and the private key present with the tenant
+
+[tenant_secrets]
+# configure master_key and public_key for each tenant
+# master_key - used for database encryption this could be aes encrypted by key custodian
+# public_key - used for signature verification and encryption of response payload which is sent back to tenant
+hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "" }
 
 # To protect secret/sensitive values like:
 # - database.passwod

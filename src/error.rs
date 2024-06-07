@@ -111,6 +111,15 @@ pub enum ApiError {
 
     #[error("TTL is invalid")]
     InvalidTtl,
+
+    #[error("Custodian is locked")]
+    CustodianLocked,
+
+    #[error("Custodian is already unlocked")]
+    CustodianUnlocked,
+
+    #[error("Tenant error: {0}")]
+    TenantError(&'static str),
 }
 
 /// Errors that could occur during KMS operations.
@@ -171,6 +180,15 @@ mod error_codes {
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         match self {
+            Self::CustodianLocked => (
+                hyper::StatusCode::UNAUTHORIZED,
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_00,
+                    "Custodian is locked".into(),
+                    None,
+                )),
+            )
+                .into_response(),
             Self::DecryptingKeysFailed(err) => (
                 hyper::StatusCode::UNAUTHORIZED,
                 axum::Json(ApiErrorResponse::new(
@@ -216,7 +234,9 @@ impl axum::response::IntoResponse for ApiError {
             data @ Self::RequestMiddlewareError(_)
             | data @ Self::DecodingError
             | data @ Self::ValidationError(_)
-            | data @ Self::InvalidTtl => (
+            | data @ Self::InvalidTtl
+            | data @ Self::CustodianUnlocked
+            | data @ Self::TenantError(_) => (
                 hyper::StatusCode::BAD_REQUEST,
                 axum::Json(ApiErrorResponse::new(
                     error_codes::TE_03,
