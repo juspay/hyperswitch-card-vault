@@ -37,15 +37,21 @@ type DeadPoolConnType = Object<AsyncPgConnection>;
 
 impl Storage {
     /// Create a new storage interface from configuration
-    pub async fn new(database: &Database) -> error_stack::Result<Self, error::StorageError> {
+    pub async fn new(
+        database: &Database,
+        schema: &str,
+    ) -> error_stack::Result<Self, error::StorageError> {
         let database_url = format!(
-            "postgres://{}:{}@{}:{}/{}",
+            "postgres://{}:{}@{}:{}/{}?application_name={}&options=-c search_path%3D{}",
             database.username,
             database.password.peek(),
             database.host,
             database.port,
-            database.dbname
+            database.dbname,
+            schema,
+            schema
         );
+
         let config =
             pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
         let pool = Pool::builder(config);
