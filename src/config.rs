@@ -27,6 +27,8 @@ pub struct GlobalConfig {
     #[cfg(feature = "caching")]
     pub cache: Cache,
     pub tenant_secrets: TenantsSecrets,
+    #[cfg(feature = "tls")]
+    pub tls: ServerTls,
 }
 
 #[derive(Clone, Debug)]
@@ -131,6 +133,15 @@ impl DerefMut for TenantsSecrets {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
+}
+
+#[cfg(feature = "tls")]
+#[derive(Debug, serde::Deserialize, Clone)]
+pub struct ServerTls {
+    /// certificate file associated with TLS (path to the certificate file (`pem` format))
+    pub certificate: String,
+    /// private key file path associated with TLS (path to the private key file (`pem` format))
+    pub private_key: String,
 }
 
 /// Get the origin directory of the project

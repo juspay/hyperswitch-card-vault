@@ -1,4 +1,6 @@
-use axum::{extract::Request, routing};
+use axum::extract::Request;
+#[cfg(feature = "tls")]
+use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
 
@@ -6,7 +8,7 @@ use std::sync::Arc;
 
 use crate::{
     config::{self, GlobalConfig, TenantConfig},
-    error, routes, storage,
+    error, logger, routes, storage,
     tenant::GlobalAppState,
     utils,
 };
@@ -84,10 +86,7 @@ pub struct CustodianKeys {
 ///
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
-) -> Result<
-    axum::serve::Serve<routing::IntoMakeService<axum::Router>, axum::Router>,
-    error::ConfigurationError,
->
+) -> Result<(), error::ConfigurationError>
 where
 {
     let socket_addr = std::net::SocketAddr::new(
@@ -130,7 +129,35 @@ where
                     .level(tracing::Level::ERROR),
             ),
     );
-    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
-    let server = axum::serve(tcp_listener, router.into_make_service());
-    Ok(server)
+
+    logger::info!(
+        "Locker started [{:?}] [{:?}]",
+        global_app_state.global_config.server,
+        global_app_state.global_config.log
+    );
+
+    logger::debug!(startup_config=?global_app_state.global_config);
+
+    #[cfg(feature = "tls")]
+    {
+        let tcp_listener = std::net::TcpListener::bind(socket_addr)?;
+        let tls_config = RustlsConfig::from_pem_file(
+            &global_app_state.global_config.tls.certificate,
+            &global_app_state.global_config.tls.private_key,
+        )
+        .await?;
+
+        axum_server::from_tcp_rustls(tcp_listener, tls_config)
+            .serve(router.into_make_service())
+            .await?;
+    }
+
+    #[cfg(not(feature = "tls"))]
+    {
+        let tcp_listener = tokio::net::TcpListener::bind(socket_addr).await?;
+
+        axum::serve(tcp_listener, router.into_make_service()).await?;
+    }
+
+    Ok(())
 }
