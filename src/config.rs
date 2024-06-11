@@ -27,8 +27,7 @@ pub struct GlobalConfig {
     #[cfg(feature = "caching")]
     pub cache: Cache,
     pub tenant_secrets: TenantsSecrets,
-    #[cfg(feature = "tls")]
-    pub tls: ServerTls,
+    pub tls: Option<ServerTls>,
 }
 
 #[derive(Clone, Debug)]
@@ -135,7 +134,6 @@ impl DerefMut for TenantsSecrets {
     }
 }
 
-#[cfg(feature = "tls")]
 #[derive(Debug, serde::Deserialize, Clone)]
 pub struct ServerTls {
     /// certificate file associated with TLS (path to the certificate file (`pem` format))

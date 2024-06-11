@@ -1,5 +1,4 @@
 use axum::extract::Request;
-#[cfg(feature = "tls")]
 use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
@@ -138,22 +137,15 @@ where
 
     logger::debug!(startup_config=?global_app_state.global_config);
 
-    #[cfg(feature = "tls")]
-    {
+    if let Some(tls_config) = &global_app_state.global_config.tls {
         let tcp_listener = std::net::TcpListener::bind(socket_addr)?;
-        let tls_config = RustlsConfig::from_pem_file(
-            &global_app_state.global_config.tls.certificate,
-            &global_app_state.global_config.tls.private_key,
-        )
-        .await?;
+        let rusttls_config =
+            RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.private_key).await?;
 
-        axum_server::from_tcp_rustls(tcp_listener, tls_config)
+        axum_server::from_tcp_rustls(tcp_listener, rusttls_config)
             .serve(router.into_make_service())
             .await?;
-    }
-
-    #[cfg(not(feature = "tls"))]
-    {
+    } else {
         let tcp_listener = tokio::net::TcpListener::bind(socket_addr).await?;
 
         axum::serve(tcp_listener, router.into_make_service()).await?;
