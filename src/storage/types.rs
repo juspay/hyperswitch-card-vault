@@ -18,7 +18,6 @@ use super::schema;
 #[diesel(table_name = schema::merchant)]
 pub(super) struct MerchantInner {
     id: i32,
-    tenant_id: String,
     merchant_id: String,
     enc_key: Encrypted,
     created_at: time::PrimitiveDateTime,
@@ -26,7 +25,6 @@ pub(super) struct MerchantInner {
 
 #[derive(Debug, Clone)]
 pub struct Merchant {
-    pub tenant_id: String,
     pub merchant_id: String,
     pub enc_key: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
@@ -35,14 +33,12 @@ pub struct Merchant {
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
 pub(super) struct MerchantNewInner<'a> {
-    tenant_id: &'a str,
     merchant_id: &'a str,
     enc_key: Encrypted,
 }
 
 #[derive(Debug)]
 pub struct MerchantNew<'a> {
-    pub tenant_id: &'a str,
     pub merchant_id: &'a str,
     pub enc_key: Secret<Vec<u8>>,
 }
@@ -52,7 +48,6 @@ pub struct MerchantNew<'a> {
 pub(super) struct LockerInner {
     id: i32,
     locker_id: Secret<String>,
-    tenant_id: String,
     merchant_id: String,
     customer_id: String,
     enc_data: Encrypted,
@@ -64,7 +59,6 @@ pub(super) struct LockerInner {
 #[derive(Debug)]
 pub struct Locker {
     pub locker_id: Secret<String>,
-    pub tenant_id: String,
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Secret<Vec<u8>>,
@@ -76,7 +70,6 @@ pub struct Locker {
 #[derive(Debug, Clone)]
 pub struct LockerNew<'a> {
     pub locker_id: Secret<String>,
-    pub tenant_id: &'a str,
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Secret<Vec<u8>>,
@@ -88,7 +81,6 @@ pub struct LockerNew<'a> {
 #[diesel(table_name = schema::locker)]
 pub(super) struct LockerNewInner<'a> {
     locker_id: Secret<String>,
-    tenant_id: &'a str,
     merchant_id: String,
     customer_id: String,
     enc_data: Encrypted,
@@ -253,7 +245,6 @@ impl StorageDecryption for MerchantInner {
             merchant_id: self.merchant_id,
             enc_key: algo.decrypt(self.enc_key.into_inner().expose())?.into(),
             created_at: self.created_at,
-            tenant_id: self.tenant_id,
         })
     }
 }
@@ -270,7 +261,6 @@ impl<'a> StorageEncryption for MerchantNew<'a> {
         Ok(Self::Output {
             merchant_id: self.merchant_id,
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
-            tenant_id: self.tenant_id,
         })
     }
 }
@@ -286,7 +276,6 @@ impl StorageDecryption for LockerInner {
     ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
         Ok(Self::Output {
             locker_id: self.locker_id,
-            tenant_id: self.tenant_id,
             merchant_id: self.merchant_id,
             customer_id: self.customer_id,
             enc_data: algo.decrypt(self.enc_data.into_inner().expose())?.into(),
@@ -308,7 +297,6 @@ impl<'a> StorageEncryption for LockerNew<'a> {
     ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
         Ok(Self::Output {
             locker_id: self.locker_id,
-            tenant_id: self.tenant_id,
             merchant_id: self.merchant_id,
             customer_id: self.customer_id,
             enc_data: algo.encrypt(self.enc_data.expose())?.into(),
