@@ -8,13 +8,11 @@ use crate::{
 
 use super::types::{self, DataDuplicationCheck};
 
-impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
-    for storage::types::LockerNew<'a>
-{
+impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str)> for storage::types::LockerNew<'a> {
     type Error = ContainerError<error::ApiError>;
 
     fn try_from(
-        (value, tenant_id, hash_id): (super::types::StoreCardRequest, &'a str, &'a str),
+        (value, hash_id): (super::types::StoreCardRequest, &'a str),
     ) -> Result<Self, Self::Error> {
         let data = match value.data {
             types::Data::Card { card } => Ok(types::StoredData::CardData(card)),
@@ -29,7 +27,6 @@ impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str, &'a str)>
                 .requestor_card_reference
                 .unwrap_or_else(generate_uuid)
                 .into(),
-            tenant_id,
             merchant_id: value.merchant_id,
             customer_id: value.merchant_customer_id,
             enc_data: data.into(),

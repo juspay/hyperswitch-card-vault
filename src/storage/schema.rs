@@ -20,12 +20,10 @@ diesel::table! {
 }
 
 diesel::table! {
-    locker (tenant_id, merchant_id, customer_id, locker_id) {
+    locker (merchant_id, customer_id, locker_id) {
         id -> Int4,
         #[max_length = 255]
         locker_id -> Varchar,
-        #[max_length = 255]
-        tenant_id -> Varchar,
         #[max_length = 255]
         merchant_id -> Varchar,
         #[max_length = 255]
@@ -39,10 +37,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    merchant (tenant_id, merchant_id) {
+    merchant (merchant_id) {
         id -> Int4,
-        #[max_length = 255]
-        tenant_id -> Varchar,
         #[max_length = 255]
         merchant_id -> Varchar,
         enc_key -> Bytea,

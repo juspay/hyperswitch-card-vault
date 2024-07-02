@@ -94,11 +94,7 @@ pub async fn add_card(
         GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
     let merchant = tenant_app_state
         .db
-        .find_or_create_by_merchant_id(
-            &request.merchant_id,
-            &tenant_app_state.config.tenant_id,
-            &master_encryption,
-        )
+        .find_or_create_by_merchant_id(&request.merchant_id, &master_encryption)
         .await?;
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
@@ -114,7 +110,6 @@ pub async fn add_card(
                 .db
                 .find_by_hash_id_merchant_id_customer_id(
                     &hash_table.hash_id,
-                    &tenant_app_state.config.tenant_id,
                     &request.merchant_id,
                     &request.merchant_customer_id,
                     &merchant_dek,
@@ -130,12 +125,7 @@ pub async fn add_card(
                     tenant_app_state
                         .db
                         .insert_or_get_from_locker(
-                            (
-                                request,
-                                tenant_app_state.config.tenant_id.as_str(),
-                                hash_table.hash_id.as_str(),
-                            )
-                                .try_into()?,
+                            (request, hash_table.hash_id.as_str()).try_into()?,
                             &merchant_dek,
                         )
                         .await?
@@ -150,12 +140,7 @@ pub async fn add_card(
             let output = tenant_app_state
                 .db
                 .insert_or_get_from_locker(
-                    (
-                        request,
-                        tenant_app_state.config.tenant_id.as_str(),
-                        hash_table.hash_id.as_str(),
-                    )
-                        .try_into()?,
+                    (request, hash_table.hash_id.as_str()).try_into()?,
                     &merchant_dek,
                 )
                 .await?;
@@ -176,18 +161,13 @@ pub async fn delete_card(
 
     let _merchant = tenant_app_state
         .db
-        .find_by_merchant_id(
-            &request.merchant_id,
-            &tenant_app_state.config.tenant_id,
-            &master_key,
-        )
+        .find_by_merchant_id(&request.merchant_id, &master_key)
         .await?;
 
     let _delete_status = tenant_app_state
         .db
         .delete_from_locker(
             request.card_reference.into(),
-            &tenant_app_state.config.tenant_id,
             &request.merchant_id,
             &request.merchant_customer_id,
         )
@@ -207,11 +187,7 @@ pub async fn retrieve_card(
 
     let merchant = tenant_app_state
         .db
-        .find_by_merchant_id(
-            &request.merchant_id,
-            &tenant_app_state.config.tenant_id,
-            &master_key,
-        )
+        .find_by_merchant_id(&request.merchant_id, &master_key)
         .await?;
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
@@ -220,7 +196,6 @@ pub async fn retrieve_card(
         .db
         .find_by_locker_id_merchant_id_customer_id(
             request.card_reference.clone().into(),
-            &tenant_app_state.config.tenant_id,
             &request.merchant_id,
             &request.merchant_customer_id,
             &merchant_dek,
@@ -230,13 +205,11 @@ pub async fn retrieve_card(
     card.ttl
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
-                let tenant_id = card.tenant_id.clone();
                 tokio::spawn(async move {
                     tenant_app_state
                         .db
                         .delete_from_locker(
                             request.card_reference.into(),
-                            &tenant_id,
                             &request.merchant_id,
                             &request.merchant_customer_id,
                         )
