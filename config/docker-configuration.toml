@@ -50,6 +50,13 @@ Sau7H1Bhzy5G7rwt05LNpU6nFcAGVaZtzl4/+FYfYIulubYjuSEh72yuBHHyvi1/
 -----END RSA PRIVATE KEY-----
 """
 
-[kms]
-region = "us-west-2"
-key_id = "abc"
+[secrets_management]
+secrets_manager = "aws_kms"
+
+[secrets_management.aws_kms]
+key_id = "us-west-2"
+region = "abc"
+
+[tls]
+certificate = "cert.pem"
+private_key = "key.pem"

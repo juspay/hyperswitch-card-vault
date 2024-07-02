@@ -1,4 +1,5 @@
-use axum::{extract::Request, routing};
+use axum::extract::Request;
+use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
 
@@ -6,7 +7,7 @@ use std::sync::Arc;
 
 use crate::{
     config::{self, GlobalConfig, TenantConfig},
-    error, routes, storage,
+    error, logger, routes, storage,
     tenant::GlobalAppState,
     utils,
 };
@@ -84,10 +85,7 @@ pub struct CustodianKeys {
 ///
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
-) -> Result<
-    axum::serve::Serve<routing::IntoMakeService<axum::Router>, axum::Router>,
-    error::ConfigurationError,
->
+) -> Result<(), error::ConfigurationError>
 where
 {
     let socket_addr = std::net::SocketAddr::new(
@@ -130,7 +128,28 @@ where
                     .level(tracing::Level::ERROR),
             ),
     );
-    let tcp_listener = tokio::net::TcpListener::bind(&socket_addr).await?;
-    let server = axum::serve(tcp_listener, router.into_make_service());
-    Ok(server)
+
+    logger::info!(
+        "Locker started [{:?}] [{:?}]",
+        global_app_state.global_config.server,
+        global_app_state.global_config.log
+    );
+
+    logger::debug!(startup_config=?global_app_state.global_config);
+
+    if let Some(tls_config) = &global_app_state.global_config.tls {
+        let tcp_listener = std::net::TcpListener::bind(socket_addr)?;
+        let rusttls_config =
+            RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.private_key).await?;
+
+        axum_server::from_tcp_rustls(tcp_listener, rusttls_config)
+            .serve(router.into_make_service())
+            .await?;
+    } else {
+        let tcp_listener = tokio::net::TcpListener::bind(socket_addr).await?;
+
+        axum::serve(tcp_listener, router.into_make_service()).await?;
+    }
+
+    Ok(())
 }
