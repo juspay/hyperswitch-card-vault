@@ -24,17 +24,12 @@ impl MerchantInterface for Storage {
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
-        tenant_id: &str,
         key: &GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
-                .filter(
-                    schema::merchant::merchant_id
-                        .eq(merchant_id)
-                        .and(schema::merchant::tenant_id.eq(tenant_id)),
-                )
+                .filter(schema::merchant::merchant_id.eq(merchant_id))
                 .get_result(&mut conn)
                 .await;
         output
@@ -50,18 +45,13 @@ impl MerchantInterface for Storage {
     async fn find_or_create_by_merchant_id(
         &self,
         merchant_id: &str,
-        tenant_id: &str,
         key: &GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
-                .filter(
-                    schema::merchant::merchant_id
-                        .eq(merchant_id)
-                        .and(schema::merchant::tenant_id.eq(tenant_id)),
-                )
+                .filter(schema::merchant::merchant_id.eq(merchant_id))
                 .get_result(&mut conn)
                 .await;
         match output {
@@ -71,7 +61,6 @@ impl MerchantInterface for Storage {
                     self.insert_merchant(
                         types::MerchantNew {
                             merchant_id,
-                            tenant_id,
                             enc_key: generate_aes256_key().to_vec().into(),
                         },
                         key,
@@ -106,7 +95,6 @@ impl LockerInterface for Storage {
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
@@ -117,7 +105,6 @@ impl LockerInterface for Storage {
             .filter(
                 schema::locker::locker_id
                     .eq(locker_id.expose())
-                    .and(schema::locker::tenant_id.eq(tenant_id))
                     .and(schema::locker::merchant_id.eq(merchant_id))
                     .and(schema::locker::customer_id.eq(customer_id)),
             )
@@ -137,7 +124,6 @@ impl LockerInterface for Storage {
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
         hash_id: &str,
-        tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
@@ -148,7 +134,6 @@ impl LockerInterface for Storage {
             .filter(
                 schema::locker::hash_id
                     .eq(hash_id)
-                    .and(schema::locker::tenant_id.eq(tenant_id))
                     .and(schema::locker::merchant_id.eq(merchant_id))
                     .and(schema::locker::customer_id.eq(customer_id)),
             )
@@ -187,7 +172,6 @@ impl LockerInterface for Storage {
                 ) => {
                     self.find_by_locker_id_merchant_id_customer_id(
                         cloned_new.locker_id,
-                        cloned_new.tenant_id,
                         &cloned_new.merchant_id,
                         &cloned_new.customer_id,
                         key,
@@ -202,7 +186,6 @@ impl LockerInterface for Storage {
     async fn delete_from_locker(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>> {
@@ -211,7 +194,6 @@ impl LockerInterface for Storage {
         let query = diesel::delete(types::LockerInner::table()).filter(
             schema::locker::locker_id
                 .eq(locker_id.expose())
-                .and(schema::locker::tenant_id.eq(tenant_id))
                 .and(schema::locker::merchant_id.eq(merchant_id))
                 .and(schema::locker::customer_id.eq(customer_id)),
         );

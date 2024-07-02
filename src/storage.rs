@@ -87,7 +87,7 @@ pub trait Cacheable<Table> {
 
 #[cfg(feature = "caching")]
 impl Cacheable<types::Merchant> for Storage {
-    type Key = (String, String);
+    type Key = String;
     type Value = types::Merchant;
 }
 
@@ -111,20 +111,18 @@ pub(crate) trait MerchantInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>> + Sync;
     type Error;
 
-    /// find merchant from merchant table with `merchant_id` and `tenant_id` with key as master key
+    /// find merchant from merchant table with `merchant_id` with key as master key
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
-        tenant_id: &str,
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
-    /// find merchant from merchant table with `merchant_id` and `tenant_id` with key as master key
+    /// find merchant from merchant table with `merchant_id` with key as master key
     /// and if not found create a new merchant
     async fn find_or_create_by_merchant_id(
         &self,
         merchant_id: &str,
-        tenant_id: &str,
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
@@ -148,7 +146,6 @@ pub(crate) trait LockerInterface {
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
@@ -165,7 +162,6 @@ pub(crate) trait LockerInterface {
     async fn delete_from_locker(
         &self,
         locker_id: Secret<String>,
-        tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>>;
@@ -173,7 +169,6 @@ pub(crate) trait LockerInterface {
     async fn find_by_hash_id_merchant_id_customer_id(
         &self,
         hash_id: &str,
-        tenant_id: &str,
         merchant_id: &str,
         customer_id: &str,
         key: &Self::Algorithm,
