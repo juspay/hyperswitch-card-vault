@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 pub mod app;
 pub mod config;
 pub mod crypto;
