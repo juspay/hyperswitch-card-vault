@@ -1,6 +1,16 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    entity (entity_id) {
+        id -> Int4,
+        #[max_length = 255]
+        entity_id -> Varchar,
+        #[max_length = 255]
+        enc_key_id -> Varchar,
+    }
+}
+
+diesel::table! {
     fingerprint (fingerprint_hash) {
         id -> Int4,
         fingerprint_hash -> Bytea,
@@ -59,4 +69,11 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(fingerprint, hash_table, locker, merchant, vault,);
+diesel::allow_tables_to_appear_in_same_query!(
+    entity,
+    fingerprint,
+    hash_table,
+    locker,
+    merchant,
+    vault,
+);

@@ -14,8 +14,10 @@ CREATE TABLE IF NOT EXISTS vault (
     PRIMARY KEY (entity_id, vault_id)
 );
 
-CREATE TABLE IF NOT EXISTS entity {
+CREATE TABLE IF NOT EXISTS entity (
     id SERIAL,
     entity_id VARCHAR(255) NOT NULL,
-    enc_key_id VARCHAR(255) NOT NULL
-}
+    enc_key_id VARCHAR(255) NOT NULL,
+
+    PRIMARY KEY (entity_id)
+);
