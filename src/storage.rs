@@ -107,6 +107,10 @@ impl Cacheable<types::Fingerprint> for Storage {
 /// MerchantInterface:
 ///
 /// Interface providing functional to interface with the merchant table in database
+#[deprecated(
+    since = "1.0.0",
+    note = "separate encryption service is being used to store DEK"
+)]
 pub(crate) trait MerchantInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>> + Sync;
     type Error;
@@ -177,6 +181,10 @@ pub(crate) trait LockerInterface {
 
 /// Trait defining behaviour of the application with the hash table, providing APIs to interact
 /// with it
+#[deprecated(
+    since = "1.0.0",
+    note = "duplication of data should now be handled on the client side"
+)]
 pub(crate) trait HashInterface {
     type Error;
 
@@ -202,9 +210,9 @@ pub(crate) trait TestInterface {
 pub(crate) trait FingerprintInterface {
     type Error;
 
-    async fn find_by_card_hash(
+    async fn find_by_fingerprint_hash(
         &self,
-        card_hash: Secret<&[u8]>,
+        fingerprint_hash: Secret<&[u8]>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>>;
 
     async fn insert_fingerprint(

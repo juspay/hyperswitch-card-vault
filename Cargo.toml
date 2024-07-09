@@ -101,6 +101,7 @@ harness = false
 [lints.rust]
 unsafe_code = "forbid"
 rust_2018_idioms = { level = "warn", priority = -1 }
+deprecated = "allow"
 
 [lints.clippy]
 as_conversions = "warn"

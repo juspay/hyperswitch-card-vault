@@ -296,14 +296,14 @@ impl super::TestInterface for Storage {
 impl super::FingerprintInterface for Storage {
     type Error = error::FingerprintDBError;
 
-    async fn find_by_card_hash(
+    async fn find_by_fingerprint_hash(
         &self,
-        card_hash: Secret<&[u8]>,
+        fingerprint_hash: Secret<&[u8]>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
         let output: Result<_, diesel::result::Error> = types::Fingerprint::table()
-            .filter(schema::fingerprint::card_hash.eq(card_hash))
+            .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash))
             .get_result(&mut conn)
             .await;
 
@@ -322,17 +322,19 @@ impl super::FingerprintInterface for Storage {
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         let algo = HmacSha512::<1>::new(hash_key.expose().into_bytes().into());
 
-        let card_hash = algo.encode(card.into_bytes())?;
+        let fingerprint_hash = algo.encode(card.into_bytes())?;
 
-        let output = self.find_by_card_hash(Secret::new(&card_hash)).await?;
+        let output = self
+            .find_by_fingerprint_hash(Secret::new(&fingerprint_hash))
+            .await?;
         match output {
             Some(inner) => Ok(inner),
             None => {
                 let mut conn = self.get_conn().await?;
                 let query = diesel::insert_into(types::Fingerprint::table()).values(
                     types::FingerprintTableNew {
-                        card_hash: card_hash.into(),
-                        card_fingerprint: utils::generate_id(consts::ID_LENGTH).into(),
+                        fingerprint_hash: fingerprint_hash.into(),
+                        fingerprint_id: utils::generate_id(consts::ID_LENGTH).into(),
                     },
                 );
 

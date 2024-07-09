@@ -135,8 +135,8 @@ impl std::ops::Deref for CardNumber {
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
 pub(super) struct FingerprintTableNew {
-    pub card_hash: Secret<Vec<u8>>,
-    pub card_fingerprint: Secret<String>,
+    pub fingerprint_hash: Secret<Vec<u8>>,
+    pub fingerprint_id: Secret<String>,
 }
 
 #[derive(Debug, Insertable)]

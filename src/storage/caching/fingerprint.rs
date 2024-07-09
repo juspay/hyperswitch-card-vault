@@ -16,16 +16,19 @@ where
 {
     type Error = T::Error;
 
-    async fn find_by_card_hash(
+    async fn find_by_fingerprint_hash(
         &self,
-        card_hash: Secret<&[u8]>,
+        fingerprint_hash: Secret<&[u8]>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
-        let key = card_hash.peek().to_vec();
+        let key = fingerprint_hash.peek().to_vec();
         let cached_data = self.lookup::<types::Fingerprint>(key.clone()).await;
         match cached_data {
             Some(data) => Ok(Some(data)),
             None => {
-                let result = self.inner.find_by_card_hash(card_hash).await?;
+                let result = self
+                    .inner
+                    .find_by_fingerprint_hash(fingerprint_hash)
+                    .await?;
                 if let Some(ref fingerprint) = result {
                     self.cache_data::<types::Fingerprint>(key, fingerprint.clone())
                         .await;
