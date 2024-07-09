@@ -21,15 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .expect("Failed to fetch raw application secrets");
 
-    let global_app_state = GlobalAppState::new(&global_config).await;
+    let global_app_state = GlobalAppState::new(global_config).await;
 
-    let server = tartarus::app::server_builder(global_app_state).await?;
-    logger::info!(
-        "Locker started [{:?}] [{:?}]",
-        global_config.server,
-        global_config.log
-    );
-    server.await.expect("Failed while running the server 2");
+    tartarus::app::server_builder(global_app_state)
+        .await
+        .expect("Failed while building the server");
 
     Ok(())
 }
