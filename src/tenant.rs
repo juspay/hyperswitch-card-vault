@@ -26,7 +26,7 @@ impl GlobalAppState {
     ///
     /// If tenant specific AppState construction fails when `key_custodian` feature is disabled
     ///
-    pub async fn new(global_config: &GlobalConfig) -> Arc<Self> {
+    pub async fn new(global_config: GlobalConfig) -> Arc<Self> {
         let known_tenants = <HashMap<_, _> as Clone>::clone(&global_config.tenant_secrets)
             .into_keys()
             .collect::<Vec<_>>();
@@ -50,7 +50,7 @@ impl GlobalAppState {
                 let mut tenants_app_state = FxHashMap::default();
                 for tenant_id in known_tenants.clone() {
                     let tenant_config =
-                        TenantConfig::from_global_config(global_config, tenant_id.clone());
+                        TenantConfig::from_global_config(&global_config, tenant_id.clone());
                     #[allow(clippy::expect_used)]
                     let tenant_app_state =
                         TenantAppState::new(global_config.clone(), tenant_config)
@@ -67,7 +67,7 @@ impl GlobalAppState {
             #[cfg(feature = "key_custodian")]
             tenants_key_state: RwLock::new(tenants_key_state),
             known_tenants: HashSet::from_iter(known_tenants),
-            global_config: global_config.clone(),
+            global_config,
         })
     }
 
