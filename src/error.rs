@@ -28,6 +28,33 @@ pub enum ConfigurationError {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum ApiClientError {
+    #[error("Client construction failed")]
+    ClientConstructionFailed,
+    #[error("Header map construction failed")]
+    HeaderMapConstructionFailed,
+    #[error("Identity parsing failed: {0:?}")]
+    IdentityParseFailed(reqwest::Error),
+    #[error("Certificate parsing failed for {client}: {error:?}")]
+    CertificateParseFailed {
+        client: &'static str,
+        error: reqwest::Error,
+    },
+    #[error("URL encoding of request failed")]
+    UrlEncodingFailed,
+    #[error("Failed to send request to {service}: {message}")]
+    RequestNotSent { service: String, message: String },
+    #[error("Response Decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Bad request received {0:?}")]
+    BadRequest(bytes::Bytes),
+    #[error("Unexpected Error occurred while calling the api client")]
+    Unexpected(bytes::Bytes),
+    #[error("Internal Server Error Received {0:?}")]
+    InternalServerError(bytes::Bytes),
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum CryptoError {
     #[error("failed while serializing with serde_json")]
     SerdeJsonError(#[from] serde_json::Error),
@@ -120,6 +147,9 @@ pub enum ApiError {
 
     #[error("Tenant error: {0}")]
     TenantError(&'static str),
+
+    #[error("Key manager error: {0}")]
+    KeyManagerError(&'static str),
 }
 
 /// Errors that could occur during KMS operations.
@@ -160,6 +190,36 @@ pub enum KmsError {
 
     #[error("Failed while parsing the response")]
     ParseError,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum KeyManagerError {
+    #[error("Failed to construct header from the given value")]
+    FailedtoConstructHeader,
+    #[error("Failed to send request to Keymanager")]
+    RequestNotSent(String),
+    #[error("URL encoding of request failed")]
+    UrlEncodingFailed,
+    #[error("Failed to build the reqwest client ")]
+    ClientConstructionFailed,
+    #[error("Failed to send the request to Keymanager")]
+    RequestSendFailed,
+    #[error("Internal Server Error Received {0:?}")]
+    InternalServerError(bytes::Bytes),
+    #[error("Bad request received {0:?}")]
+    BadRequest(bytes::Bytes),
+    #[error("Unexpected Error occurred while calling the KeyManager")]
+    Unexpected(bytes::Bytes),
+    #[error("Response Decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Failed to add key to the KeyManager")]
+    KeyAddFailed,
+    #[error("Failed to transfer the key to the KeyManager")]
+    KeyTransferFailed,
+    #[error("Failed to Encrypt the data in the KeyManager")]
+    EncryptionFailed,
+    #[error("Failed to Decrypt the data in the KeyManager")]
+    DecryptionFailed,
 }
 
 /// Error code constants.
@@ -209,7 +269,8 @@ impl axum::response::IntoResponse for ApiError {
                 .into_response(),
             data @ Self::ResponseMiddlewareError(_)
             | data @ Self::UnknownError
-            | data @ Self::MerchantKeyError => (
+            | data @ Self::MerchantKeyError
+            | data @ Self::KeyManagerError(_) => (
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new(
                     error_codes::TE_00,

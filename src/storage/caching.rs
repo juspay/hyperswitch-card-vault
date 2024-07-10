@@ -10,19 +10,22 @@ pub struct Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
-        + super::Cacheable<types::Fingerprint>,
+        + super::Cacheable<types::Fingerprint>
+        + super::Cacheable<types::Entity>,
 {
     inner: T,
     merchant_cache: Cache<T, types::Merchant>,
     hash_table_cache: Cache<T, types::HashTable>,
     fingerprint_cache: Cache<T, types::Fingerprint>,
+    entity_cache: Cache<T, types::Entity>,
 }
 
 impl<T> std::ops::Deref for Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
-        + super::Cacheable<types::Fingerprint>,
+        + super::Cacheable<types::Fingerprint>
+        + super::Cacheable<types::Entity>,
 {
     type Target = T;
 
@@ -55,7 +58,8 @@ impl<T> GetCache<T, types::Merchant> for Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
-        + super::Cacheable<types::Fingerprint>,
+        + super::Cacheable<types::Fingerprint>
+        + super::Cacheable<types::Entity>,
 {
     fn get_cache(&self) -> &Cache<T, types::Merchant> {
         &self.merchant_cache
@@ -66,7 +70,8 @@ impl<T> GetCache<T, types::HashTable> for Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
-        + super::Cacheable<types::Fingerprint>,
+        + super::Cacheable<types::Fingerprint>
+        + super::Cacheable<types::Entity>,
 {
     fn get_cache(&self) -> &Cache<T, types::HashTable> {
         &self.hash_table_cache
@@ -77,10 +82,23 @@ impl<T> GetCache<T, types::Fingerprint> for Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
-        + super::Cacheable<types::Fingerprint>,
+        + super::Cacheable<types::Fingerprint>
+        + super::Cacheable<types::Entity>,
 {
     fn get_cache(&self) -> &Cache<T, types::Fingerprint> {
         &self.fingerprint_cache
+    }
+}
+
+impl<T> GetCache<T, types::Entity> for Caching<T>
+where
+    T: super::Cacheable<types::Merchant>
+        + super::Cacheable<types::HashTable>
+        + super::Cacheable<types::Fingerprint>
+        + super::Cacheable<types::Entity>,
+{
+    fn get_cache(&self) -> &Cache<T, types::Entity> {
+        &self.entity_cache
     }
 }
 
@@ -88,7 +106,8 @@ impl<T> Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
-        + super::Cacheable<types::Fingerprint>,
+        + super::Cacheable<types::Fingerprint>
+        + super::Cacheable<types::Entity>,
 {
     #[inline(always)]
     pub async fn lookup<U>(
@@ -125,16 +144,19 @@ where
             let merchant_cache = new_cache::<T, types::Merchant>(config, "merchant");
             let hash_table_cache = new_cache::<T, types::HashTable>(config, "hash_table");
             let fingerprint_cache = new_cache::<T, types::Fingerprint>(config, "fingerprint");
+            let entity_cache = new_cache::<T, types::Entity>(config, "entity");
             Self {
                 inner,
                 merchant_cache,
                 hash_table_cache,
                 fingerprint_cache,
+                entity_cache,
             }
         }
     }
 }
 
+pub mod entity;
 pub mod fingerprint;
 pub mod hash_table;
 pub mod merchant;

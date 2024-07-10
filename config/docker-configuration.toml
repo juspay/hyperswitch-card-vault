@@ -60,3 +60,12 @@ region = "abc"
 [tls]
 certificate = "cert.pem"
 private_key = "key.pem"
+
+[api_client]
+client_idle_timeout = 90
+pool_max_idle_per_host = 10
+identity = ""
+
+[key_manager]
+url = "http://localhost:5000"
+cert = ""

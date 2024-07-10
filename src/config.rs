@@ -7,8 +7,12 @@ use std::{
 };
 
 use crate::{
-    crypto::secrets_manager::{
-        secrets_interface::SecretManager, secrets_management::SecretsManagementConfig,
+    api_client::ApiClientConfig,
+    crypto::{
+        keymanager::KeyManagerConfig,
+        secrets_manager::{
+            secrets_interface::SecretManager, secrets_management::SecretsManagementConfig,
+        },
     },
     error,
     logger::config::Log,
@@ -28,6 +32,9 @@ pub struct GlobalConfig {
     pub cache: Cache,
     pub tenant_secrets: TenantsSecrets,
     pub tls: Option<ServerTls>,
+    #[serde(default)]
+    pub api_client: ApiClientConfig,
+    pub key_manager: KeyManagerConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -35,6 +42,7 @@ pub struct TenantConfig {
     pub tenant_id: String,
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
+    pub key_manager: KeyManagerConfig,
 }
 
 impl TenantConfig {
@@ -53,6 +61,7 @@ impl TenantConfig {
                 .get(&tenant_id)
                 .cloned()
                 .unwrap(),
+            key_manager: global_config.key_manager.clone(),
         }
     }
 }
@@ -140,6 +149,17 @@ pub struct ServerTls {
     pub certificate: String,
     /// private key file path associated with TLS (path to the private key file (`pem` format))
     pub private_key: String,
+}
+
+impl Default for ApiClientConfig {
+    fn default() -> Self {
+        Self {
+            client_idle_timeout: 90,
+            pool_max_idle_per_host: 5,
+            #[cfg(feature = "keymanager_mtls")]
+            identity: masking::Secret::default(),
+        }
+    }
 }
 
 /// Get the origin directory of the project
@@ -257,6 +277,23 @@ impl GlobalConfig {
                 .await
                 .change_context(error::ConfigurationError::KmsDecryptError(
                     "locker_private_key",
+                ))?;
+        }
+
+        #[cfg(feature = "keymanager_mtls")]
+        {
+            self.key_manager.cert = secret_management_client
+                .get_secret(self.key_manager.cert.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "key_manager-cert",
+                ))?;
+
+            self.api_client.identity = secret_management_client
+                .get_secret(self.api_client.identity.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "api_client-identity",
                 ))?;
         }
 

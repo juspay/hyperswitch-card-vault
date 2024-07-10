@@ -76,6 +76,20 @@ pub enum FingerprintDBError {
     EncodingError,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum EntityDBError {
+    #[error("Error while connecting to database")]
+    DBError,
+    #[error("Error while finding element in the database")]
+    DBFilterError,
+    #[error("Error while inserting element in the database")]
+    DBInsertError,
+    #[error("Unpredictable error occurred")]
+    UnknownError,
+    #[error("Element not found in database")]
+    NotFoundError,
+}
+
 pub trait NotFoundError {
     fn is_not_found(&self) -> bool;
 }
@@ -83,5 +97,11 @@ pub trait NotFoundError {
 impl NotFoundError for super::ContainerError<MerchantDBError> {
     fn is_not_found(&self) -> bool {
         matches!(self.error.current_context(), MerchantDBError::NotFoundError)
+    }
+}
+
+impl NotFoundError for super::ContainerError<EntityDBError> {
+    fn is_not_found(&self) -> bool {
+        matches!(self.error.current_context(), EntityDBError::NotFoundError)
     }
 }

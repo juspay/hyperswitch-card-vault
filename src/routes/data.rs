@@ -13,9 +13,12 @@ use masking::ExposeInterface;
 use types::StoreCardResponse;
 
 use crate::{
-    crypto::{encryption_manager::managers::aes::GcmAes256, hash_manager::managers::sha::Sha512},
+    crypto::{
+        encryption_manager::managers::aes::GcmAes256, hash_manager::managers::sha::Sha512,
+        keymanager,
+    },
     custom_extractors::TenantStateResolver,
-    error::{self, ContainerError, ResultContainerExt},
+    error::{self, ContainerError, NotFoundError, ResultContainerExt},
     storage::{FingerprintInterface, HashInterface, LockerInterface, MerchantInterface},
     tenant::GlobalAppState,
     utils,
@@ -92,10 +95,33 @@ pub async fn add_card(
 
     let master_encryption =
         GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
+
+    let is_new_merchant = tenant_app_state
+        .db
+        .find_by_merchant_id(&request.merchant_id, &master_encryption)
+        .await
+        .err()
+        .map(|err| err.is_not_found())
+        .unwrap_or(false);
+
     let merchant = tenant_app_state
         .db
         .find_or_create_by_merchant_id(&request.merchant_id, &master_encryption)
         .await?;
+
+    if is_new_merchant {
+        keymanager::transfer_key_to_key_manager(
+            &tenant_app_state,
+            &merchant.merchant_id,
+            keymanager::types::DataKeyTransferRequest::create_request(
+                merchant.enc_key.clone().expose(),
+            ),
+        )
+        .await
+        .change_error(error::ApiError::KeyManagerError(
+            "Failed to transfer key to key manager",
+        ))?;
+    }
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
 

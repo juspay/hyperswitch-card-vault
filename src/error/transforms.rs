@@ -234,3 +234,48 @@ impl<'a> From<&'a super::CryptoError> for super::ApiError {
         }
     }
 }
+
+error_transform!(super::StorageError => super::EntityDBError);
+impl<'a> From<&'a super::StorageError> for super::EntityDBError {
+    fn from(value: &'a super::StorageError) -> Self {
+        match value {
+            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
+                Self::DBError
+            }
+            super::StorageError::FindError => Self::DBFilterError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
+            super::StorageError::DecryptionError
+            | super::StorageError::EncryptionError
+            | super::StorageError::DeleteError => Self::UnknownError,
+            super::StorageError::InsertError => Self::DBInsertError,
+        }
+    }
+}
+
+error_transform!(super::CryptoError => super::EntityDBError);
+impl<'a> From<&'a super::CryptoError> for super::EntityDBError {
+    fn from(value: &'a super::CryptoError) -> Self {
+        match value {
+            super::CryptoError::SerdeJsonError(_)
+            | super::CryptoError::JWError(_)
+            | super::CryptoError::InvalidData(_)
+            | super::CryptoError::NotImplemented
+            | super::CryptoError::EncryptionError
+            | super::CryptoError::DecryptionError
+            | super::CryptoError::EncodingError(_) => Self::UnknownError,
+        }
+    }
+}
+
+error_transform!(super::EntityDBError => super::ApiError);
+impl<'a> From<&'a super::EntityDBError> for super::ApiError {
+    fn from(value: &'a super::EntityDBError) -> Self {
+        match value {
+            super::EntityDBError::DBError => Self::DatabaseError,
+            super::EntityDBError::DBFilterError => Self::RetrieveDataFailed("entity"),
+            super::EntityDBError::DBInsertError => Self::DatabaseInsertFailed("entity"),
+            super::EntityDBError::UnknownError => Self::UnknownError,
+            super::EntityDBError::NotFoundError => Self::NotFoundError,
+        }
+    }
+}

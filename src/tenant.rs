@@ -10,12 +10,13 @@ use tokio::sync::RwLock;
 use crate::config::TenantConfig;
 #[cfg(feature = "key_custodian")]
 use crate::routes::key_custodian::CustodianKeyState;
-use crate::{app::TenantAppState, config::GlobalConfig, error::ApiError};
+use crate::{api_client::ApiClient, app::TenantAppState, config::GlobalConfig, error::ApiError};
 
 pub struct GlobalAppState {
     pub tenants_app_state: RwLock<FxHashMap<String, Arc<TenantAppState>>>,
     #[cfg(feature = "key_custodian")]
     pub tenants_key_state: RwLock<FxHashMap<String, CustodianKeyState>>,
+    pub api_client: ApiClient,
     pub known_tenants: HashSet<String>,
     pub global_config: GlobalConfig,
 }
@@ -40,6 +41,9 @@ impl GlobalAppState {
             tenants_key_state
         };
 
+        #[allow(clippy::expect_used)]
+        let api_client = ApiClient::new(&global_config).expect("Failed to create api client");
+
         let tenants_app_state = {
             #[cfg(feature = "key_custodian")]
             {
@@ -52,10 +56,13 @@ impl GlobalAppState {
                     let tenant_config =
                         TenantConfig::from_global_config(&global_config, tenant_id.clone());
                     #[allow(clippy::expect_used)]
-                    let tenant_app_state =
-                        TenantAppState::new(global_config.clone(), tenant_config)
-                            .await
-                            .expect("Failed while configuring AppState for tenants");
+                    let tenant_app_state = TenantAppState::new(
+                        global_config.clone(),
+                        tenant_config,
+                        api_client.clone(),
+                    )
+                    .await
+                    .expect("Failed while configuring AppState for tenants");
                     tenants_app_state.insert(tenant_id, Arc::new(tenant_app_state));
                 }
                 tenants_app_state
@@ -66,6 +73,7 @@ impl GlobalAppState {
             tenants_app_state: RwLock::new(tenants_app_state),
             #[cfg(feature = "key_custodian")]
             tenants_key_state: RwLock::new(tenants_key_state),
+            api_client: api_client.clone(),
             known_tenants: HashSet::from_iter(known_tenants),
             global_config,
         })
