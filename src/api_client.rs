@@ -4,7 +4,6 @@ use crate::{
     config::GlobalConfig,
     error::{self, ResultContainerExt},
 };
-use error_stack::{Report, ResultExt};
 use masking::Maskable;
 #[cfg(feature = "keymanager_mtls")]
 use masking::PeekInterface;
@@ -14,19 +13,23 @@ use reqwest::StatusCode;
 pub type Headers = std::collections::HashSet<(String, Maskable<String>)>;
 
 pub(super) trait HeaderExt {
-    fn construct_header_map(self) -> Result<HeaderMap, Report<error::ApiClientError>>;
+    fn construct_header_map(
+        self,
+    ) -> Result<HeaderMap, error::ContainerError<error::ApiClientError>>;
 }
 
 impl HeaderExt for Headers {
-    fn construct_header_map(self) -> Result<HeaderMap, Report<error::ApiClientError>> {
+    fn construct_header_map(
+        self,
+    ) -> Result<HeaderMap, error::ContainerError<error::ApiClientError>> {
         self.into_iter().try_fold(
             HeaderMap::new(),
             |mut header_map, (header_name, header_value)| {
                 let header_name = HeaderName::from_str(&header_name)
-                    .change_context(error::ApiClientError::HeaderMapConstructionFailed)?;
+                    .change_error(error::ApiClientError::HeaderMapConstructionFailed)?;
                 let header_value = header_value.into_inner();
                 let header_value = HeaderValue::from_str(&header_value)
-                    .change_context(error::ApiClientError::HeaderMapConstructionFailed)?;
+                    .change_error(error::ApiClientError::HeaderMapConstructionFailed)?;
                 header_map.append(header_name, header_value);
                 Ok(header_map)
             },
@@ -59,7 +62,9 @@ impl std::ops::Deref for ApiClient {
 
 impl ApiClient {
     #[allow(unused_mut)]
-    pub fn new(global_config: &GlobalConfig) -> Result<Self, Report<error::ApiClientError>> {
+    pub fn new(
+        global_config: &GlobalConfig,
+    ) -> Result<Self, error::ContainerError<error::ApiClientError>> {
         let mut client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .pool_idle_timeout(std::time::Duration::from_secs(
@@ -72,14 +77,13 @@ impl ApiClient {
             let client_identity = reqwest::Identity::from_pem(
                 global_config.api_client.identity.clone().peek().as_ref(),
             )
-            .map_err(error::ApiClientError::IdentityParseFailed)?;
+            .change_error(error::ApiClientError::IdentityParseFailed)?;
 
             let key_manager_cert = reqwest::Certificate::from_pem(
                 global_config.key_manager.cert.clone().peek().as_ref(),
             )
-            .map_err(|err| error::ApiClientError::CertificateParseFailed {
-                client: "key_manager",
-                error: err,
+            .change_error(error::ApiClientError::CertificateParseFailed {
+                service: "key_manager",
             })?;
 
             client = client
@@ -91,7 +95,7 @@ impl ApiClient {
 
         let client = client
             .build()
-            .change_context(error::ApiClientError::ClientConstructionFailed)?;
+            .change_error(error::ApiClientError::ClientConstructionFailed)?;
 
         Ok(Self { inner: client })
     }
@@ -117,10 +121,7 @@ impl ApiClient {
             .headers(headers)
             .send()
             .await
-            .map_err(|err| error::ApiClientError::RequestNotSent {
-                service: "secrets manager".into(),
-                message: err.to_string(),
-            })?;
+            .change_error(error::ApiClientError::RequestNotSent)?;
 
         match response.status() {
             StatusCode::OK => response

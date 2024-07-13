@@ -117,10 +117,7 @@ pub async fn add_card(
                 merchant.enc_key.clone().expose(),
             ),
         )
-        .await
-        .change_error(error::ApiError::KeyManagerError(
-            "Failed to transfer key to key manager",
-        ))?;
+        .await?;
     }
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());

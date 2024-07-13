@@ -49,26 +49,26 @@ impl DataKeyTransferRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct EncryptDataRequest {
+pub struct DataEncryptionRequest {
     #[serde(flatten)]
     pub identifier: Identifier,
     pub data: DecryptedData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct EncryptDateResponse {
+pub struct DateEncryptionResponse {
     pub data: EncryptedData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct DecryptDataRequest {
+pub struct DataDecryptionRequest {
     #[serde(flatten)]
     pub identifier: Identifier,
     pub data: EncryptedData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct DecryptDataResponse {
+pub struct DataDecryptionResponse {
     pub data: DecryptedData,
 }
 

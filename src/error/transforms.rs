@@ -279,3 +279,172 @@ impl<'a> From<&'a super::EntityDBError> for super::ApiError {
         }
     }
 }
+
+error_transform!(super::KeyManagerError => super::ApiError);
+impl<'a> From<&'a super::KeyManagerError> for super::ApiError {
+    fn from(value: &'a super::KeyManagerError) -> Self {
+        match value {
+            super::KeyManagerError::KeyAddFailed => {
+                Self::KeyManagerError("Failed to add key to the Key manager")
+            }
+            super::KeyManagerError::KeyTransferFailed => {
+                Self::KeyManagerError("Failed to transfer the key to the Key manager")
+            }
+            super::KeyManagerError::EncryptionFailed => {
+                Self::KeyManagerError("Failed to encrypt the data in the Key manager")
+            }
+            super::KeyManagerError::DecryptionFailed => {
+                Self::KeyManagerError("Failed to decrypt the data in the Key manager")
+            }
+            super::KeyManagerError::DbError => Self::KeyManagerError("Database error"),
+            super::KeyManagerError::ResponseDecodingFailed => {
+                Self::KeyManagerError("Failed to deserialize from bytes")
+            }
+        }
+    }
+}
+
+error_transform!(super::EntityDBError => super::KeyManagerError);
+impl<'a> From<&'a super::EntityDBError> for super::KeyManagerError {
+    fn from(value: &'a super::EntityDBError) -> Self {
+        match value {
+            super::EntityDBError::DBError
+            | super::EntityDBError::DBFilterError
+            | super::EntityDBError::DBInsertError
+            | super::EntityDBError::UnknownError
+            | super::EntityDBError::NotFoundError => Self::DbError,
+        }
+    }
+}
+
+error_transform!(super::ApiClientError => super::DataKeyCreationError);
+impl<'a> From<&'a super::ApiClientError> for super::DataKeyCreationError {
+    fn from(value: &'a super::ApiClientError) -> Self {
+        match value {
+            super::ApiClientError::ClientConstructionFailed
+            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            super::ApiClientError::HeaderMapConstructionFailed
+            | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
+            super::ApiClientError::IdentityParseFailed
+            | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
+            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
+            super::ApiClientError::BadRequest(_) => Self::BadRequest,
+            super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+        }
+    }
+}
+
+error_transform!(super::DataKeyCreationError => super::KeyManagerError);
+impl<'a> From<&'a super::DataKeyCreationError> for super::KeyManagerError {
+    fn from(value: &'a super::DataKeyCreationError) -> Self {
+        match value {
+            super::DataKeyCreationError::RequestSendFailed
+            | super::DataKeyCreationError::ResponseDecodingFailed
+            | super::DataKeyCreationError::InternalServerError
+            | super::DataKeyCreationError::Unexpected
+            | super::DataKeyCreationError::BadRequest
+            | super::DataKeyCreationError::CertificateParseFailed
+            | super::DataKeyCreationError::RequestConstructionFailed => Self::KeyAddFailed,
+        }
+    }
+}
+
+error_transform!(super::ApiClientError => super::DataKeyTransferError);
+impl<'a> From<&'a super::ApiClientError> for super::DataKeyTransferError {
+    fn from(value: &'a super::ApiClientError) -> Self {
+        match value {
+            super::ApiClientError::ClientConstructionFailed
+            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            super::ApiClientError::HeaderMapConstructionFailed
+            | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
+            super::ApiClientError::IdentityParseFailed
+            | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
+            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
+            super::ApiClientError::BadRequest(_) => Self::BadRequest,
+            super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+        }
+    }
+}
+
+error_transform!(super::DataKeyTransferError => super::KeyManagerError);
+impl<'a> From<&'a super::DataKeyTransferError> for super::KeyManagerError {
+    fn from(value: &'a super::DataKeyTransferError) -> Self {
+        match value {
+            super::DataKeyTransferError::RequestSendFailed
+            | super::DataKeyTransferError::ResponseDecodingFailed
+            | super::DataKeyTransferError::InternalServerError
+            | super::DataKeyTransferError::Unexpected
+            | super::DataKeyTransferError::BadRequest
+            | super::DataKeyTransferError::CertificateParseFailed
+            | super::DataKeyTransferError::RequestConstructionFailed => Self::KeyTransferFailed,
+        }
+    }
+}
+
+error_transform!(super::DataEncryptionError => super::KeyManagerError);
+impl<'a> From<&'a super::DataEncryptionError> for super::KeyManagerError {
+    fn from(value: &'a super::DataEncryptionError) -> Self {
+        match value {
+            super::DataEncryptionError::RequestSendFailed
+            | super::DataEncryptionError::ResponseDecodingFailed
+            | super::DataEncryptionError::InternalServerError
+            | super::DataEncryptionError::Unexpected
+            | super::DataEncryptionError::BadRequest
+            | super::DataEncryptionError::CertificateParseFailed
+            | super::DataEncryptionError::RequestConstructionFailed => Self::EncryptionFailed,
+        }
+    }
+}
+
+error_transform!(super::ApiClientError => super::DataEncryptionError);
+impl<'a> From<&'a super::ApiClientError> for super::DataEncryptionError {
+    fn from(value: &'a super::ApiClientError) -> Self {
+        match value {
+            super::ApiClientError::ClientConstructionFailed
+            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            super::ApiClientError::HeaderMapConstructionFailed
+            | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
+            super::ApiClientError::IdentityParseFailed
+            | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
+            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
+            super::ApiClientError::BadRequest(_) => Self::BadRequest,
+            super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+        }
+    }
+}
+
+error_transform!(super::DataDecryptionError => super::KeyManagerError);
+impl<'a> From<&'a super::DataDecryptionError> for super::KeyManagerError {
+    fn from(value: &'a super::DataDecryptionError) -> Self {
+        match value {
+            super::DataDecryptionError::RequestSendFailed
+            | super::DataDecryptionError::ResponseDecodingFailed
+            | super::DataDecryptionError::InternalServerError
+            | super::DataDecryptionError::Unexpected
+            | super::DataDecryptionError::BadRequest
+            | super::DataDecryptionError::CertificateParseFailed
+            | super::DataDecryptionError::RequestConstructionFailed => Self::DecryptionFailed,
+        }
+    }
+}
+
+error_transform!(super::ApiClientError => super::DataDecryptionError);
+impl<'a> From<&'a super::ApiClientError> for super::DataDecryptionError {
+    fn from(value: &'a super::ApiClientError) -> Self {
+        match value {
+            super::ApiClientError::ClientConstructionFailed
+            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            super::ApiClientError::HeaderMapConstructionFailed
+            | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
+            super::ApiClientError::IdentityParseFailed
+            | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
+            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
+            super::ApiClientError::BadRequest(_) => Self::BadRequest,
+            super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+        }
+    }
+}

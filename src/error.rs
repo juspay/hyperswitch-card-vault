@@ -28,33 +28,6 @@ pub enum ConfigurationError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ApiClientError {
-    #[error("Client construction failed")]
-    ClientConstructionFailed,
-    #[error("Header map construction failed")]
-    HeaderMapConstructionFailed,
-    #[error("Identity parsing failed: {0:?}")]
-    IdentityParseFailed(reqwest::Error),
-    #[error("Certificate parsing failed for {client}: {error:?}")]
-    CertificateParseFailed {
-        client: &'static str,
-        error: reqwest::Error,
-    },
-    #[error("URL encoding of request failed")]
-    UrlEncodingFailed,
-    #[error("Failed to send request to {service}: {message}")]
-    RequestNotSent { service: String, message: String },
-    #[error("Response Decoding failed")]
-    ResponseDecodingFailed,
-    #[error("Bad request received {0:?}")]
-    BadRequest(bytes::Bytes),
-    #[error("Unexpected Error occurred while calling the api client")]
-    Unexpected(bytes::Bytes),
-    #[error("Internal Server Error Received {0:?}")]
-    InternalServerError(bytes::Bytes),
-}
-
-#[derive(Debug, thiserror::Error)]
 pub enum CryptoError {
     #[error("failed while serializing with serde_json")]
     SerdeJsonError(#[from] serde_json::Error),
@@ -193,33 +166,115 @@ pub enum KmsError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum KeyManagerError {
-    #[error("Failed to construct header from the given value")]
-    FailedtoConstructHeader,
-    #[error("Failed to send request to Keymanager")]
-    RequestNotSent(String),
-    #[error("URL encoding of request failed")]
-    UrlEncodingFailed,
-    #[error("Failed to build the reqwest client ")]
+pub enum ApiClientError {
+    #[error("Failed to construct api client")]
     ClientConstructionFailed,
-    #[error("Failed to send the request to Keymanager")]
-    RequestSendFailed,
-    #[error("Internal Server Error Received {0:?}")]
-    InternalServerError(bytes::Bytes),
-    #[error("Bad request received {0:?}")]
-    BadRequest(bytes::Bytes),
-    #[error("Unexpected Error occurred while calling the KeyManager")]
-    Unexpected(bytes::Bytes),
-    #[error("Response Decoding failed")]
+    #[error("Failed to construct Header map")]
+    HeaderMapConstructionFailed,
+    #[error("Failed to parse Identity")]
+    IdentityParseFailed,
+    #[error("Failed to parse Certificate of {service}")]
+    CertificateParseFailed { service: &'static str },
+    #[error("Failed to encode request URL")]
+    UrlEncodingFailed,
+    #[error("Failed to send api request")]
+    RequestNotSent,
+    #[error("Failed to decode response")]
     ResponseDecodingFailed,
-    #[error("Failed to add key to the KeyManager")]
+    #[error("Received bad request: {0:?}")]
+    BadRequest(bytes::Bytes),
+    #[error("Unexpected error occurred: {0:?}")]
+    Unexpected(bytes::Bytes),
+    #[error("Received internal server error {0:?}")]
+    InternalServerError(bytes::Bytes),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum KeyManagerError {
+    #[error("Failed to add key to the Key manager")]
     KeyAddFailed,
-    #[error("Failed to transfer the key to the KeyManager")]
+    #[error("Failed to transfer the key to the Key manager")]
     KeyTransferFailed,
-    #[error("Failed to Encrypt the data in the KeyManager")]
+    #[error("Failed to encrypt the data in the Key manager")]
     EncryptionFailed,
-    #[error("Failed to Decrypt the data in the KeyManager")]
+    #[error("Failed to decrypt the data in the Key manager")]
     DecryptionFailed,
+    #[error("Failed while performing db operation on entity")]
+    DbError,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataKeyCreationError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Received bad request")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataKeyTransferError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Bad request received")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataEncryptionError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Received bad request")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataDecryptionError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Received bad request")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
 }
 
 /// Error code constants.
