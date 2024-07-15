@@ -74,4 +74,12 @@ where
             .await;
         Ok(output)
     }
+
+    async fn find_all_keys_excluding_entity_keys(
+        &self,
+        key: &Self::Algorithm,
+    ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
+        let output = self.inner.find_all_keys_excluding_entity_keys(key).await?;
+        Ok(output)
+    }
 }

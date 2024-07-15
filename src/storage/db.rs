@@ -85,6 +85,33 @@ impl MerchantInterface for Storage {
             .map_err(From::from)
             .and_then(|inner: types::MerchantInner| Ok(inner.decrypt(key)?))
     }
+
+    async fn find_all_keys_excluding_entity_keys(
+        &self,
+        key: &Self::Algorithm,
+    ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        let result: Result<Vec<types::MerchantInner>, ContainerError<Self::Error>> =
+            schema::merchant::table
+                .filter(diesel::dsl::not(diesel::dsl::exists(
+                    schema::entity::table
+                        .filter(schema::entity::entity_id.eq(schema::merchant::merchant_id)),
+                )))
+                .load::<types::MerchantInner>(&mut conn)
+                .await
+                .change_error(error::StorageError::FindError)
+                .map_err(From::from);
+
+        result?
+            .into_iter()
+            .map(|inner| {
+                inner
+                    .decrypt(key)
+                    .change_error(error::MerchantDBError::DEKDecryptionError)
+            })
+            .collect::<Result<Vec<_>, _>>()
+    }
 }
 
 impl LockerInterface for Storage {

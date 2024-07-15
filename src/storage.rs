@@ -142,6 +142,11 @@ pub(crate) trait MerchantInterface {
         new: types::MerchantNew<'_>,
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
+
+    async fn find_all_keys_excluding_entity_keys(
+        &self,
+        key: &Self::Algorithm,
+    ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>>;
 }
 
 ///
