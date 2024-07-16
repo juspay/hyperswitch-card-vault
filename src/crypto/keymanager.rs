@@ -54,6 +54,8 @@ pub async fn find_or_create_key_in_key_manager(
     }
 }
 
+/// Method required to transfer the old dek of merchant to key manager.
+/// Can be removed after migration of all keys.
 pub async fn transfer_key_to_key_manager(
     state: &TenantAppState,
     entity_id: &str,

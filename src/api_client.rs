@@ -74,17 +74,15 @@ impl ApiClient {
 
         #[cfg(feature = "keymanager_mtls")]
         {
-            let client_identity = reqwest::Identity::from_pem(
-                global_config.api_client.identity.clone().peek().as_ref(),
-            )
-            .change_error(error::ApiClientError::IdentityParseFailed)?;
+            let client_identity =
+                reqwest::Identity::from_pem(global_config.api_client.identity.peek().as_ref())
+                    .change_error(error::ApiClientError::IdentityParseFailed)?;
 
-            let key_manager_cert = reqwest::Certificate::from_pem(
-                global_config.key_manager.cert.clone().peek().as_ref(),
-            )
-            .change_error(error::ApiClientError::CertificateParseFailed {
-                service: "key_manager",
-            })?;
+            let key_manager_cert =
+                reqwest::Certificate::from_pem(global_config.key_manager.cert.peek().as_ref())
+                    .change_error(error::ApiClientError::CertificateParseFailed {
+                        service: "key_manager",
+                    })?;
 
             client = client
                 .use_rustls_tls()
