@@ -53,7 +53,7 @@ impl TenantAppState {
     /// - If the database password cannot be parsed as a string after kms decrypt
     ///
     pub async fn new(
-        global_config: GlobalConfig,
+        global_config: &GlobalConfig,
         tenant_config: TenantConfig,
         api_client: ApiClient,
     ) -> error_stack::Result<Self, error::ConfigurationError> {

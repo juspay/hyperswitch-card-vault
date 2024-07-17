@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{crypto::keymanager, tenant::GlobalAppState};
+use crate::{crypto::keymanager, logger, tenant::GlobalAppState};
 
 use axum::{routing::get, Json};
 
@@ -90,6 +90,7 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
 
     let keymanager_status = keymanager::health_check_keymanager(&state)
         .await
+        .map_err(|err| logger::error!(keymanager_err=?err))
         .unwrap_or_default();
 
     axum::Json(Diagnostics {

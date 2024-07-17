@@ -1,14 +1,15 @@
 use std::fmt;
 
 use crate::{
-    crypto,
+    crypto::{self, consts::BASE64_ENGINE},
+    error::{self, ResultContainerExt},
     storage::{consts, utils},
 };
 use base64::Engine;
-use masking::{PeekInterface, Secret};
+use masking::{ExposeInterface, PeekInterface, Secret};
 use serde::{
     de::{self, Unexpected, Visitor},
-    ser, Deserialize, Deserializer, Serialize,
+    Deserialize, Deserializer, Serialize, Serializer,
 };
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -55,8 +56,24 @@ pub struct DataEncryptionRequest {
     pub data: DecryptedData,
 }
 
+impl DataEncryptionRequest {
+    pub fn create_request<T>(
+        key_identifier: String,
+        data: &Secret<T>,
+    ) -> Result<Self, error::ContainerError<error::ApiError>>
+    where
+        T: Serialize,
+    {
+        Ok(Self {
+            identifier: Identifier::Entity(key_identifier),
+            data: DecryptedData::from_value(data)?,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DateEncryptionResponse {
+    #[serde(serialize_with = "serialize_encryption_data")]
     pub data: EncryptedData,
 }
 
@@ -64,7 +81,17 @@ pub struct DateEncryptionResponse {
 pub struct DataDecryptionRequest {
     #[serde(flatten)]
     pub identifier: Identifier,
+    #[serde(serialize_with = "serialize_encryption_data")]
     pub data: EncryptedData,
+}
+
+impl DataDecryptionRequest {
+    pub fn create_request(key_identifier: String, data: Secret<Vec<u8>>) -> Self {
+        Self {
+            identifier: Identifier::Entity(key_identifier),
+            data: EncryptedData::from_secret(data),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -72,19 +99,32 @@ pub struct DataDecryptionResponse {
     pub data: DecryptedData,
 }
 
-#[derive(Debug)]
-pub struct EncryptedData {
-    pub data: Secret<Vec<u8>>,
+#[derive(Debug, Clone)]
+pub struct EncryptedData(Secret<Vec<u8>>);
+
+impl EncryptedData {
+    pub fn from_secret(data: Secret<Vec<u8>>) -> Self {
+        Self(data)
+    }
+    pub fn inner(self) -> Secret<Vec<u8>> {
+        self.0
+    }
 }
 
-impl Serialize for EncryptedData {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let data = String::from_utf8(self.data.peek().clone()).map_err(ser::Error::custom)?;
-        serializer.serialize_str(data.as_str())
-    }
+pub fn serialize_encryption_data<S>(
+    encrypted_data: &EncryptedData,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let encrypted_data = encrypted_data.clone().inner().expose();
+    // Since old encrypted data doesn't have version prefixed to it, it would fail to get encoded as String.
+    // If so, we manually prefix it with v1 as version and BASE64 encode the data.
+    let encoded_data = String::from_utf8(encrypted_data.clone())
+        .unwrap_or(format!("v1:{}", BASE64_ENGINE.encode(encrypted_data)));
+
+    serializer.serialize_str(encoded_data.as_str())
 }
 
 impl<'de> Deserialize<'de> for EncryptedData {
@@ -105,9 +145,7 @@ impl<'de> Deserialize<'de> for EncryptedData {
             where
                 E: de::Error,
             {
-                Ok(EncryptedData {
-                    data: Secret::new(value.as_bytes().to_vec()),
-                })
+                Ok(EncryptedData(Secret::new(value.as_bytes().to_vec())))
             }
         }
 
@@ -119,11 +157,21 @@ impl<'de> Deserialize<'de> for EncryptedData {
 pub struct DecryptedData(Secret<Vec<u8>>);
 
 impl DecryptedData {
-    pub fn from_data(data: Secret<Vec<u8>>) -> Self {
+    pub fn from_secret(data: Secret<Vec<u8>>) -> Self {
         Self(data)
     }
     pub fn inner(self) -> Secret<Vec<u8>> {
         self.0
+    }
+    pub fn from_value<T>(data: &Secret<T>) -> Result<Self, error::ContainerError<error::ApiError>>
+    where
+        T: Serialize,
+    {
+        Ok(Self(
+            serde_json::to_vec(data.peek())
+                .change_error(error::ApiError::EncodingError)?
+                .into(),
+        ))
     }
 }
 

@@ -56,13 +56,10 @@ impl GlobalAppState {
                     let tenant_config =
                         TenantConfig::from_global_config(&global_config, tenant_id.clone());
                     #[allow(clippy::expect_used)]
-                    let tenant_app_state = TenantAppState::new(
-                        global_config.clone(),
-                        tenant_config,
-                        api_client.clone(),
-                    )
-                    .await
-                    .expect("Failed while configuring AppState for tenants");
+                    let tenant_app_state =
+                        TenantAppState::new(&global_config, tenant_config, api_client.clone())
+                            .await
+                            .expect("Failed while configuring AppState for tenants");
                     tenants_app_state.insert(tenant_id, Arc::new(tenant_app_state));
                 }
                 tenants_app_state

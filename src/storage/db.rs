@@ -94,10 +94,10 @@ impl MerchantInterface for Storage {
 
         let result: Result<Vec<types::MerchantInner>, ContainerError<Self::Error>> =
             schema::merchant::table
-                .filter(diesel::dsl::not(diesel::dsl::exists(
-                    schema::entity::table
-                        .filter(schema::entity::entity_id.eq(schema::merchant::merchant_id)),
-                )))
+                .filter(
+                    schema::merchant::merchant_id
+                        .ne_all(schema::entity::table.select(schema::entity::entity_id)),
+                )
                 .load::<types::MerchantInner>(&mut conn)
                 .await
                 .change_error(error::StorageError::FindError)
