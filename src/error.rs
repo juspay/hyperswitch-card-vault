@@ -277,6 +277,12 @@ pub enum DataDecryptionError {
     RequestConstructionFailed,
 }
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum KeyManagerHealthCheckError {
+    #[error("Failed to establish Key manager connection")]
+    FailedToConnect,
+}
+
 /// Error code constants.
 mod error_codes {
     /// Processing error: Indicates an error that occurred during processing of a task or operation.

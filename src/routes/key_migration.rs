@@ -3,6 +3,7 @@ use base64::Engine;
 use masking::ExposeInterface;
 
 use crate::{
+    api_client::Method,
     app::TenantAppState,
     crypto::{
         self,
@@ -75,16 +76,19 @@ pub async fn migrate_key_to_key_manager(
 ) -> Result<Entity, ContainerError<error::KeyManagerError>> {
     let url = format!("{}/key/transfer", state.config.key_manager.url);
 
-    let response = crypto::keymanager::call_encryption_service::<
-        _,
-        DataKeyCreateResponse,
-        DataKeyTransferError,
-    >(state, url, request_body)
+    let response = crypto::keymanager::call_encryption_service::<_, DataKeyTransferError>(
+        state,
+        url,
+        Method::Post,
+        Some(request_body),
+    )
     .await
     .map_err(|err| {
         logger::error!("Failed to migrate merchant: {}", entity_id);
         err
-    })?;
+    })?
+    .deserialize_json::<DataKeyCreateResponse, DataKeyTransferError>()
+    .await?;
 
     Ok(state
         .db

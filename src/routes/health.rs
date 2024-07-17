@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::tenant::GlobalAppState;
+use crate::{crypto::keymanager, tenant::GlobalAppState};
 
-use axum::{response::IntoResponse, routing::get, Json};
+use axum::{routing::get, Json};
 
 use crate::{custom_extractors::TenantStateResolver, error, storage::TestInterface};
 
@@ -31,6 +31,12 @@ pub async fn health() -> Json<HealthRespPayload> {
 #[derive(Debug, serde::Serialize, Default)]
 pub struct Diagnostics {
     key_custodian_locked: bool,
+    database: DatabaseHealth,
+    keymanager_status: HealthState,
+}
+
+#[derive(Debug, serde::Serialize, Default)]
+pub struct DatabaseHealth {
     database_connection: HealthState,
     database_read: HealthState,
     database_write: HealthState,
@@ -45,53 +51,50 @@ pub enum HealthState {
 }
 
 /// '/health/diagnostics` API handler`
-pub async fn diagnostics(
-    TenantStateResolver(state): TenantStateResolver,
-) -> (hyper::StatusCode, Json<Diagnostics>) {
+pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Json<Diagnostics> {
     crate::logger::info!("Health diagnostics was called");
 
-    let output = state.db.test().await;
-    let case_match = output.as_ref().map_err(|err| err.get_inner());
-    let diagnostics = match case_match {
-        Ok(()) => axum::Json(Diagnostics {
-            key_custodian_locked: false,
+    let db_test_output = state.db.test().await;
+    let db_test_output_case_match = db_test_output.as_ref().map_err(|err| err.get_inner());
+
+    let db_health = match db_test_output_case_match {
+        Ok(()) => DatabaseHealth {
             database_connection: HealthState::Working,
             database_read: HealthState::Working,
             database_write: HealthState::Working,
             database_delete: HealthState::Working,
-        }),
+        },
 
-        Err(&error::TestDBError::DBReadError) => axum::Json(Diagnostics {
-            key_custodian_locked: false,
+        Err(&error::TestDBError::DBReadError) => DatabaseHealth {
             database_connection: HealthState::Working,
             ..Default::default()
-        }),
+        },
 
-        Err(&error::TestDBError::DBWriteError) => axum::Json(Diagnostics {
-            key_custodian_locked: false,
+        Err(&error::TestDBError::DBWriteError) => DatabaseHealth {
             database_connection: HealthState::Working,
             database_read: HealthState::Working,
             ..Default::default()
-        }),
+        },
 
-        Err(&error::TestDBError::DBDeleteError) => axum::Json(Diagnostics {
-            key_custodian_locked: false,
+        Err(&error::TestDBError::DBDeleteError) => DatabaseHealth {
             database_connection: HealthState::Working,
             database_write: HealthState::Working,
             database_read: HealthState::Working,
             ..Default::default()
-        }),
+        },
 
-        Err(_) => axum::Json(Diagnostics {
-            key_custodian_locked: false,
+        Err(_) => DatabaseHealth {
             ..Default::default()
-        }),
+        },
     };
 
-    let status_code = output
-        .map_err(Into::<error::ContainerError<error::ApiError>>::into)
-        .into_response()
-        .status();
+    let keymanager_status = keymanager::health_check_keymanager(&state)
+        .await
+        .unwrap_or_default();
 
-    (status_code, diagnostics)
+    axum::Json(Diagnostics {
+        key_custodian_locked: false,
+        database: db_health,
+        keymanager_status,
+    })
 }

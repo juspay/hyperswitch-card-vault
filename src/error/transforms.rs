@@ -448,3 +448,21 @@ impl<'a> From<&'a super::ApiClientError> for super::DataDecryptionError {
         }
     }
 }
+
+error_transform!(super::ApiClientError => super::KeyManagerHealthCheckError);
+impl<'a> From<&'a super::ApiClientError> for super::KeyManagerHealthCheckError {
+    fn from(value: &'a super::ApiClientError) -> Self {
+        match value {
+            super::ApiClientError::ClientConstructionFailed
+            | super::ApiClientError::HeaderMapConstructionFailed
+            | super::ApiClientError::IdentityParseFailed
+            | super::ApiClientError::CertificateParseFailed { .. }
+            | super::ApiClientError::UrlEncodingFailed
+            | super::ApiClientError::RequestNotSent
+            | super::ApiClientError::ResponseDecodingFailed
+            | super::ApiClientError::BadRequest(_)
+            | super::ApiClientError::Unexpected(_)
+            | super::ApiClientError::InternalServerError(_) => Self::FailedToConnect,
+        }
+    }
+}
