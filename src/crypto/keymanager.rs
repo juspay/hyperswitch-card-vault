@@ -1,5 +1,5 @@
 pub mod types;
-use masking::ExposeInterface;
+use masking::{ExposeInterface, Secret};
 use serde::Deserialize;
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
         DataKeyCreationError, DataKeyTransferError, KeyManagerError, NotFoundError,
         ResultContainerExt,
     },
-    storage::{types::Entity, EntityInterface},
+    storage::{consts::headers, types::Entity, EntityInterface},
 };
 
 #[derive(Debug, Deserialize, Clone)]
@@ -97,7 +97,7 @@ pub async fn encrypt_data_using_key_manager(
 pub async fn decrypt_data_using_key_manager<T>(
     state: &TenantAppState,
     request_body: DataDecryptionRequest,
-) -> Result<T, ContainerError<KeyManagerError>>
+) -> Result<Secret<T>, ContainerError<KeyManagerError>>
 where
     T: serde::de::DeserializeOwned,
 {
@@ -111,6 +111,7 @@ where
     .await?;
 
     serde_json::from_slice::<T>(&response.data.inner().expose())
+        .map(Secret::from)
         .change_error(KeyManagerError::ResponseDecodingFailed)
 }
 
@@ -124,7 +125,7 @@ where
     R: serde::de::DeserializeOwned,
     ContainerError<E>: From<ContainerError<ApiClientError>> + Send + Sync,
 {
-    let headers = [("Content-type".into(), "application/json".into())]
+    let headers = [(headers::CONTENT_TYPE.into(), "application/json".into())]
         .into_iter()
         .collect::<std::collections::HashSet<_>>();
     let response = state

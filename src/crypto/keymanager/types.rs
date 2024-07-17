@@ -59,7 +59,7 @@ pub struct DataEncryptionRequest {
 impl DataEncryptionRequest {
     pub fn create_request<T>(
         key_identifier: String,
-        data: &T,
+        data: &Secret<T>,
     ) -> Result<Self, error::ContainerError<error::ApiError>>
     where
         T: Serialize,
@@ -163,12 +163,12 @@ impl DecryptedData {
     pub fn inner(self) -> Secret<Vec<u8>> {
         self.0
     }
-    pub fn from_value<T>(data: &T) -> Result<Self, error::ContainerError<error::ApiError>>
+    pub fn from_value<T>(data: &Secret<T>) -> Result<Self, error::ContainerError<error::ApiError>>
     where
         T: Serialize,
     {
         Ok(Self(
-            serde_json::to_vec(data)
+            serde_json::to_vec(data.peek())
                 .change_error(error::ApiError::EncodingError)?
                 .into(),
         ))
