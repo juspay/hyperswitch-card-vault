@@ -148,12 +148,13 @@ impl ApiClient {
                     .change_error(error::ApiClientError::ResponseDecodingFailed)?,
             )
             .into()),
-            _ => Err(error::ApiClientError::Unexpected(
-                response
+            _ => Err(error::ApiClientError::Unexpected {
+                status_code: response.status(),
+                message: response
                     .bytes()
                     .await
                     .change_error(error::ApiClientError::ResponseDecodingFailed)?,
-            )
+            }
             .into()),
         }
     }

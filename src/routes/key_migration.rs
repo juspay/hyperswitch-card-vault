@@ -1,6 +1,7 @@
 use axum::Json;
 use base64::Engine;
 use masking::ExposeInterface;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     api_client::Method,
@@ -21,19 +22,25 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MerchantKeyTransferRequest {
+    pub limit: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferKeyResponse {
     pub total_transferred: usize,
 }
 
 pub async fn transfer_keys(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
+    Json(request): Json<MerchantKeyTransferRequest>,
 ) -> Result<Json<TransferKeyResponse>, ContainerError<error::ApiError>> {
     let master_encryption =
         GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
     let merchant_keys = tenant_app_state
         .db
-        .find_all_keys_excluding_entity_keys(&master_encryption)
+        .find_all_keys_excluding_entity_keys(&master_encryption, request.limit)
         .await?;
 
     logger::debug!("Number of keys to be migrated: {}", merchant_keys.len());

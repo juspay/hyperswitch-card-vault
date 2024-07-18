@@ -89,6 +89,7 @@ impl MerchantInterface for Storage {
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,
+        limit: i64,
     ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
@@ -98,6 +99,7 @@ impl MerchantInterface for Storage {
                     schema::merchant::merchant_id
                         .ne_all(schema::entity::table.select(schema::entity::entity_id)),
                 )
+                .limit(limit)
                 .load::<types::MerchantInner>(&mut conn)
                 .await
                 .change_error(error::StorageError::FindError)

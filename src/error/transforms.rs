@@ -322,7 +322,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyCreationError {
     fn from(value: &'a super::ApiClientError) -> Self {
         match value {
             super::ApiClientError::ClientConstructionFailed
-            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            | super::ApiClientError::Unexpected { .. } => Self::Unexpected,
             super::ApiClientError::HeaderMapConstructionFailed
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
@@ -355,7 +355,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyTransferError {
     fn from(value: &'a super::ApiClientError) -> Self {
         match value {
             super::ApiClientError::ClientConstructionFailed
-            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            | super::ApiClientError::Unexpected { .. } => Self::Unexpected,
             super::ApiClientError::HeaderMapConstructionFailed
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
@@ -403,7 +403,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataEncryptionError {
     fn from(value: &'a super::ApiClientError) -> Self {
         match value {
             super::ApiClientError::ClientConstructionFailed
-            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            | super::ApiClientError::Unexpected { .. } => Self::Unexpected,
             super::ApiClientError::HeaderMapConstructionFailed
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
@@ -436,7 +436,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataDecryptionError {
     fn from(value: &'a super::ApiClientError) -> Self {
         match value {
             super::ApiClientError::ClientConstructionFailed
-            | super::ApiClientError::Unexpected(_) => Self::Unexpected,
+            | super::ApiClientError::Unexpected { .. } => Self::Unexpected,
             super::ApiClientError::HeaderMapConstructionFailed
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
@@ -461,7 +461,7 @@ impl<'a> From<&'a super::ApiClientError> for super::KeyManagerHealthCheckError {
             | super::ApiClientError::RequestNotSent
             | super::ApiClientError::ResponseDecodingFailed
             | super::ApiClientError::BadRequest(_)
-            | super::ApiClientError::Unexpected(_)
+            | super::ApiClientError::Unexpected { .. }
             | super::ApiClientError::InternalServerError(_) => Self::FailedToConnect,
         }
     }
