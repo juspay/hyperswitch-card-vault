@@ -120,6 +120,9 @@ pub enum ApiError {
 
     #[error("Tenant error: {0}")]
     TenantError(&'static str),
+
+    #[error("Key manager error: {0}")]
+    KeyManagerError(&'static str),
 }
 
 /// Errors that could occur during KMS operations.
@@ -160,6 +163,118 @@ pub enum KmsError {
 
     #[error("Failed while parsing the response")]
     ParseError,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ApiClientError {
+    #[error("Failed to construct api client")]
+    ClientConstructionFailed,
+    #[error("Failed to construct Header map")]
+    HeaderMapConstructionFailed,
+    #[error("Failed to parse Identity")]
+    IdentityParseFailed,
+    #[error("Failed to parse Certificate of {service}")]
+    CertificateParseFailed { service: &'static str },
+    #[error("Failed to encode request URL")]
+    UrlEncodingFailed,
+    #[error("Failed to send api request")]
+    RequestNotSent,
+    #[error("Failed to decode response")]
+    ResponseDecodingFailed,
+    #[error("Received bad request: {0:?}")]
+    BadRequest(bytes::Bytes),
+    #[error("Unexpected error occurred: {0:?}")]
+    Unexpected(bytes::Bytes),
+    #[error("Received internal server error {0:?}")]
+    InternalServerError(bytes::Bytes),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum KeyManagerError {
+    #[error("Failed to add key to the Key manager")]
+    KeyAddFailed,
+    #[error("Failed to transfer the key to the Key manager")]
+    KeyTransferFailed,
+    #[error("Failed to encrypt the data in the Key manager")]
+    EncryptionFailed,
+    #[error("Failed to decrypt the data in the Key manager")]
+    DecryptionFailed,
+    #[error("Failed while performing db operation on entity")]
+    DbError,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataKeyCreationError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Received bad request")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataKeyTransferError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Bad request received")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataEncryptionError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Received bad request")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DataDecryptionError {
+    #[error("Failed to send the request to Key manager")]
+    RequestSendFailed,
+    #[error("Response decoding failed")]
+    ResponseDecodingFailed,
+    #[error("Received internal server error")]
+    InternalServerError,
+    #[error("Unexpected error occurred while calling the Key manager")]
+    Unexpected,
+    #[error("Received bad request")]
+    BadRequest,
+    #[error("Failed while parsing certificates")]
+    CertificateParseFailed,
+    #[error("Failed while constructing client request")]
+    RequestConstructionFailed,
 }
 
 /// Error code constants.
@@ -209,7 +324,8 @@ impl axum::response::IntoResponse for ApiError {
                 .into_response(),
             data @ Self::ResponseMiddlewareError(_)
             | data @ Self::UnknownError
-            | data @ Self::MerchantKeyError => (
+            | data @ Self::MerchantKeyError
+            | data @ Self::KeyManagerError(_) => (
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new(
                     error_codes::TE_00,

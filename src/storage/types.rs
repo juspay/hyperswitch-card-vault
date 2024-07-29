@@ -105,6 +105,14 @@ pub struct Fingerprint {
     pub card_fingerprint: Secret<String>,
 }
 
+#[derive(Debug, Clone, Identifiable, Queryable)]
+#[diesel(table_name = schema::entity)]
+pub struct Entity {
+    pub id: i32,
+    pub entity_id: String,
+    pub enc_key_id: String,
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 pub struct CardNumber(StrongSecret<String>);
 
@@ -137,6 +145,13 @@ impl std::ops::Deref for CardNumber {
 pub(super) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = schema::entity)]
+pub(super) struct EntityTableNew {
+    pub entity_id: String,
+    pub enc_key_id: String,
 }
 
 #[derive(Debug, Insertable)]
