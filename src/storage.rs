@@ -103,6 +103,12 @@ impl Cacheable<types::Fingerprint> for Storage {
     type Value = types::Fingerprint;
 }
 
+#[cfg(feature = "caching")]
+impl Cacheable<types::Entity> for Storage {
+    type Key = String;
+    type Value = types::Entity;
+}
+
 ///
 /// MerchantInterface:
 ///
@@ -220,4 +226,25 @@ pub(crate) trait FingerprintInterface {
         card: types::CardNumber,
         hash_key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
+}
+
+///
+/// EntityInterface:
+///
+/// Interface providing functionality to interface with the entity table in database
+pub(crate) trait EntityInterface {
+    type Error;
+
+    /// find merchant from merchant table with `merchant_id` with key as master key
+    async fn find_by_entity_id(
+        &self,
+        entity_id: &str,
+    ) -> Result<types::Entity, ContainerError<Self::Error>>;
+
+    /// Insert a new merchant in the database by encrypting the dek with `master_key`
+    async fn insert_entity(
+        &self,
+        entity_id: &str,
+        identifier: &str,
+    ) -> Result<types::Entity, ContainerError<Self::Error>>;
 }

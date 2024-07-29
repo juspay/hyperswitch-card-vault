@@ -6,8 +6,7 @@ use masking::Secret;
 
 use crate::{
     crypto::{
-        encryption_manager::managers::aes::generate_aes256_key,
-        encryption_manager::managers::aes::GcmAes256,
+        encryption_manager::managers::aes::{generate_aes256_key, GcmAes256},
         hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
     },
     error::{self, ContainerError, ResultContainerExt},
@@ -344,5 +343,45 @@ impl super::FingerprintInterface for Storage {
                     .change_error(error::StorageError::InsertError)?)
             }
         }
+    }
+}
+
+impl super::EntityInterface for Storage {
+    type Error = error::EntityDBError;
+
+    async fn find_by_entity_id(
+        &self,
+        entity_id: &str,
+    ) -> Result<types::Entity, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+        let output: Result<types::Entity, diesel::result::Error> = types::Entity::table()
+            .filter(schema::entity::entity_id.eq(entity_id))
+            .get_result(&mut conn)
+            .await;
+        output
+            .map_err(|error| match error {
+                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
+                _ => error::StorageError::FindError,
+            })
+            .map_err(error::ContainerError::from)
+            .map_err(From::from)
+    }
+
+    async fn insert_entity(
+        &self,
+        entity_id: &str,
+        identifier: &str,
+    ) -> Result<types::Entity, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+        let query = diesel::insert_into(types::Entity::table()).values(types::EntityTableNew {
+            entity_id: entity_id.into(),
+            enc_key_id: identifier.into(),
+        });
+
+        query
+            .get_result(&mut conn)
+            .await
+            .change_error(error::StorageError::InsertError)
+            .map_err(From::from)
     }
 }

@@ -6,6 +6,7 @@ use tower_http::trace as tower_trace;
 use std::sync::Arc;
 
 use crate::{
+    api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
     error, logger, routes, storage,
     tenant::GlobalAppState,
@@ -37,6 +38,7 @@ type Storage = storage::Storage;
 pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
+    pub api_client: ApiClient,
 }
 
 #[allow(clippy::expect_used)]
@@ -51,8 +53,9 @@ impl TenantAppState {
     /// - If the database password cannot be parsed as a string after kms decrypt
     ///
     pub async fn new(
-        global_config: GlobalConfig,
+        global_config: &GlobalConfig,
         tenant_config: TenantConfig,
+        api_client: ApiClient,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         let db = storage::Storage::new(&global_config.database, &tenant_config.tenant_id)
             .await
@@ -66,6 +69,7 @@ impl TenantAppState {
 
         Ok(Self {
             db,
+            api_client,
             config: tenant_config,
         })
     }

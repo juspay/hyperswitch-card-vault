@@ -114,12 +114,15 @@ pub async fn decrypt(
             );
             aes_decrypt_custodian_key(&mut tenant_config, inner_key1, inner_key2).await?;
 
-            let tenant_app_state =
-                TenantAppState::new(global_app_state.global_config.clone(), tenant_config)
-                    .await
-                    .change_context(error::ApiError::TenantError(
-                        "Failed while creating AppState for tenant",
-                    ))?;
+            let tenant_app_state = TenantAppState::new(
+                &global_app_state.global_config,
+                tenant_config,
+                global_app_state.api_client.clone(),
+            )
+            .await
+            .change_context(error::ApiError::TenantError(
+                "Failed while creating AppState for tenant",
+            ))?;
 
             global_app_state.set_app_state(tenant_app_state).await;
 

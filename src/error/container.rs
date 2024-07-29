@@ -79,6 +79,7 @@ where
     E1: error_stack::Context,
     E2: error_stack::Context,
 {
+    #[track_caller]
     fn change_error(self, error: E2) -> Result<T, ContainerError<E2>> {
         match self {
             Ok(value) => Ok(value),
