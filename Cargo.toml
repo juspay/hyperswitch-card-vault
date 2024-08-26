@@ -56,7 +56,7 @@ serde_path_to_error = "0.1.11"
 error-stack = "0.4.1"
 futures-util = "0.3.28"
 digest = "0.9"
-masking = { git = "https://github.com/juspay/hyperswitch", version = "0.1.0" }
+masking = { git = "https://github.com/juspay/hyperswitch", tag = "v1.111.1" }
 ring = { version = "0.16.20", features = ["std"] }
 hex = "0.4.3"
 time = { version = "0.3.35", features = ["serde"] }
