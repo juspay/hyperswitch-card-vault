@@ -22,21 +22,21 @@ keymanager_mtls = []
 async-trait = "0.1.79"
 aws-config = { version = "1.0.1", optional = true }
 aws-sdk-kms = { version = "1.3.0", optional = true }
-base64 = "0.21.2"
+base64 = "0.22.1"
 bytes = "1.6.0"
 futures = "0.3.28"
-gethostname = "0.4.3"
-rustc-hash = "1.1"
+gethostname = "0.5.0"
+rustc-hash = "2.0"
 once_cell = "1.18.0"
 vaultrs = { version = "0.7.0", optional = true }
 
 # Tokio Dependencies
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
 axum = "0.7.3"
-axum-server = { version = "0.6.0", features = ["tls-rustls"] }
+axum-server = { version = "0.7.1", features = ["tls-rustls"] }
 hyper = "1.0.1"
-tower = { version = "0.4.13", features = ["limit", "buffer", "load-shed"] }
-tower-http = { version = "0.5.0", features = ["trace"] }
+tower = { version = "0.5.0", features = ["limit", "buffer", "load-shed"] }
+tower-http = { version = "0.5.2", features = ["trace"] }
 tracing = { version = "0.1.40" }
 tracing-appender = { version = "0.2.2" }
 tracing-attributes = "0.1.27"
@@ -51,18 +51,18 @@ serde_json = "1.0.127"
 josekit = "0.8.4"
 
 thiserror = "1.0.49"
-config = "0.13.4"
+config = "0.14.0"
 serde_path_to_error = "0.1.11"
-error-stack = "0.4.1"
+error-stack = "0.5.0"
 futures-util = "0.3.28"
-digest = "0.9"
+digest = "0.10"
 masking = { git = "https://github.com/juspay/hyperswitch", tag = "v1.111.1" }
-ring = { version = "0.16.20", features = ["std"] }
+ring = { version = "0.17.8", features = ["std"] }
 hex = "0.4.3"
 time = { version = "0.3.35", features = ["serde"] }
 uuid = { version = "1.5.0", features = ["v4", "fast-rng"] }
 moka = { version = "0.12.1", features = ["future"], optional = true }
-reqwest = { version = "0.11.27", features = ["json", "__rustls"] }
+reqwest = { version = "0.12.7", features = ["json", "__rustls"] }
 
 argh = "0.1.12"
 
@@ -71,7 +71,7 @@ nanoid = "0.4.0"
 [dev-dependencies]
 rand = "0.8.5"
 criterion = "0.5.1"
-axum-test = "14.2.2"
+axum-test = "15.6.0"
 
 [build-dependencies]
 cargo_metadata = "0.18.1"
