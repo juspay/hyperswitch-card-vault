@@ -16,12 +16,6 @@ use crate::{
 #[cfg(feature = "caching")]
 use crate::storage::caching::Caching;
 
-#[cfg(feature = "kms")]
-use crate::crypto::{
-    kms::{self, Base64Encoded, KmsData, Raw},
-    Encryption,
-};
-
 #[cfg(feature = "caching")]
 type Storage = Caching<storage::Storage>;
 
