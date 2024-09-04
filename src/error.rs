@@ -8,6 +8,7 @@ mod transforms;
 
 pub use container::*;
 pub use custom_error::*;
+use reqwest::StatusCode;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigurationError {
@@ -183,8 +184,11 @@ pub enum ApiClientError {
     ResponseDecodingFailed,
     #[error("Received bad request: {0:?}")]
     BadRequest(bytes::Bytes),
-    #[error("Unexpected error occurred: {0:?}")]
-    Unexpected(bytes::Bytes),
+    #[error("Unexpected error occurred: status_code-{status_code:?} message-{message:?}")]
+    Unexpected {
+        status_code: StatusCode,
+        message: bytes::Bytes,
+    },
     #[error("Received internal server error {0:?}")]
     InternalServerError(bytes::Bytes),
 }
@@ -275,6 +279,12 @@ pub enum DataDecryptionError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum KeyManagerHealthCheckError {
+    #[error("Failed to establish Key manager connection")]
+    FailedToConnect,
 }
 
 /// Error code constants.
