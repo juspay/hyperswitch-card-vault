@@ -1,4 +1,4 @@
-use axum::extract::Request;
+use axum::{extract::Request, routing::post};
 use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
@@ -106,7 +106,8 @@ where
                 global_app_state.clone(),
             ),
         )
-        .nest("/health", routes::health::serve());
+        .nest("/health", routes::health::serve())
+        .route("/key/transfer", post(routes::key_migration::transfer_keys));
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());

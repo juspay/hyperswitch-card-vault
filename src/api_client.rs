@@ -7,8 +7,11 @@ use crate::{
 use masking::Maskable;
 #[cfg(feature = "keymanager_mtls")]
 use masking::PeekInterface;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::StatusCode;
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Response,
+};
 
 pub type Headers = std::collections::HashSet<(String, Maskable<String>)>;
 
@@ -35,6 +38,11 @@ impl HeaderExt for Headers {
             },
         )
     }
+}
+
+pub enum Method {
+    Get,
+    Post,
 }
 
 #[derive(Clone, serde::Deserialize, Debug)]
@@ -98,34 +106,34 @@ impl ApiClient {
         Ok(Self { inner: client })
     }
 
-    pub async fn send_request<T, R>(
+    pub async fn send_request<T>(
         &self,
         url: String,
         headers: Headers,
+        method: Method,
         request_body: T,
-    ) -> Result<R, error::ContainerError<error::ApiClientError>>
+    ) -> Result<ApiResponse, error::ContainerError<error::ApiClientError>>
     where
         T: serde::Serialize + Send + Sync + 'static,
-        R: serde::de::DeserializeOwned,
     {
         let url =
             reqwest::Url::parse(&url).change_error(error::ApiClientError::UrlEncodingFailed)?;
 
         let headers = headers.construct_header_map()?;
 
-        let response = self
-            .post(url)
-            .json(&request_body)
+        let request_builder = match method {
+            Method::Get => self.get(url),
+            Method::Post => self.post(url).json(&request_body),
+        };
+
+        let response = request_builder
             .headers(headers)
             .send()
             .await
             .change_error(error::ApiClientError::RequestNotSent)?;
 
         match response.status() {
-            StatusCode::OK => response
-                .json::<R>()
-                .await
-                .change_error(error::ApiClientError::ResponseDecodingFailed),
+            StatusCode::OK => Ok(ApiResponse(response)),
             StatusCode::INTERNAL_SERVER_ERROR => Err(error::ApiClientError::InternalServerError(
                 response
                     .bytes()
@@ -140,13 +148,30 @@ impl ApiClient {
                     .change_error(error::ApiClientError::ResponseDecodingFailed)?,
             )
             .into()),
-            _ => Err(error::ApiClientError::Unexpected(
-                response
+            _ => Err(error::ApiClientError::Unexpected {
+                status_code: response.status(),
+                message: response
                     .bytes()
                     .await
                     .change_error(error::ApiClientError::ResponseDecodingFailed)?,
-            )
+            }
             .into()),
         }
+    }
+}
+
+pub struct ApiResponse(Response);
+
+impl ApiResponse {
+    pub async fn deserialize_json<R, E>(self) -> Result<R, error::ContainerError<E>>
+    where
+        R: serde::de::DeserializeOwned,
+        error::ContainerError<E>: From<error::ContainerError<error::ApiClientError>> + Send + Sync,
+    {
+        Ok(self
+            .0
+            .json::<R>()
+            .await
+            .change_error(error::ApiClientError::ResponseDecodingFailed)?)
     }
 }

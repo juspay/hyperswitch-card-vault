@@ -3,6 +3,7 @@ use masking::{ExposeInterface, Secret};
 use serde::Deserialize;
 
 use crate::{
+    api_client::{ApiResponse, Method},
     app::TenantAppState,
     crypto::keymanager::types::{
         DataDecryptionRequest, DataDecryptionResponse, DataEncryptionRequest, DataKeyCreateRequest,
@@ -10,9 +11,10 @@ use crate::{
     },
     error::{
         ApiClientError, ContainerError, DataDecryptionError, DataEncryptionError,
-        DataKeyCreationError, DataKeyTransferError, KeyManagerError, NotFoundError,
-        ResultContainerExt,
+        DataKeyCreationError, DataKeyTransferError, KeyManagerError, KeyManagerHealthCheckError,
+        NotFoundError, ResultContainerExt,
     },
+    routes::health,
     storage::{consts::headers, types::Entity, EntityInterface},
 };
 
@@ -37,11 +39,14 @@ pub async fn find_or_create_key_in_key_manager(
             true => {
                 let url = format!("{}/key/create", state.config.key_manager.url);
 
-                let response = call_encryption_service::<
-                    _,
-                    DataKeyCreateResponse,
-                    DataKeyCreationError,
-                >(state, url, request_body)
+                let response = call_encryption_service::<_, DataKeyCreationError>(
+                    state,
+                    url,
+                    Method::Post,
+                    request_body,
+                )
+                .await?
+                .deserialize_json::<DataKeyCreateResponse, DataKeyCreationError>()
                 .await?;
 
                 Ok(state
@@ -63,12 +68,11 @@ pub async fn transfer_key_to_key_manager(
 ) -> Result<Entity, ContainerError<KeyManagerError>> {
     let url = format!("{}/key/transfer", state.config.key_manager.url);
 
-    let response = call_encryption_service::<_, DataKeyCreateResponse, DataKeyTransferError>(
-        state,
-        url,
-        request_body,
-    )
-    .await?;
+    let response =
+        call_encryption_service::<_, DataKeyTransferError>(state, url, Method::Post, request_body)
+            .await?
+            .deserialize_json::<DataKeyCreateResponse, DataKeyTransferError>()
+            .await?;
 
     let entity = state
         .db
@@ -84,12 +88,11 @@ pub async fn encrypt_data_using_key_manager(
 ) -> Result<EncryptedData, ContainerError<KeyManagerError>> {
     let url = format!("{}/data/encrypt", state.config.key_manager.url);
 
-    let response = call_encryption_service::<_, DateEncryptionResponse, DataEncryptionError>(
-        state,
-        url,
-        request_body,
-    )
-    .await?;
+    let response =
+        call_encryption_service::<_, DataEncryptionError>(state, url, Method::Post, request_body)
+            .await?
+            .deserialize_json::<DateEncryptionResponse, DataEncryptionError>()
+            .await?;
 
     Ok(response.data)
 }
@@ -103,26 +106,35 @@ where
 {
     let url = format!("{}/data/decrypt", state.config.key_manager.url);
 
-    let response = call_encryption_service::<_, DataDecryptionResponse, DataDecryptionError>(
-        state,
-        url,
-        request_body,
-    )
-    .await?;
+    let response =
+        call_encryption_service::<_, DataDecryptionError>(state, url, Method::Post, request_body)
+            .await?
+            .deserialize_json::<DataDecryptionResponse, DataDecryptionError>()
+            .await?;
 
     serde_json::from_slice::<T>(&response.data.inner().expose())
         .map(Secret::from)
         .change_error(KeyManagerError::ResponseDecodingFailed)
 }
 
-pub async fn call_encryption_service<T, R, E>(
+pub async fn health_check_keymanager(
+    state: &TenantAppState,
+) -> Result<health::HealthState, ContainerError<KeyManagerHealthCheckError>> {
+    let url = format!("{}/health", state.config.key_manager.url);
+
+    call_encryption_service::<_, KeyManagerHealthCheckError>(state, url, Method::Get, ()).await?;
+
+    Ok(health::HealthState::Working)
+}
+
+pub async fn call_encryption_service<T, E>(
     state: &TenantAppState,
     url: String,
+    method: Method,
     request_body: T,
-) -> Result<R, ContainerError<E>>
+) -> Result<ApiResponse, ContainerError<E>>
 where
     T: serde::Serialize + Send + Sync + 'static,
-    R: serde::de::DeserializeOwned,
     ContainerError<E>: From<ContainerError<ApiClientError>> + Send + Sync,
 {
     let headers = [(headers::CONTENT_TYPE.into(), "application/json".into())]
@@ -130,7 +142,7 @@ where
         .collect::<std::collections::HashSet<_>>();
     let response = state
         .api_client
-        .send_request::<_, R>(url, headers, request_body)
+        .send_request::<_>(url, headers, method, request_body)
         .await?;
 
     Ok(response)
