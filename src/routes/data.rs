@@ -75,6 +75,12 @@ pub fn serve(
         .route("/retrieve", post(retrieve_card))
         .route("/fingerprint", post(get_or_insert_fingerprint));
 
+    // v2 routes
+    let router = router.nest(
+        "/v2",
+        axum::Router::new().route("/fingerprint", post(get_or_insert_fingerprint)),
+    );
+
     #[cfg(feature = "middleware")]
     {
         router.layer(middleware::from_fn_with_state(
@@ -254,11 +260,9 @@ pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
-    request.validate()?;
-
     let fingerprint = tenant_app_state
         .db
-        .insert_fingerprint(request.card.card_number, request.hash_key)
+        .insert_fingerprint(request.data, request.key)
         .await?;
 
     Ok(Json(fingerprint.into()))

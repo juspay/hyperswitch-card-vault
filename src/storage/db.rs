@@ -345,12 +345,12 @@ impl super::FingerprintInterface for Storage {
     }
     async fn insert_fingerprint(
         &self,
-        card: types::CardNumber,
-        hash_key: Secret<String>,
+        data: Secret<String>,
+        key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let algo = HmacSha512::<1>::new(hash_key.expose().into_bytes().into());
+        let algo = HmacSha512::<1>::new(key.expose().into_bytes().into());
 
-        let fingerprint_hash = algo.encode(card.into_bytes())?;
+        let fingerprint_hash = algo.encode(data.expose().into_bytes())?;
 
         let output = self
             .find_by_fingerprint_hash(Secret::new(&fingerprint_hash))

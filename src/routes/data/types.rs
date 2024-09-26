@@ -133,18 +133,13 @@ pub struct DeleteCardResponse {
 
 #[derive(serde::Deserialize)]
 pub struct FingerprintRequest {
-    pub card: FingerprintCardData,
-    pub hash_key: Secret<String>,
-}
-
-#[derive(serde::Deserialize)]
-pub struct FingerprintCardData {
-    pub card_number: storage::types::CardNumber,
+    pub data: Secret<String>,
+    pub key: Secret<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct FingerprintResponse {
-    pub card_fingerprint: Secret<String>,
+    pub fingerprint_id: Secret<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -183,13 +178,5 @@ impl Validation for StoreCardRequest {
             Data::EncData { .. } => Ok(()),
             Data::Card { card } => card.card_number.validate(),
         }
-    }
-}
-
-impl Validation for FingerprintRequest {
-    type Error = error::ApiError;
-
-    fn validate(&self) -> Result<(), Self::Error> {
-        self.card.card_number.validate()
     }
 }

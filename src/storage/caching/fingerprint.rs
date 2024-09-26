@@ -41,12 +41,15 @@ where
 
     async fn insert_fingerprint(
         &self,
-        card: types::CardNumber,
-        hash_key: Secret<String>,
+        data: Secret<String>,
+        key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let output = self.inner.insert_fingerprint(card, hash_key).await?;
-        self.cache_data::<types::Fingerprint>(output.card_hash.clone().expose(), output.clone())
-            .await;
+        let output = self.inner.insert_fingerprint(data, key).await?;
+        self.cache_data::<types::Fingerprint>(
+            output.fingerprint_hash.clone().expose(),
+            output.clone(),
+        )
+        .await;
         Ok(output)
     }
 }
