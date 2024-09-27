@@ -108,11 +108,9 @@ pub async fn decrypt(
             key1: Some(inner_key1),
             key2: Some(inner_key2),
         } => {
-
             let mut tenant_config = TenantConfig::from_global_config(
                 &global_app_state.global_config,
                 tenant_id.to_owned(),
-                tenant_secrets.schema.clone(),
             );
             aes_decrypt_custodian_key(&mut tenant_config, inner_key1, inner_key2).await?;
 

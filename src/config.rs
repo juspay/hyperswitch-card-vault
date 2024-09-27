@@ -51,10 +51,7 @@ impl TenantConfig {
     ///
     /// Never, as tenant_id would already be validated from [`crate::custom_extractors::TenantId`] custom extractor
     ///
-    pub fn from_global_config(
-        global_config: &GlobalConfig,
-        tenant_id: String,
-    ) -> Self {
+    pub fn from_global_config(global_config: &GlobalConfig, tenant_id: String) -> Self {
         Self {
             tenant_id: tenant_id.clone(),
             locker_secrets: global_config.secrets.clone(),
