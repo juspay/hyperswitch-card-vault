@@ -31,7 +31,7 @@ impl GlobalAppState {
         let tenants_key_state = {
             let mut tenants_key_state: FxHashMap<String, CustodianKeyState> = FxHashMap::default();
             for (tenant, _) in known_tenants.clone() {
-                tenants_key_state.insert(tenant, CustodianKeyState::default());
+                tenants_key_state.insert(tenant.clone(), CustodianKeyState::default());
             }
             tenants_key_state
         };
