@@ -350,10 +350,10 @@ impl super::FingerprintInterface for Storage {
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         let algo = HmacSha512::<1>::new(key.expose().into_bytes().into());
 
-        let fingerprint_hash = algo.encode(data.expose().into_bytes())?;
+        let fingerprint_hash = algo.encode(data.expose().into_bytes().into())?;
 
         let output = self
-            .find_by_fingerprint_hash(Secret::new(&fingerprint_hash))
+            .find_by_fingerprint_hash(fingerprint_hash.clone().expose().as_slice().into())
             .await?;
         match output {
             Some(inner) => Ok(inner),
@@ -361,7 +361,7 @@ impl super::FingerprintInterface for Storage {
                 let mut conn = self.get_conn().await?;
                 let query = diesel::insert_into(types::Fingerprint::table()).values(
                     types::FingerprintTableNew {
-                        fingerprint_hash: fingerprint_hash.into(),
+                        fingerprint_hash: fingerprint_hash,
                         fingerprint_id: utils::generate_id(consts::ID_LENGTH).into(),
                     },
                 );
