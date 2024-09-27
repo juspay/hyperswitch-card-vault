@@ -29,7 +29,7 @@ impl Encode<Vec<u8>, Vec<u8>> for Sha512 {
 /// let data = "Hello, World!";
 /// let key = "key";
 /// let algo = HmacSha512::<1>::new(key.as_bytes().to_vec().into());
-/// let hash = algo.encode(data.as_bytes().to_vec()).unwrap();
+/// let hash = algo.encode(data.as_bytes().to_vec().into()).unwrap();
 ///
 /// ```
 ///
@@ -69,7 +69,7 @@ impl<const N: usize> Encode<Secret<Vec<u8>>, Secret<Vec<u8>>> for HmacSha512<N> 
 
     fn encode(&self, input: Secret<Vec<u8>>) -> Self::ReturnType<Secret<Vec<u8>>> {
         let key = hmac::Key::new(ring::hmac::HMAC_SHA512, self.0.peek());
-        let first = hmac::sign(&key, &input.peek());
+        let first = hmac::sign(&key, input.peek());
 
         let signature = (0..=(N - 1)).fold(first, |input, _| hmac::sign(&key, input.as_ref()));
 

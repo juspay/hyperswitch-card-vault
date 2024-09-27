@@ -31,7 +31,7 @@ pub fn criterion_hmac_sha512(c: &mut Criterion) {
             (1..ITERATION).for_each(|po| {
                 let max: u64 = (2_u64).pow(po);
                 let value = (0..max).map(|_| rand::random::<u8>()).collect::<Vec<_>>();
-                let hashed = algo.encode(value.clone()).expect("Failed while hashing");
+                let hashed = algo.encode(value.clone().into()).expect("Failed while hashing");
                 group.throughput(criterion::Throughput::Bytes(max));
                 group.bench_with_input(
                     criterion::BenchmarkId::from_parameter(format!("{}", max)),
@@ -39,7 +39,7 @@ pub fn criterion_hmac_sha512(c: &mut Criterion) {
                     |b, value| {
                         b.iter(|| {
                             black_box(
-                                algo.encode(black_box(value.clone()))
+                                algo.encode(black_box(value.clone().into()))
                                     .expect("Failed while hashing")
                                     == hashed,
                             )

@@ -361,7 +361,7 @@ impl super::FingerprintInterface for Storage {
                 let mut conn = self.get_conn().await?;
                 let query = diesel::insert_into(types::Fingerprint::table()).values(
                     types::FingerprintTableNew {
-                        fingerprint_hash: fingerprint_hash,
+                        fingerprint_hash,
                         fingerprint_id: utils::generate_id(consts::ID_LENGTH).into(),
                     },
                 );
