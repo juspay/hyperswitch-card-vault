@@ -100,13 +100,12 @@ where
                 global_app_state.clone(),
             ),
         )
-        .nest("/health", routes::health::serve())
         .route("/key/transfer", post(routes::key_migration::transfer_keys));
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());
 
-    let router = router.with_state(global_app_state.clone()).layer(
+    let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| utils::record_tenant_id_from_header(request))
             .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
@@ -121,6 +120,10 @@ where
                     .level(tracing::Level::ERROR),
             ),
     );
+
+    let router = router
+        .nest("/health", routes::health::serve())
+        .with_state(global_app_state.clone());
 
     logger::info!(
         "Locker started [{:?}] [{:?}]",
