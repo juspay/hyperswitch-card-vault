@@ -40,26 +40,23 @@ impl TenantAppState {
     ///
     /// Construct new app state with configuration
     ///
-    /// # Panics
-    ///
-    /// - If the master key cannot be parsed as a string
-    /// - If the public/private key cannot be parsed as a string after kms decrypt
-    /// - If the database password cannot be parsed as a string after kms decrypt
-    ///
     pub async fn new(
         global_config: &GlobalConfig,
         tenant_config: TenantConfig,
         api_client: ApiClient,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
-        let db = storage::Storage::new(&global_config.database, &tenant_config.tenant_id)
-            .await
-            .map(
-                #[cfg(feature = "caching")]
-                Caching::implement_cache(&global_config.cache),
-                #[cfg(not(feature = "caching"))]
-                std::convert::identity,
-            )
-            .change_context(error::ConfigurationError::DatabaseError)?;
+        let db = storage::Storage::new(
+            &global_config.database,
+            &tenant_config.tenant_secrets.schema,
+        )
+        .await
+        .map(
+            #[cfg(feature = "caching")]
+            Caching::implement_cache(&global_config.cache),
+            #[cfg(not(feature = "caching"))]
+            std::convert::identity,
+        )
+        .change_context(error::ConfigurationError::DatabaseError)?;
 
         Ok(Self {
             db,
@@ -106,13 +103,12 @@ where
                 global_app_state.clone(),
             ),
         )
-        .nest("/health", routes::health::serve())
         .route("/key/transfer", post(routes::key_migration::transfer_keys));
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());
 
-    let router = router.with_state(global_app_state.clone()).layer(
+    let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| utils::record_tenant_id_from_header(request))
             .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
@@ -127,6 +123,10 @@ where
                     .level(tracing::Level::ERROR),
             ),
     );
+
+    let router = router
+        .nest("/health", routes::health::serve())
+        .with_state(global_app_state.clone());
 
     logger::info!(
         "Locker started [{:?}] [{:?}]",
