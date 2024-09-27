@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use rustc_hash::FxHashMap;
 use tokio::sync::RwLock;
