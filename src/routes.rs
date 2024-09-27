@@ -4,3 +4,4 @@ pub mod health;
 pub mod key_custodian;
 pub mod key_migration;
 pub mod tenant;
+pub mod routes_v2;

@@ -31,6 +31,7 @@ use self::types::Validation;
 
 mod transformers;
 pub mod types;
+pub use super::routes_v2;
 
 #[cfg(feature = "limit")]
 const BUFFER_LIMIT: usize = 1024;
@@ -74,6 +75,12 @@ pub fn serve(
         .route("/add", post(add_card))
         .route("/retrieve", post(retrieve_card))
         .route("/fingerprint", post(get_or_insert_fingerprint));
+
+    // v2 routes
+    let router = router.nest(
+        "/v2",
+        axum::Router::new().route("/vault/delete", post(routes_v2::data::delete_card)),
+    );
 
     #[cfg(feature = "middleware")]
     {

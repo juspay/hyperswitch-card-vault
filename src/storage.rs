@@ -24,6 +24,7 @@ pub mod db;
 pub mod schema;
 pub mod types;
 pub mod utils;
+pub mod storage_v2;
 
 pub trait State {}
 
