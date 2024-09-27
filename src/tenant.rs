@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashSet},
     sync::Arc,
 };
 
@@ -28,14 +28,12 @@ impl GlobalAppState {
     /// If tenant specific AppState construction fails when `key_custodian` feature is disabled
     ///
     pub async fn new(global_config: GlobalConfig) -> Arc<Self> {
-        let known_tenants = <HashMap<_, _> as Clone>::clone(&global_config.tenant_secrets)
-            .into_keys()
-            .collect::<Vec<_>>();
+        let known_tenants = global_config.tenant_secrets.iter().collect::<Vec<(_, _)>>();
 
         #[cfg(feature = "key_custodian")]
         let tenants_key_state = {
             let mut tenants_key_state: FxHashMap<String, CustodianKeyState> = FxHashMap::default();
-            for tenant in known_tenants.clone() {
+            for (tenant, _) in known_tenants.clone() {
                 tenants_key_state.insert(tenant, CustodianKeyState::default());
             }
             tenants_key_state
@@ -52,26 +50,34 @@ impl GlobalAppState {
             #[cfg(not(feature = "key_custodian"))]
             {
                 let mut tenants_app_state = FxHashMap::default();
-                for tenant_id in known_tenants.clone() {
-                    let tenant_config =
-                        TenantConfig::from_global_config(&global_config, tenant_id.clone());
+                for (tenant_id, secrets) in known_tenants.clone() {
+                    let tenant_config = TenantConfig::from_global_config(
+                        &global_config,
+                        tenant_id.clone(),
+                        secrets.schema.clone(),
+                    );
                     #[allow(clippy::expect_used)]
                     let tenant_app_state =
                         TenantAppState::new(&global_config, tenant_config, api_client.clone())
                             .await
                             .expect("Failed while configuring AppState for tenants");
-                    tenants_app_state.insert(tenant_id, Arc::new(tenant_app_state));
+                    tenants_app_state.insert(tenant_id.clone(), Arc::new(tenant_app_state));
                 }
                 tenants_app_state
             }
         };
+
+        let known_tenants = known_tenants
+            .into_iter()
+            .map(|(tenant, _)| tenant.clone())
+            .collect::<HashSet<_>>();
 
         Arc::new(Self {
             tenants_app_state: RwLock::new(tenants_app_state),
             #[cfg(feature = "key_custodian")]
             tenants_key_state: RwLock::new(tenants_key_state),
             api_client: api_client.clone(),
-            known_tenants: HashSet::from_iter(known_tenants),
+            known_tenants,
             global_config,
         })
     }

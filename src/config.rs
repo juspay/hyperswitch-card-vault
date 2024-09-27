@@ -43,6 +43,7 @@ pub struct TenantConfig {
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
     pub key_manager: KeyManagerConfig,
+    pub schema: String,
 }
 
 impl TenantConfig {
@@ -51,7 +52,11 @@ impl TenantConfig {
     ///
     /// Never, as tenant_id would already be validated from [`crate::custom_extractors::TenantId`] custom extractor
     ///
-    pub fn from_global_config(global_config: &GlobalConfig, tenant_id: String) -> Self {
+    pub fn from_global_config(
+        global_config: &GlobalConfig,
+        tenant_id: String,
+        schema: Option<String>,
+    ) -> Self {
         Self {
             tenant_id: tenant_id.clone(),
             locker_secrets: global_config.secrets.clone(),
@@ -62,6 +67,7 @@ impl TenantConfig {
                 .cloned()
                 .unwrap(),
             key_manager: global_config.key_manager.clone(),
+            schema: schema.unwrap_or(tenant_id),
         }
     }
 }
@@ -113,6 +119,9 @@ pub struct TenantSecrets {
     pub master_key: Vec<u8>,
     #[cfg(feature = "middleware")]
     pub public_key: masking::Secret<String>,
+
+    /// schema name for the tenant (defaults to tenant_id)
+    pub schema: Option<String>,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
