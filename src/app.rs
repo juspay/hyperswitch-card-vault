@@ -40,12 +40,6 @@ impl TenantAppState {
     ///
     /// Construct new app state with configuration
     ///
-    /// # Panics
-    ///
-    /// - If the master key cannot be parsed as a string
-    /// - If the public/private key cannot be parsed as a string after kms decrypt
-    /// - If the database password cannot be parsed as a string after kms decrypt
-    ///
     pub async fn new(
         global_config: &GlobalConfig,
         tenant_config: TenantConfig,
