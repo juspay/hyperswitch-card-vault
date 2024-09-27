@@ -43,7 +43,6 @@ pub struct TenantConfig {
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
     pub key_manager: KeyManagerConfig,
-    pub schema: String,
 }
 
 impl TenantConfig {
@@ -55,7 +54,6 @@ impl TenantConfig {
     pub fn from_global_config(
         global_config: &GlobalConfig,
         tenant_id: String,
-        schema: Option<String>,
     ) -> Self {
         Self {
             tenant_id: tenant_id.clone(),
@@ -67,7 +65,6 @@ impl TenantConfig {
                 .cloned()
                 .unwrap(),
             key_manager: global_config.key_manager.clone(),
-            schema: schema.unwrap_or(tenant_id),
         }
     }
 }
@@ -121,7 +118,7 @@ pub struct TenantSecrets {
     pub public_key: masking::Secret<String>,
 
     /// schema name for the tenant (defaults to tenant_id)
-    pub schema: Option<String>,
+    pub schema: String,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>

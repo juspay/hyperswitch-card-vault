@@ -45,15 +45,20 @@ impl TenantAppState {
         tenant_config: TenantConfig,
         api_client: ApiClient,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
-        let db = storage::Storage::new(&global_config.database, &tenant_config.schema)
-            .await
-            .map(
-                #[cfg(feature = "caching")]
-                Caching::implement_cache(&global_config.cache),
-                #[cfg(not(feature = "caching"))]
-                std::convert::identity,
-            )
-            .change_context(error::ConfigurationError::DatabaseError)?;
+        let db = storage::Storage::new(
+            &global_config.database,
+            &tenant_config
+                .tenant_secrets
+                .schema,
+        )
+        .await
+        .map(
+            #[cfg(feature = "caching")]
+            Caching::implement_cache(&global_config.cache),
+            #[cfg(not(feature = "caching"))]
+            std::convert::identity,
+        )
+        .change_context(error::ConfigurationError::DatabaseError)?;
 
         Ok(Self {
             db,
