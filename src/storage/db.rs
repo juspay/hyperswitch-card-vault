@@ -326,7 +326,7 @@ impl super::FingerprintInterface for Storage {
 
     async fn find_by_fingerprint_hash(
         &self,
-        fingerprint_hash: Secret<&[u8]>,
+        fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
@@ -343,17 +343,17 @@ impl super::FingerprintInterface for Storage {
             },
         }
     }
-    async fn insert_fingerprint(
+    async fn get_or_insert_fingerprint(
         &self,
         data: Secret<String>,
         key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let algo = HmacSha512::<1>::new(key.expose().into_bytes().into());
+        let algo = HmacSha512::<1>::new(key.map(|inner| inner.into_bytes()));
 
         let fingerprint_hash = algo.encode(data.expose().into_bytes().into())?;
 
         let output = self
-            .find_by_fingerprint_hash(fingerprint_hash.clone().expose().as_slice().into())
+            .find_by_fingerprint_hash(fingerprint_hash.clone().map(|inner| inner))
             .await?;
         match output {
             Some(inner) => Ok(inner),

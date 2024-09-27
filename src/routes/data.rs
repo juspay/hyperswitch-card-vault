@@ -267,7 +267,7 @@ pub async fn get_or_insert_fingerprint(
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
     let fingerprint = tenant_app_state
         .db
-        .insert_fingerprint(request.data, request.key)
+        .get_or_insert_fingerprint(request.data, request.key)
         .await?;
 
     Ok(Json(fingerprint.into()))

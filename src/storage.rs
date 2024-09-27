@@ -224,10 +224,10 @@ pub(crate) trait FingerprintInterface {
 
     async fn find_by_fingerprint_hash(
         &self,
-        fingerprint_hash: Secret<&[u8]>,
+        fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>>;
 
-    async fn insert_fingerprint(
+    async fn get_or_insert_fingerprint(
         &self,
         data: Secret<String>,
         key: Secret<String>,
