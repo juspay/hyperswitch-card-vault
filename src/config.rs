@@ -113,6 +113,9 @@ pub struct TenantSecrets {
     pub master_key: Vec<u8>,
     #[cfg(feature = "middleware")]
     pub public_key: masking::Secret<String>,
+
+    /// schema name for the tenant (defaults to tenant_id)
+    pub schema: String,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>

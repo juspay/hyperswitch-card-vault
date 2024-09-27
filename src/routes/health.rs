@@ -22,7 +22,7 @@ pub struct HealthRespPayload {
 
 /// '/health` API handler`
 pub async fn health() -> Json<HealthRespPayload> {
-    crate::logger::info!("Health was called");
+    crate::logger::debug!("Health was called");
     Json(HealthRespPayload {
         message: "Health is good".into(),
     })

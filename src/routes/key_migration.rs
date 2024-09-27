@@ -90,9 +90,8 @@ pub async fn migrate_key_to_key_manager(
         Some(request_body),
     )
     .await
-    .map_err(|err| {
-        logger::error!("Failed to migrate merchant: {}", entity_id);
-        err
+    .inspect_err(|err| {
+        logger::error!(?err, "Failed to migrate merchant: {}", entity_id);
     })?
     .deserialize_json::<DataKeyCreateResponse, DataKeyTransferError>()
     .await?;
@@ -101,8 +100,7 @@ pub async fn migrate_key_to_key_manager(
         .db
         .insert_entity(entity_id, &response.identifier.get_identifier())
         .await
-        .map_err(|err| {
-            logger::error!("Failed to insert into entity table: {}", entity_id);
-            err
+        .inspect_err(|err| {
+            logger::error!(?err, "Failed to insert into entity table: {}", entity_id);
         })?)
 }
