@@ -108,7 +108,6 @@ pub async fn decrypt(
             key1: Some(inner_key1),
             key2: Some(inner_key2),
         } => {
-
             let mut tenant_config = TenantConfig::from_global_config(
                 &global_app_state.global_config,
                 tenant_id.to_owned(),

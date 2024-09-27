@@ -25,7 +25,11 @@ impl GlobalAppState {
     /// If tenant specific AppState construction fails when `key_custodian` feature is disabled
     ///
     pub async fn new(global_config: GlobalConfig) -> Arc<Self> {
-        let known_tenants = global_config.tenant_secrets.keys().cloned().collect::<Vec<_>>();
+        let known_tenants = global_config
+            .tenant_secrets
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
 
         #[cfg(feature = "key_custodian")]
         let tenants_key_state = {
