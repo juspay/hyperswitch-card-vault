@@ -353,7 +353,7 @@ impl super::FingerprintInterface for Storage {
         let fingerprint_hash = algo.encode(data.expose().into_bytes().into())?;
 
         let output = self
-            .find_by_fingerprint_hash(fingerprint_hash.clone().map(|inner| inner))
+            .find_by_fingerprint_hash(fingerprint_hash.clone())
             .await?;
         match output {
             Some(inner) => Ok(inner),
