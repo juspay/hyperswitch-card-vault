@@ -22,7 +22,7 @@ pub(crate) trait VaultInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
-    /// Insert data from vault table
+    /// Insert data into vault table
     async fn insert_or_get_from_vault(
         &self,
         new: types::VaultNew,

@@ -112,11 +112,11 @@ where
 
     // v2 routes
     let router = router.nest(
-        "api/v2/vault",
+        "/api/v2/vault",
         axum::Router::new()
-            .route("/delete", post(routes_v2::data::delete_card))
-            .route("/add", post(routes_v2::data::add_card))
-            .route("/retrieve", post(routes_v2::data::retrieve_card)),
+            .route("/delete", post(routes_v2::data::delete_data))
+            .route("/add", post(routes_v2::data::add_data))
+            .route("/retrieve", post(routes_v2::data::retrieve_data)),
     );
 
     let router = router.layer(
