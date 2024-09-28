@@ -9,19 +9,6 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone)]
-pub struct Entity {
-    pub entity_id: String,
-    pub enc_key: Secret<Vec<u8>>,
-    pub created_at: time::PrimitiveDateTime,
-}
-
-#[derive(Debug)]
-pub struct EntityNew<'a> {
-    pub entity_id: &'a str,
-    pub enc_key: Secret<Vec<u8>>,
-}
-
 #[derive(Debug)]
 pub struct Vault {
     pub vault_id: Secret<String>,

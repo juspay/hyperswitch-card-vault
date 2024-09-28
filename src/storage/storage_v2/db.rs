@@ -18,7 +18,7 @@ use super::{types, VaultInterface};
 
 impl VaultInterface for Storage {
     type Algorithm = GcmAes256;
-    type Error = error::LockerDBError;
+    type Error = error::VaultDBError;
 
     async fn find_by_vault_id_entity_id(
         &self,

@@ -8,7 +8,9 @@ use std::sync::Arc;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
-    error, logger, routes, storage,
+    error, logger,
+    routes::{self, routes_v2},
+    storage,
     tenant::GlobalAppState,
     utils,
 };
@@ -107,6 +109,15 @@ where
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());
+
+    // v2 routes
+    let router = router.nest(
+        "api/v2/vault",
+        axum::Router::new()
+            .route("/delete", post(routes_v2::data::delete_card))
+            .route("/add", post(routes_v2::data::add_card))
+            .route("/retrieve", post(routes_v2::data::retrieve_card)),
+    );
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
