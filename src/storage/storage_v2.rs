@@ -9,6 +9,7 @@ pub mod types;
 /// VaultInterface:
 ///
 /// Interface for interacting with the vault database table
+#[allow(dead_code)]
 pub(crate) trait VaultInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
     type Error;

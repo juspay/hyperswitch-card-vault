@@ -79,7 +79,10 @@ pub fn serve(
     // v2 routes
     let router = router.nest(
         "/v2",
-        axum::Router::new().route("/vault/delete", post(routes_v2::data::delete_card)),
+        axum::Router::new()
+            .route("/vault/delete", post(routes_v2::data::delete_card))
+            .route("/vault/add", post(routes_v2::data::add_card))
+            .route("/vault/retrieve", post(routes_v2::data::retrieve_card)),
     );
 
     #[cfg(feature = "middleware")]
