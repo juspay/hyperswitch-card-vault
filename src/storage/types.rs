@@ -111,6 +111,7 @@ pub struct Entity {
     pub id: i32,
     pub entity_id: String,
     pub enc_key_id: String,
+    pub created_at: time::PrimitiveDateTime,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
