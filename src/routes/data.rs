@@ -120,14 +120,19 @@ pub async fn add_card(
         .await?;
 
     if is_new_merchant {
-        keymanager::transfer_key_to_key_manager(
+        let key_transfer = keymanager::transfer_key_to_key_manager(
             &tenant_app_state,
             &merchant.merchant_id,
             keymanager::types::DataKeyTransferRequest::create_request(
                 merchant.enc_key.clone().expose(),
             ),
         )
-        .await?;
+        .await;
+
+        if let Err(err) = key_transfer {
+            tracing::warn!("Failed to transfer key to key manager");
+            tracing::error!(?err);
+        }
     }
 
     let merchant_dek = GcmAes256::new(merchant.enc_key.expose());

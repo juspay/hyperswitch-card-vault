@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use rustc_hash::FxHashMap;
 use tokio::sync::RwLock;
@@ -28,15 +25,17 @@ impl GlobalAppState {
     /// If tenant specific AppState construction fails when `key_custodian` feature is disabled
     ///
     pub async fn new(global_config: GlobalConfig) -> Arc<Self> {
-        let known_tenants = <HashMap<_, _> as Clone>::clone(&global_config.tenant_secrets)
-            .into_keys()
+        let known_tenants = global_config
+            .tenant_secrets
+            .keys()
+            .cloned()
             .collect::<Vec<_>>();
 
         #[cfg(feature = "key_custodian")]
         let tenants_key_state = {
             let mut tenants_key_state: FxHashMap<String, CustodianKeyState> = FxHashMap::default();
             for tenant in known_tenants.clone() {
-                tenants_key_state.insert(tenant, CustodianKeyState::default());
+                tenants_key_state.insert(tenant.clone(), CustodianKeyState::default());
             }
             tenants_key_state
         };
@@ -60,7 +59,7 @@ impl GlobalAppState {
                         TenantAppState::new(&global_config, tenant_config, api_client.clone())
                             .await
                             .expect("Failed while configuring AppState for tenants");
-                    tenants_app_state.insert(tenant_id, Arc::new(tenant_app_state));
+                    tenants_app_state.insert(tenant_id.clone(), Arc::new(tenant_app_state));
                 }
                 tenants_app_state
             }
@@ -71,7 +70,7 @@ impl GlobalAppState {
             #[cfg(feature = "key_custodian")]
             tenants_key_state: RwLock::new(tenants_key_state),
             api_client: api_client.clone(),
-            known_tenants: HashSet::from_iter(known_tenants),
+            known_tenants: HashSet::<String>::from_iter(known_tenants),
             global_config,
         })
     }
