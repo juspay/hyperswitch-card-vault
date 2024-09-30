@@ -19,7 +19,7 @@ where
 
     async fn find_by_fingerprint_hash(
         &self,
-        fingerprint_hash: Secret<&[u8]>,
+        fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         let key = fingerprint_hash.peek().to_vec();
         let cached_data = self.lookup::<types::Fingerprint>(key.clone()).await;
@@ -39,14 +39,17 @@ where
         }
     }
 
-    async fn insert_fingerprint(
+    async fn get_or_insert_fingerprint(
         &self,
-        card: types::CardNumber,
-        hash_key: Secret<String>,
+        data: Secret<String>,
+        key: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let output = self.inner.insert_fingerprint(card, hash_key).await?;
-        self.cache_data::<types::Fingerprint>(output.card_hash.clone().expose(), output.clone())
-            .await;
+        let output = self.inner.get_or_insert_fingerprint(data, key).await?;
+        self.cache_data::<types::Fingerprint>(
+            output.fingerprint_hash.clone().expose(),
+            output.clone(),
+        )
+        .await;
         Ok(output)
     }
 }

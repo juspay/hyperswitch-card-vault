@@ -101,8 +101,8 @@ pub struct HashTable {
 #[diesel(table_name = schema::fingerprint)]
 pub struct Fingerprint {
     pub id: i32,
-    pub card_hash: Secret<Vec<u8>>,
-    pub card_fingerprint: Secret<String>,
+    pub fingerprint_hash: Secret<Vec<u8>>,
+    pub fingerprint_id: Secret<String>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable)]
