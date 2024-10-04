@@ -3,16 +3,16 @@ use crate::{
     storage::{self, types},
 };
 
-impl<T> storage::EntityInterface for super::Caching<T>
+impl<T> storage::ExternalKeyManagerInterface for super::Caching<T>
 where
-    T: storage::EntityInterface
+    T: storage::ExternalKeyManagerInterface
         + storage::Cacheable<types::Entity, Key = String, Value = types::Entity>
         + storage::Cacheable<types::Merchant>
         + storage::Cacheable<types::HashTable>
         + storage::Cacheable<types::Fingerprint>
         + Sync
         + Send,
-    ContainerError<<T as storage::EntityInterface>::Error>: NotFoundError,
+    ContainerError<<T as storage::ExternalKeyManagerInterface>::Error>: NotFoundError,
 {
     type Error = T::Error;
 

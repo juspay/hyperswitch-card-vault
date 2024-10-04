@@ -16,8 +16,9 @@ limit = []
 middleware = []
 key_custodian = []
 caching = ["dep:moka"]
-keymanager_mtls = []
 console = ["tokio/tracing", "dep:console-subscriber"]
+external_key_manager = []
+external_key_manager_mtls = ["external_key_manager"]
 
 [dependencies]
 async-trait = "0.1.81"

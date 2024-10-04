@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
+    crypto::keymanager,
     error, logger,
     routes::{self, routes_v2},
     storage,
@@ -35,6 +36,7 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
+    pub dek_manager: Arc<dyn keymanager::KeyProvider>,
 }
 
 #[allow(clippy::expect_used)]
@@ -64,6 +66,7 @@ impl TenantAppState {
             db,
             api_client,
             config: tenant_config,
+            dek_manager: keymanager::get_dek_manager(),
         })
     }
 }
@@ -104,8 +107,10 @@ where
                 #[cfg(any(feature = "middleware", feature = "limit"))]
                 global_app_state.clone(),
             ),
-        )
-        .route("/key/transfer", post(routes::key_migration::transfer_keys));
+        );
+
+    #[cfg(feature = "external_key_manager")]
+    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());

@@ -5,7 +5,7 @@ use crate::{
     error::{self, ResultContainerExt},
 };
 use masking::Maskable;
-#[cfg(feature = "keymanager_mtls")]
+#[cfg(feature = "external_key_manager_mtls")]
 use masking::PeekInterface;
 use reqwest::StatusCode;
 use reqwest::{
@@ -51,7 +51,7 @@ pub struct ApiClientConfig {
     pub client_idle_timeout: u64,
     pub pool_max_idle_per_host: usize,
     // KMS encrypted
-    #[cfg(feature = "keymanager_mtls")]
+    #[cfg(feature = "external_key_manager_mtls")]
     pub identity: masking::Secret<String>,
 }
 
@@ -80,22 +80,23 @@ impl ApiClient {
             ))
             .pool_max_idle_per_host(global_config.api_client.pool_max_idle_per_host);
 
-        #[cfg(feature = "keymanager_mtls")]
+        #[cfg(feature = "external_key_manager_mtls")]
         {
             let client_identity =
                 reqwest::Identity::from_pem(global_config.api_client.identity.peek().as_ref())
                     .change_error(error::ApiClientError::IdentityParseFailed)?;
 
-            let key_manager_cert =
-                reqwest::Certificate::from_pem(global_config.key_manager.cert.peek().as_ref())
-                    .change_error(error::ApiClientError::CertificateParseFailed {
-                        service: "key_manager",
-                    })?;
+            let external_key_manager_cert = reqwest::Certificate::from_pem(
+                global_config.external_key_manager.cert.peek().as_ref(),
+            )
+            .change_error(error::ApiClientError::CertificateParseFailed {
+                service: "external_key_manager",
+            })?;
 
             client = client
                 .use_rustls_tls()
                 .identity(client_identity)
-                .add_root_certificate(key_manager_cert)
+                .add_root_certificate(external_key_manager_cert)
                 .https_only(true);
         }
 

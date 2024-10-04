@@ -122,6 +122,7 @@ pub(crate) trait MerchantInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>> + Sync;
     type Error;
 
+    #[cfg(not(feature = "external_key_manager"))]
     /// find merchant from merchant table with `merchant_id` with key as master key
     async fn find_by_merchant_id(
         &self,
@@ -129,6 +130,7 @@ pub(crate) trait MerchantInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
+    #[cfg(not(feature = "external_key_manager"))]
     /// find merchant from merchant table with `merchant_id` with key as master key
     /// and if not found create a new merchant
     async fn find_or_create_by_merchant_id(
@@ -137,6 +139,7 @@ pub(crate) trait MerchantInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
+    #[cfg(not(feature = "external_key_manager"))]
     /// Insert a new merchant in the database by encrypting the dek with `master_key`
     async fn insert_merchant(
         &self,
@@ -144,6 +147,7 @@ pub(crate) trait MerchantInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
+    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,
@@ -156,7 +160,6 @@ pub(crate) trait MerchantInterface {
 ///
 /// Interface for interacting with the locker database table
 pub(crate) trait LockerInterface {
-    type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
     type Error;
 
     /// Fetch payment data from locker table by decrypting with `dek`
@@ -165,14 +168,12 @@ pub(crate) trait LockerInterface {
         locker_id: Secret<String>,
         merchant_id: &str,
         customer_id: &str,
-        key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>>;
 
     /// Insert payment data from locker table by decrypting with `dek`
     async fn insert_or_get_from_locker(
         &self,
         new: types::LockerNew<'_>,
-        key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>>;
 
     /// Delete card from the locker, without access to the `dek`
@@ -188,7 +189,6 @@ pub(crate) trait LockerInterface {
         hash_id: &str,
         merchant_id: &str,
         customer_id: &str,
-        key: &Self::Algorithm,
     ) -> Result<Option<types::Locker>, ContainerError<Self::Error>>;
 }
 
@@ -236,10 +236,11 @@ pub(crate) trait FingerprintInterface {
 }
 
 ///
-/// EntityInterface:
+/// ExternalKeyManagerInterface:
 ///
 /// Interface providing functionality to interface with the entity table in database
-pub(crate) trait EntityInterface {
+#[cfg(feature = "external_key_manager")]
+pub(crate) trait ExternalKeyManagerInterface {
     type Error;
 
     /// find merchant from merchant table with `merchant_id` with key as master key

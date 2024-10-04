@@ -1,9 +1,7 @@
-use std::fmt;
-
 use crate::{
     crypto::{self, consts::BASE64_ENGINE},
     error::{self, ResultContainerExt},
-    storage::{consts, utils},
+    storage::{consts, types::Encrypted, utils},
 };
 use base64::Engine;
 use masking::{ExposeInterface, PeekInterface, Secret};
@@ -11,6 +9,7 @@ use serde::{
     de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct DataKeyCreateRequest {
@@ -21,7 +20,7 @@ pub struct DataKeyCreateRequest {
 impl DataKeyCreateRequest {
     pub fn create_request() -> Self {
         Self {
-            identifier: Identifier::Entity(utils::generate_id(consts::ID_LENGTH)),
+            identifier: Identifier::Entity(utils::generate_nano_id(consts::ID_LENGTH)),
         }
     }
 }
@@ -43,7 +42,7 @@ pub struct DataKeyTransferRequest {
 impl DataKeyTransferRequest {
     pub fn create_request(key: Vec<u8>) -> Self {
         Self {
-            identifier: Identifier::Entity(utils::generate_id(consts::ID_LENGTH)),
+            identifier: Identifier::Entity(utils::generate_nano_id(consts::ID_LENGTH)),
             key: crypto::consts::BASE64_ENGINE.encode(key),
         }
     }
@@ -57,16 +56,13 @@ pub struct DataEncryptionRequest {
 }
 
 impl DataEncryptionRequest {
-    pub fn create_request<T>(
+    pub fn create_request(
         key_identifier: String,
-        data: &Secret<T>,
-    ) -> Result<Self, error::ContainerError<error::ApiError>>
-    where
-        T: Serialize,
-    {
+        data: Secret<Vec<u8>>,
+    ) -> Result<Self, error::ContainerError<error::ApiError>> {
         Ok(Self {
             identifier: Identifier::Entity(key_identifier),
-            data: DecryptedData::from_value(data)?,
+            data: DecryptedData::from_secret(data),
         })
     }
 }
@@ -108,6 +104,12 @@ impl EncryptedData {
     }
     pub fn inner(self) -> Secret<Vec<u8>> {
         self.0
+    }
+}
+
+impl From<EncryptedData> for Encrypted {
+    fn from(value: EncryptedData) -> Self {
+        Self::new(value.inner())
     }
 }
 

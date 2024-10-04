@@ -6,24 +6,26 @@ use masking::Secret;
 
 use crate::{
     crypto::{
-        encryption_manager::managers::aes::{generate_aes256_key, GcmAes256},
+        encryption_manager::managers::aes,
         hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
     },
     error::{self, ContainerError, ResultContainerExt},
 };
 
 use super::types::StorageDecryption;
+#[cfg(not(feature = "external_key_manager"))]
 use super::types::StorageEncryption;
 use super::{consts, schema, types, utils, LockerInterface, MerchantInterface, Storage};
 
 impl MerchantInterface for Storage {
-    type Algorithm = GcmAes256;
+    type Algorithm = aes::GcmAes256;
     type Error = error::MerchantDBError;
 
+    #[cfg(not(feature = "external_key_manager"))]
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
-        key: &GcmAes256,
+        key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let output: Result<types::MerchantInner, diesel::result::Error> =
@@ -41,10 +43,11 @@ impl MerchantInterface for Storage {
             .and_then(|inner| Ok(inner.decrypt(key)?))
     }
 
+    #[cfg(not(feature = "external_key_manager"))]
     async fn find_or_create_by_merchant_id(
         &self,
         merchant_id: &str,
-        key: &GcmAes256,
+        key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
@@ -60,7 +63,7 @@ impl MerchantInterface for Storage {
                     self.insert_merchant(
                         types::MerchantNew {
                             merchant_id,
-                            enc_key: generate_aes256_key().to_vec().into(),
+                            enc_key: aes::generate_aes256_key().to_vec().into(),
                         },
                         key,
                     )
@@ -70,10 +73,12 @@ impl MerchantInterface for Storage {
             },
         }
     }
+
+    #[cfg(not(feature = "external_key_manager"))]
     async fn insert_merchant(
         &self,
         new: types::MerchantNew<'_>,
-        key: &GcmAes256,
+        key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let query = diesel::insert_into(types::MerchantInner::table()).values(new.encrypt(key)?);
@@ -86,6 +91,7 @@ impl MerchantInterface for Storage {
             .and_then(|inner: types::MerchantInner| Ok(inner.decrypt(key)?))
     }
 
+    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,
@@ -117,7 +123,6 @@ impl MerchantInterface for Storage {
 }
 
 impl LockerInterface for Storage {
-    type Algorithm = GcmAes256;
     type Error = error::VaultDBError;
 
     async fn find_by_locker_id_merchant_id_customer_id(
@@ -125,7 +130,6 @@ impl LockerInterface for Storage {
         locker_id: Secret<String>,
         merchant_id: &str,
         customer_id: &str,
-        key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
@@ -146,7 +150,7 @@ impl LockerInterface for Storage {
             })
             .map_err(error::ContainerError::from)
             .map_err(From::from)
-            .and_then(|inner| Ok(inner.decrypt(key)?))
+            .map(|inner| inner.into())
     }
 
     async fn find_by_hash_id_merchant_id_customer_id(
@@ -154,7 +158,6 @@ impl LockerInterface for Storage {
         hash_id: &str,
         merchant_id: &str,
         customer_id: &str,
-        key: &Self::Algorithm,
     ) -> Result<Option<types::Locker>, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
@@ -169,7 +172,7 @@ impl LockerInterface for Storage {
             .await;
 
         match output {
-            Ok(inner) => Ok(Some(inner.decrypt(key)?)),
+            Ok(inner) => Ok(Some(inner.into())),
             Err(err) => match err {
                 diesel::result::Error::NotFound => Ok(None),
                 error => Err(error).change_error(error::StorageError::FindError)?,
@@ -180,19 +183,18 @@ impl LockerInterface for Storage {
     async fn insert_or_get_from_locker(
         &self,
         new: types::LockerNew<'_>,
-        key: &Self::Algorithm,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
         let query: Result<_, diesel::result::Error> =
             diesel::insert_into(types::LockerInner::table())
-                .values(new.encrypt(key)?)
+                .values(new)
                 .get_result::<types::LockerInner>(&mut conn)
                 .await;
 
         match query {
-            Ok(inner) => Ok(inner.decrypt(key)?),
+            Ok(inner) => Ok(inner.into()),
             Err(error) => match error {
                 diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -202,7 +204,6 @@ impl LockerInterface for Storage {
                         cloned_new.locker_id,
                         &cloned_new.merchant_id,
                         &cloned_new.customer_id,
-                        key,
                     )
                     .await
                 }
@@ -362,7 +363,7 @@ impl super::FingerprintInterface for Storage {
                 let query = diesel::insert_into(types::Fingerprint::table()).values(
                     types::FingerprintTableNew {
                         fingerprint_hash,
-                        fingerprint_id: utils::generate_id(consts::ID_LENGTH).into(),
+                        fingerprint_id: utils::generate_nano_id(consts::ID_LENGTH).into(),
                     },
                 );
 
@@ -375,8 +376,9 @@ impl super::FingerprintInterface for Storage {
     }
 }
 
-impl super::EntityInterface for Storage {
-    type Error = error::EntityDBError;
+#[cfg(feature = "external_key_manager")]
+impl super::ExternalKeyManagerInterface for Storage {
+    type Error = error::ExternalKeyManagerDbError;
 
     async fn find_by_entity_id(
         &self,

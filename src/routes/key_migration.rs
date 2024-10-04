@@ -4,21 +4,22 @@ use masking::ExposeInterface;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api_client::Method,
     app::TenantAppState,
     crypto::{
-        self,
         consts::BASE64_ENGINE,
         encryption_manager::managers::aes::GcmAes256,
-        keymanager::types::{DataKeyCreateResponse, DataKeyTransferRequest, Identifier},
+        keymanager::external_keymanager::{
+            self,
+            types::{DataKeyTransferRequest, Identifier},
+        },
     },
     custom_extractors::TenantStateResolver,
-    error::{self, ContainerError, DataKeyTransferError, ResultContainerExt},
+    error::{self, ContainerError, ResultContainerExt},
     logger,
     storage::{
         consts,
         types::{Entity, Merchant},
-        utils, EntityInterface, MerchantInterface,
+        utils, ExternalKeyManagerInterface, MerchantInterface,
     },
 };
 
@@ -64,7 +65,7 @@ pub async fn send_request_to_key_service_for_merchant(
     futures::future::try_join_all(keys.into_iter().map(|key| async move {
         let key_encoded = BASE64_ENGINE.encode(key.enc_key.expose());
         let req = DataKeyTransferRequest {
-            identifier: Identifier::Entity(utils::generate_id(consts::ID_LENGTH)),
+            identifier: Identifier::Entity(utils::generate_nano_id(consts::ID_LENGTH)),
             key: key_encoded,
         };
         migrate_key_to_key_manager(state, &key.merchant_id, req).await
@@ -81,20 +82,7 @@ pub async fn migrate_key_to_key_manager(
     entity_id: &str,
     request_body: DataKeyTransferRequest,
 ) -> Result<Entity, ContainerError<error::KeyManagerError>> {
-    let url = format!("{}/key/transfer", state.config.key_manager.url);
-
-    let response = crypto::keymanager::call_encryption_service::<_, DataKeyTransferError>(
-        state,
-        url,
-        Method::Post,
-        Some(request_body),
-    )
-    .await
-    .inspect_err(|err| {
-        logger::error!(?err, "Failed to migrate merchant: {}", entity_id);
-    })?
-    .deserialize_json::<DataKeyCreateResponse, DataKeyTransferError>()
-    .await?;
+    let response = external_keymanager::transfer_key_to_key_manager(state, request_body).await?;
 
     Ok(state
         .db

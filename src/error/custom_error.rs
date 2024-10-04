@@ -77,7 +77,7 @@ pub enum FingerprintDBError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum EntityDBError {
+pub enum ExternalKeyManagerDbError {
     #[error("Error while connecting to database")]
     DBError,
     #[error("Error while finding element in the database")]
@@ -100,8 +100,11 @@ impl NotFoundError for super::ContainerError<MerchantDBError> {
     }
 }
 
-impl NotFoundError for super::ContainerError<EntityDBError> {
+impl NotFoundError for super::ContainerError<ExternalKeyManagerDbError> {
     fn is_not_found(&self) -> bool {
-        matches!(self.error.current_context(), EntityDBError::NotFoundError)
+        matches!(
+            self.error.current_context(),
+            ExternalKeyManagerDbError::NotFoundError
+        )
     }
 }

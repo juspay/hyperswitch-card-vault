@@ -9,7 +9,7 @@ use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
-    routes::data::types::Validation,
+    routes::data::types::{StoreCardRequest, Validation},
 };
 
 use super::schema;
@@ -56,6 +56,20 @@ pub(super) struct LockerInner {
     ttl: Option<time::PrimitiveDateTime>,
 }
 
+impl From<LockerInner> for Locker {
+    fn from(value: LockerInner) -> Self {
+        Self {
+            locker_id: value.locker_id,
+            merchant_id: value.merchant_id,
+            customer_id: value.customer_id,
+            enc_data: value.enc_data.into_inner(),
+            created_at: value.created_at,
+            hash_id: value.hash_id,
+            ttl: value.ttl,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Locker {
     pub locker_id: Secret<String>,
@@ -67,25 +81,31 @@ pub struct Locker {
     pub ttl: Option<time::PrimitiveDateTime>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Insertable, Clone)]
+#[diesel(table_name = schema::locker)]
 pub struct LockerNew<'a> {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
     pub customer_id: String,
-    pub enc_data: Secret<Vec<u8>>,
+    pub enc_data: Encrypted,
     pub hash_id: &'a str,
     pub ttl: Option<time::PrimitiveDateTime>,
 }
 
-#[derive(Debug, Insertable)]
-#[diesel(table_name = schema::locker)]
-pub(super) struct LockerNewInner<'a> {
-    locker_id: Secret<String>,
-    merchant_id: String,
-    customer_id: String,
-    enc_data: Encrypted,
-    hash_id: &'a str,
-    ttl: Option<time::PrimitiveDateTime>,
+impl<'a> LockerNew<'a> {
+    pub fn new(request: StoreCardRequest, hash_id: &'a str, enc_data: Encrypted) -> Self {
+        Self {
+            locker_id: request
+                .requestor_card_reference
+                .unwrap_or_else(super::utils::generate_uuid)
+                .into(),
+            merchant_id: request.merchant_id,
+            customer_id: request.merchant_customer_id,
+            enc_data,
+            hash_id,
+            ttl: *request.ttl,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable)]
@@ -105,6 +125,7 @@ pub struct Fingerprint {
     pub fingerprint_id: Secret<String>,
 }
 
+#[cfg(feature = "external_key_manager")]
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::entity)]
 pub struct Entity {
@@ -114,7 +135,7 @@ pub struct Entity {
     pub created_at: time::PrimitiveDateTime,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Clone)]
 pub struct CardNumber(StrongSecret<String>);
 
 impl Validation for CardNumber {
@@ -148,6 +169,7 @@ pub(super) struct FingerprintTableNew {
     pub fingerprint_id: Secret<String>,
 }
 
+#[cfg(feature = "external_key_manager")]
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::entity)]
 pub(super) struct EntityTableNew {
@@ -165,7 +187,7 @@ pub(super) struct HashTableNew {
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, AsExpression)]
+#[derive(Debug, Clone, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
 pub struct Encrypted {
@@ -193,6 +215,12 @@ impl From<Vec<u8>> for Encrypted {
         Self {
             inner: value.into(),
         }
+    }
+}
+
+impl From<Secret<Vec<u8>>> for Encrypted {
+    fn from(value: Secret<Vec<u8>>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -277,47 +305,6 @@ impl<'a> StorageEncryption for MerchantNew<'a> {
         Ok(Self::Output {
             merchant_id: self.merchant_id,
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
-        })
-    }
-}
-
-impl StorageDecryption for LockerInner {
-    type Output = Locker;
-
-    type Algorithm = GcmAes256;
-
-    fn decrypt(
-        self,
-        algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
-        Ok(Self::Output {
-            locker_id: self.locker_id,
-            merchant_id: self.merchant_id,
-            customer_id: self.customer_id,
-            enc_data: algo.decrypt(self.enc_data.into_inner().expose())?.into(),
-            created_at: self.created_at,
-            hash_id: self.hash_id,
-            ttl: self.ttl,
-        })
-    }
-}
-
-impl<'a> StorageEncryption for LockerNew<'a> {
-    type Output = LockerNewInner<'a>;
-
-    type Algorithm = GcmAes256;
-
-    fn encrypt(
-        self,
-        algo: &Self::Algorithm,
-    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
-        Ok(Self::Output {
-            locker_id: self.locker_id,
-            merchant_id: self.merchant_id,
-            customer_id: self.customer_id,
-            enc_data: algo.encrypt(self.enc_data.expose())?.into(),
-            hash_id: self.hash_id,
-            ttl: self.ttl,
         })
     }
 }
