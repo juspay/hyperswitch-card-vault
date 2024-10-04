@@ -9,7 +9,7 @@ where
         + storage::Cacheable<types::HashTable, Key = Vec<u8>, Value = types::HashTable>
         + storage::Cacheable<types::Merchant>
         + storage::Cacheable<types::Fingerprint>
-        + storage::Cacheable<types::Entity>
+        + super::CacheableWithEntity<T>
         + Sync
         + Send,
 {

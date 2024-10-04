@@ -12,11 +12,11 @@ use crate::{
                 DateEncryptionResponse, DecryptedData, EncryptedData,
             },
         },
-        CryptoManager,
+        CryptoOperationsManager,
     },
     error::{self, ContainerError, NotFoundError},
     routes::health,
-    storage::{consts::headers, types::Entity, ExternalKeyManagerInterface},
+    storage::{consts::headers, types::Entity, EntityInterface},
 };
 use masking::Secret;
 
@@ -167,20 +167,20 @@ impl super::KeyProvider for ExternalKeyManager {
         &self,
         tenant_app_state: &TenantAppState,
         entity_id: String,
-    ) -> Result<Box<dyn CryptoManager>, ContainerError<error::ApiError>> {
+    ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
         Ok(tenant_app_state
             .db
             .find_by_entity_id(&entity_id)
             .await
             .map(ExternalCryptoManager::from_entity)
-            .map(|inner| -> Box<dyn CryptoManager> { Box::new(inner) })?)
+            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })?)
     }
 
     async fn find_or_create_entity(
         &self,
         tenant_app_state: &TenantAppState,
         entity_id: String,
-    ) -> Result<Box<dyn CryptoManager>, ContainerError<error::ApiError>> {
+    ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
         let entity = tenant_app_state.db.find_by_entity_id(&entity_id).await;
 
         let entity = match entity {
@@ -207,7 +207,7 @@ impl super::KeyProvider for ExternalKeyManager {
 
         entity
             .map(ExternalCryptoManager::from_entity)
-            .map(|inner| -> Box<dyn CryptoManager> { Box::new(inner) })
+            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })
     }
 }
 
@@ -224,7 +224,7 @@ impl ExternalCryptoManager {
 }
 
 #[async_trait::async_trait]
-impl super::CryptoManager for ExternalCryptoManager {
+impl super::CryptoOperationsManager for ExternalCryptoManager {
     async fn encrypt_data(
         &self,
         tenant_app_state: &TenantAppState,

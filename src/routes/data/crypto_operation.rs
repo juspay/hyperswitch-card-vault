@@ -1,6 +1,6 @@
 use crate::{
     app::TenantAppState,
-    crypto::keymanager::CryptoManager,
+    crypto::keymanager::CryptoOperationsManager,
     error::{self, ContainerError, ResultContainerExt},
     routes::data::types,
     storage::{
@@ -11,7 +11,7 @@ use crate::{
 
 pub async fn encrypt_data_and_insert_into_db<'a>(
     tenant_app_state: &'a TenantAppState,
-    crypto_operator: Box<dyn CryptoManager>,
+    crypto_operator: Box<dyn CryptoOperationsManager>,
     request: types::StoreCardRequest,
     hash_id: &'a str,
 ) -> Result<Locker, ContainerError<error::ApiError>> {
@@ -37,7 +37,7 @@ pub async fn encrypt_data_and_insert_into_db<'a>(
 
 pub async fn decrypt_data(
     tenant_app_state: &TenantAppState,
-    crypto_operator: Box<dyn CryptoManager>,
+    crypto_operator: Box<dyn CryptoOperationsManager>,
     mut locker: Locker,
 ) -> Result<Locker, ContainerError<error::ApiError>> {
     let decrypted_data = crypto_operator

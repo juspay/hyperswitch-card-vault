@@ -236,8 +236,8 @@ impl<'a> From<&'a super::CryptoError> for super::ApiError {
     }
 }
 
-error_transform!(super::StorageError => super::ExternalKeyManagerDbError);
-impl<'a> From<&'a super::StorageError> for super::ExternalKeyManagerDbError {
+error_transform!(super::StorageError => super::EntityDBError);
+impl<'a> From<&'a super::StorageError> for super::EntityDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
             super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
@@ -253,8 +253,8 @@ impl<'a> From<&'a super::StorageError> for super::ExternalKeyManagerDbError {
     }
 }
 
-error_transform!(super::CryptoError => super::ExternalKeyManagerDbError);
-impl<'a> From<&'a super::CryptoError> for super::ExternalKeyManagerDbError {
+error_transform!(super::CryptoError => super::EntityDBError);
+impl<'a> From<&'a super::CryptoError> for super::EntityDBError {
     fn from(value: &'a super::CryptoError) -> Self {
         match value {
             super::CryptoError::SerdeJsonError(_)
@@ -268,15 +268,15 @@ impl<'a> From<&'a super::CryptoError> for super::ExternalKeyManagerDbError {
     }
 }
 
-error_transform!(super::ExternalKeyManagerDbError => super::ApiError);
-impl<'a> From<&'a super::ExternalKeyManagerDbError> for super::ApiError {
-    fn from(value: &'a super::ExternalKeyManagerDbError) -> Self {
+error_transform!(super::EntityDBError => super::ApiError);
+impl<'a> From<&'a super::EntityDBError> for super::ApiError {
+    fn from(value: &'a super::EntityDBError) -> Self {
         match value {
-            super::ExternalKeyManagerDbError::DBError => Self::DatabaseError,
-            super::ExternalKeyManagerDbError::DBFilterError => Self::RetrieveDataFailed("entity"),
-            super::ExternalKeyManagerDbError::DBInsertError => Self::DatabaseInsertFailed("entity"),
-            super::ExternalKeyManagerDbError::UnknownError => Self::UnknownError,
-            super::ExternalKeyManagerDbError::NotFoundError => Self::NotFoundError,
+            super::EntityDBError::DBError => Self::DatabaseError,
+            super::EntityDBError::DBFilterError => Self::RetrieveDataFailed("entity"),
+            super::EntityDBError::DBInsertError => Self::DatabaseInsertFailed("entity"),
+            super::EntityDBError::UnknownError => Self::UnknownError,
+            super::EntityDBError::NotFoundError => Self::NotFoundError,
         }
     }
 }
@@ -305,15 +305,15 @@ impl<'a> From<&'a super::KeyManagerError> for super::ApiError {
     }
 }
 
-error_transform!(super::ExternalKeyManagerDbError => super::KeyManagerError);
-impl<'a> From<&'a super::ExternalKeyManagerDbError> for super::KeyManagerError {
-    fn from(value: &'a super::ExternalKeyManagerDbError) -> Self {
+error_transform!(super::EntityDBError => super::KeyManagerError);
+impl<'a> From<&'a super::EntityDBError> for super::KeyManagerError {
+    fn from(value: &'a super::EntityDBError) -> Self {
         match value {
-            super::ExternalKeyManagerDbError::DBError
-            | super::ExternalKeyManagerDbError::DBFilterError
-            | super::ExternalKeyManagerDbError::DBInsertError
-            | super::ExternalKeyManagerDbError::UnknownError
-            | super::ExternalKeyManagerDbError::NotFoundError => Self::DbError,
+            super::EntityDBError::DBError
+            | super::EntityDBError::DBFilterError
+            | super::EntityDBError::DBInsertError
+            | super::EntityDBError::UnknownError
+            | super::EntityDBError::NotFoundError => Self::DbError,
         }
     }
 }

@@ -91,7 +91,6 @@ impl MerchantInterface for Storage {
             .and_then(|inner: types::MerchantInner| Ok(inner.decrypt(key)?))
     }
 
-    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,
@@ -377,8 +376,8 @@ impl super::FingerprintInterface for Storage {
 }
 
 #[cfg(feature = "external_key_manager")]
-impl super::ExternalKeyManagerInterface for Storage {
-    type Error = error::ExternalKeyManagerDbError;
+impl super::EntityInterface for Storage {
+    type Error = error::EntityDBError;
 
     async fn find_by_entity_id(
         &self,

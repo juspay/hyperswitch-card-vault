@@ -8,7 +8,6 @@ use crate::{
     error::{self, ContainerError},
 };
 use masking::Secret;
-use std::sync::Arc;
 
 #[async_trait::async_trait]
 pub trait KeyProvider: Send + Sync {
@@ -16,17 +15,17 @@ pub trait KeyProvider: Send + Sync {
         &self,
         tenant_app_state: &TenantAppState,
         entity_id: String,
-    ) -> Result<Box<dyn CryptoManager>, ContainerError<error::ApiError>>;
+    ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>>;
 
     async fn find_or_create_entity(
         &self,
         tenant_app_state: &TenantAppState,
         entity_id: String,
-    ) -> Result<Box<dyn CryptoManager>, ContainerError<error::ApiError>>;
+    ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>>;
 }
 
 #[async_trait::async_trait]
-pub trait CryptoManager: Send + Sync {
+pub trait CryptoOperationsManager: Send + Sync {
     async fn encrypt_data(
         &self,
         tenant_app_state: &TenantAppState,
@@ -39,14 +38,14 @@ pub trait CryptoManager: Send + Sync {
     ) -> Result<Secret<Vec<u8>>, ContainerError<error::ApiError>>;
 }
 
-pub fn get_dek_manager() -> Arc<dyn KeyProvider> {
+pub const fn get_dek_manager() -> impl KeyProvider {
     #[cfg(feature = "external_key_manager")]
     {
-        Arc::new(external_keymanager::ExternalKeyManager)
+        external_keymanager::ExternalKeyManager
     }
 
     #[cfg(not(feature = "external_key_manager"))]
     {
-        Arc::new(internal_keymanager::InternalKeyManager)
+        internal_keymanager::InternalKeyManager
     }
 }

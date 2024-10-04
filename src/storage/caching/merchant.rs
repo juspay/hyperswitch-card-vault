@@ -13,7 +13,7 @@ where
         + storage::Cacheable<types::Merchant, Key = String, Value = types::Merchant>
         + storage::Cacheable<types::HashTable>
         + storage::Cacheable<types::Fingerprint>
-        + storage::Cacheable<types::Entity>
+        + super::CacheableWithEntity<T>
         + Sync
         + Send,
     ContainerError<<T as storage::MerchantInterface>::Error>: NotFoundError,
@@ -79,7 +79,6 @@ where
         Ok(output)
     }
 
-    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,

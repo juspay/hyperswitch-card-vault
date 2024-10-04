@@ -8,7 +8,6 @@ use std::sync::Arc;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
-    crypto::keymanager,
     error, logger,
     routes::{self, routes_v2},
     storage,
@@ -36,7 +35,6 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
-    pub dek_manager: Arc<dyn keymanager::KeyProvider>,
 }
 
 #[allow(clippy::expect_used)]
@@ -66,7 +64,6 @@ impl TenantAppState {
             db,
             api_client,
             config: tenant_config,
-            dek_manager: keymanager::get_dek_manager(),
         })
     }
 }

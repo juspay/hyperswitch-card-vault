@@ -4,7 +4,7 @@ use crate::{
     app::TenantAppState,
     crypto::{
         encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
-        keymanager::CryptoManager,
+        keymanager::CryptoOperationsManager,
     },
     error::{self, ContainerError},
     storage::MerchantInterface,
@@ -18,7 +18,7 @@ impl super::KeyProvider for InternalKeyManager {
         &self,
         tenant_app_state: &TenantAppState,
         entity_id: String,
-    ) -> Result<Box<dyn CryptoManager>, ContainerError<error::ApiError>> {
+    ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
         let master_encryption =
             GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
 
@@ -27,14 +27,14 @@ impl super::KeyProvider for InternalKeyManager {
             .find_by_merchant_id(&entity_id, &master_encryption)
             .await
             .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(|inner| -> Box<dyn CryptoManager> { Box::new(inner) })?)
+            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })?)
     }
 
     async fn find_or_create_entity(
         &self,
         tenant_app_state: &TenantAppState,
         entity_id: String,
-    ) -> Result<Box<dyn CryptoManager>, ContainerError<error::ApiError>> {
+    ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
         let master_encryption =
             GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
 
@@ -45,7 +45,7 @@ impl super::KeyProvider for InternalKeyManager {
 
         let response = entity
             .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(|inner| -> Box<dyn CryptoManager> { Box::new(inner) })?;
+            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })?;
 
         Ok(response)
     }
@@ -64,7 +64,7 @@ impl InternalCryptoManager {
 }
 
 #[async_trait::async_trait]
-impl CryptoManager for InternalCryptoManager {
+impl CryptoOperationsManager for InternalCryptoManager {
     async fn encrypt_data(
         &self,
         _tenant_app_state: &TenantAppState,

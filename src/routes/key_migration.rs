@@ -19,7 +19,7 @@ use crate::{
     storage::{
         consts,
         types::{Entity, Merchant},
-        utils, ExternalKeyManagerInterface, MerchantInterface,
+        utils, EntityInterface, MerchantInterface,
     },
 };
 
