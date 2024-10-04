@@ -21,7 +21,13 @@ pub fn setup(
 ) -> TelemetryGuard {
     let mut guards = Vec::new();
 
+    #[cfg(feature = "console")]
+    let console_layer = console_subscriber::spawn();
+
     let subscriber = tracing_subscriber::registry().with(StorageSubscription);
+
+    #[cfg(feature = "console")]
+    let subscriber = subscriber.with(console_layer);
 
     // Setup console logging
     if config.console.enabled {
