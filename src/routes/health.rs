@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{crypto::keymanager, logger, tenant::GlobalAppState};
 
-use axum::{routing::get, Json};
+use axum::routing::get;
 
 use crate::{custom_extractors::TenantStateResolver, error, storage::TestInterface};
 
@@ -21,9 +21,9 @@ pub struct HealthRespPayload {
 }
 
 /// '/health` API handler`
-pub async fn health() -> Json<HealthRespPayload> {
+pub async fn health() -> axum::Json<HealthRespPayload> {
     crate::logger::debug!("Health was called");
-    Json(HealthRespPayload {
+    axum::Json(HealthRespPayload {
         message: "Health is good".into(),
     })
 }
@@ -51,7 +51,9 @@ pub enum HealthState {
 }
 
 /// '/health/diagnostics` API handler`
-pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Json<Diagnostics> {
+pub async fn diagnostics(
+    TenantStateResolver(state): TenantStateResolver,
+) -> axum::Json<Diagnostics> {
     crate::logger::info!("Health diagnostics was called");
 
     let db_test_output = state.db.test().await;

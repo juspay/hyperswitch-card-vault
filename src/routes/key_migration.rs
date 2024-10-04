@@ -1,4 +1,3 @@
-use axum::Json;
 use base64::Engine;
 use masking::ExposeInterface;
 use serde::{Deserialize, Serialize};
@@ -34,8 +33,8 @@ pub struct TransferKeyResponse {
 
 pub async fn transfer_keys(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    Json(request): Json<MerchantKeyTransferRequest>,
-) -> Result<Json<TransferKeyResponse>, ContainerError<error::ApiError>> {
+    error::Json(request): error::Json<MerchantKeyTransferRequest>,
+) -> Result<axum::Json<TransferKeyResponse>, ContainerError<error::ApiError>> {
     let master_encryption =
         GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
     let merchant_keys = tenant_app_state
@@ -52,7 +51,7 @@ pub async fn transfer_keys(
     let no_of_keys_migrated =
         send_request_to_key_service_for_merchant(&tenant_app_state, merchant_keys).await?;
 
-    Ok(Json(TransferKeyResponse {
+    Ok(axum::Json(TransferKeyResponse {
         total_transferred: no_of_keys_migrated,
     }))
 }

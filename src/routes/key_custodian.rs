@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::State, routing::post, Json};
+use axum::{extract::State, routing::post};
 use error_stack::ResultExt;
 
 use crate::{
@@ -63,15 +63,15 @@ pub fn serve() -> axum::Router<Arc<GlobalAppState>> {
 pub async fn key1(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
-    Json(payload): Json<CustodianReqPayload>,
-) -> Json<CustodianRespPayload> {
+    error::Json(payload): error::Json<CustodianReqPayload>,
+) -> axum::Json<CustodianRespPayload> {
     let mut key_state = global_app_state.tenants_key_state.write().await;
     key_state
         .entry(tenant_id.to_string())
         .and_modify(|key_state_data| key_state_data.key1 = Some(payload.key));
 
     logger::info!("Received key1");
-    Json(CustodianRespPayload {
+    axum::Json(CustodianRespPayload {
         message: "Received Key1".into(),
     })
 }
@@ -80,15 +80,15 @@ pub async fn key1(
 pub async fn key2(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
-    Json(payload): Json<CustodianReqPayload>,
-) -> Json<CustodianRespPayload> {
+    error::Json(payload): error::Json<CustodianReqPayload>,
+) -> axum::Json<CustodianRespPayload> {
     let mut key_state = global_app_state.tenants_key_state.write().await;
     key_state
         .entry(tenant_id.to_string())
         .and_modify(|key_state_data| key_state_data.key2 = Some(payload.key));
 
     logger::info!("Received key2");
-    Json(CustodianRespPayload {
+    axum::Json(CustodianRespPayload {
         message: "Received Key2".into(),
     })
 }
@@ -97,7 +97,7 @@ pub async fn key2(
 pub async fn decrypt(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
-) -> Result<Json<CustodianRespPayload>, error::ContainerError<error::ApiError>> {
+) -> Result<axum::Json<CustodianRespPayload>, error::ContainerError<error::ApiError>> {
     let mut key_state_map = global_app_state.tenants_key_state.write().await;
     let key_state_for_tenant = key_state_map
         .get_mut(&tenant_id.to_string())
@@ -127,7 +127,7 @@ pub async fn decrypt(
             global_app_state.set_app_state(tenant_app_state).await;
 
             logger::info!("Decryption of Custodian key is successful");
-            Ok(Json(CustodianRespPayload {
+            Ok(axum::Json(CustodianRespPayload {
                 message: "Decryption of Custodian key is successful".into(),
             }))
         }

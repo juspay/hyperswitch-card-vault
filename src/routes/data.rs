@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{routing::post, Json};
+use axum::routing::post;
 
 #[cfg(feature = "limit")]
 use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
@@ -95,8 +95,8 @@ pub fn serve(
 /// `/data/add` handling the requirement of storing data
 pub async fn add_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    Json(request): Json<types::StoreCardRequest>,
-) -> Result<Json<types::StoreCardResponse>, ContainerError<error::ApiError>> {
+    error::Json(request): error::Json<types::StoreCardRequest>,
+) -> Result<axum::Json<types::StoreCardResponse>, ContainerError<error::ApiError>> {
     request.validate()?;
 
     let master_encryption =
@@ -183,14 +183,17 @@ pub async fn add_card(
         }
     };
 
-    Ok(Json(StoreCardResponse::from((duplication_check, output))))
+    Ok(axum::Json(StoreCardResponse::from((
+        duplication_check,
+        output,
+    ))))
 }
 
 /// `/data/delete` handling the requirement of deleting data
 pub async fn delete_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    Json(request): Json<types::DeleteCardRequest>,
-) -> Result<Json<types::DeleteCardResponse>, ContainerError<error::ApiError>> {
+    error::Json(request): error::Json<types::DeleteCardRequest>,
+) -> Result<axum::Json<types::DeleteCardResponse>, ContainerError<error::ApiError>> {
     let master_key = GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
 
     let _merchant = tenant_app_state
@@ -207,7 +210,7 @@ pub async fn delete_card(
         )
         .await?;
 
-    Ok(Json(types::DeleteCardResponse {
+    Ok(axum::Json(types::DeleteCardResponse {
         status: types::Status::Ok,
     }))
 }
@@ -215,8 +218,8 @@ pub async fn delete_card(
 /// `/data/retrieve` handling the requirement of retrieving data
 pub async fn retrieve_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    Json(request): Json<types::RetrieveCardRequest>,
-) -> Result<Json<types::RetrieveCardResponse>, ContainerError<error::ApiError>> {
+    error::Json(request): error::Json<types::RetrieveCardRequest>,
+) -> Result<axum::Json<types::RetrieveCardResponse>, ContainerError<error::ApiError>> {
     let master_key = GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
 
     let merchant = tenant_app_state
@@ -257,18 +260,18 @@ pub async fn retrieve_card(
         })
         .transpose()?;
 
-    Ok(Json(card.try_into()?))
+    Ok(axum::Json(card.try_into()?))
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    Json(request): Json<types::FingerprintRequest>,
-) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
+    error::Json(request): error::Json<types::FingerprintRequest>,
+) -> Result<axum::Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
     let fingerprint = tenant_app_state
         .db
         .get_or_insert_fingerprint(request.data, request.key)
         .await?;
 
-    Ok(Json(fingerprint.into()))
+    Ok(axum::Json(fingerprint.into()))
 }

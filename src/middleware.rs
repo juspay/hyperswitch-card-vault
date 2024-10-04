@@ -19,7 +19,7 @@ use josekit::jwe;
 pub async fn middleware(
     TenantStateResolver(state): TenantStateResolver,
     parts: request::Parts,
-    axum::Json(jwe_body): axum::Json<jw::JweBody>,
+    error::Json(jwe_body): error::Json<jw::JweBody>,
     next: Next,
 ) -> Result<(response::Parts, axum::Json<jw::JweBody>), ContainerError<error::ApiError>> {
     let keys = JWEncryption {
