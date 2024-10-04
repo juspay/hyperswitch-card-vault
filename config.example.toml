@@ -1,27 +1,27 @@
 [log.console]
-enabled = true # To enable logging in console
-level = "DEBUG" # level to be set for the logging framework
+enabled = true         # To enable logging in console
+level = "DEBUG"        # level to be set for the logging framework
 log_format = "default" # format to be used for logging default | json
 
 [server]
 host = "127.0.0.1" # The host that the server should be exposed to
-port = 8080 # The port where the server should be hosted on
+port = 8080        # The port where the server should be hosted on
 
 [limit]
 request_count = 1 # The requests per duration
-duration = 60 # duration to rate limit the delete api (in sec)
+duration = 60     # duration to rate limit the delete api (in sec)
 
 
 [cache]
-tti = 7200 # Idle time after a get/insert of a cache entry to free the cache (in secs)
+tti = 7200          # Idle time after a get/insert of a cache entry to free the cache (in secs)
 max_capacity = 5000 # Max capacity of a single table cache
 
 [database]
-username = "sam" # username for the database
-password = "damn" # password of the database
+username = "sam"   # username for the database
+password = "damn"  # password of the database
 host = "localhost" # the host where the database is hosted on
-port = 5432 # the port of the database
-dbname = "locker" # the name of the database where the cards are stored
+port = 5432        # the port of the database
+dbname = "locker"  # the name of the database where the cards are stored
 
 [secrets]
 locker_private_key = "" # the locker private key to used used and the private key present with the tenant
@@ -30,7 +30,7 @@ locker_private_key = "" # the locker private key to used used and the private ke
 # configure master_key and public_key for each tenant
 # master_key - used for database encryption this could be aes encrypted by key custodian
 # public_key - used for signature verification and encryption of response payload which is sent back to tenant
-hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "" }
+hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
 
 # To protect secret/sensitive values like:
 # - database.passwod
@@ -61,15 +61,15 @@ hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d
 # TLS server within axum
 [tls]
 certificate = "cert.pem" # path to the certificate file (`pem` format)
-private_key = "key.pem" # path to the private key file (`pem` format)
+private_key = "key.pem"  # path to the private key file (`pem` format)
 
 # Api client
 [api_client]
-client_idle_timeout = 90 # timeout for idle sockets being kept-alive
+client_idle_timeout = 90    # timeout for idle sockets being kept-alive
 pool_max_idle_per_host = 10 # maximum idle connection per host allowed in the pool.
-identity = "" # identity to be used for client certificate authentication in mtls.
+identity = ""               # identity to be used for client certificate authentication in mtls.
 
 # Configuration for the Key Manager Service
 [key_manager]
 url = "http://localhost:5000" # URL of the encryption service
-cert = "" # Represents a server X509 certificate for mtls
+cert = ""                     # Represents a server X509 certificate for mtls
