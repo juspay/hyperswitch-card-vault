@@ -118,7 +118,7 @@ impl MerchantInterface for Storage {
 
 impl LockerInterface for Storage {
     type Algorithm = GcmAes256;
-    type Error = error::LockerDBError;
+    type Error = error::VaultDBError;
 
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,

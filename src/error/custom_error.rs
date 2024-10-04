@@ -17,7 +17,7 @@ pub enum MerchantDBError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum LockerDBError {
+pub enum VaultDBError {
     #[error("Error while encrypting data before adding to DB")]
     DataEncryptionError,
     #[error("Error while decrypting data from DB")]

@@ -22,6 +22,7 @@ pub mod caching;
 pub mod consts;
 pub mod db;
 pub mod schema;
+pub mod storage_v2;
 pub mod types;
 pub mod utils;
 

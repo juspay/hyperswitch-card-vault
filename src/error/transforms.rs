@@ -13,8 +13,8 @@ impl<'a> From<&'a super::CryptoError> for super::MerchantDBError {
     }
 }
 
-error_transform!(super::CryptoError => super::LockerDBError);
-impl<'a> From<&'a super::CryptoError> for super::LockerDBError {
+error_transform!(super::CryptoError => super::VaultDBError);
+impl<'a> From<&'a super::CryptoError> for super::VaultDBError {
     fn from(value: &'a super::CryptoError) -> Self {
         match value {
             super::CryptoError::SerdeJsonError(_)
@@ -45,8 +45,8 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
     }
 }
 
-error_transform!(super::StorageError => super::LockerDBError);
-impl<'a> From<&'a super::StorageError> for super::LockerDBError {
+error_transform!(super::StorageError => super::VaultDBError);
+impl<'a> From<&'a super::StorageError> for super::VaultDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
             super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
@@ -176,18 +176,19 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
     }
 }
 
-error_transform!(super::LockerDBError => super::ApiError);
-impl<'a> From<&'a super::LockerDBError> for super::ApiError {
-    fn from(value: &'a super::LockerDBError) -> Self {
+error_transform!(super::VaultDBError => super::ApiError);
+impl<'a> From<&'a super::VaultDBError> for super::ApiError {
+    fn from(value: &'a super::VaultDBError) -> Self {
         match value {
-            super::LockerDBError::DataEncryptionError
-            | super::LockerDBError::DataDecryptionError => Self::MerchantKeyError,
-            super::LockerDBError::DBError => Self::DatabaseError,
-            super::LockerDBError::DBFilterError => Self::RetrieveDataFailed("locker"),
-            super::LockerDBError::DBInsertError => Self::DatabaseInsertFailed("locker"),
-            super::LockerDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
-            super::LockerDBError::UnknownError => Self::UnknownError,
-            super::LockerDBError::NotFoundError => Self::NotFoundError,
+            super::VaultDBError::DataEncryptionError | super::VaultDBError::DataDecryptionError => {
+                Self::MerchantKeyError
+            }
+            super::VaultDBError::DBError => Self::DatabaseError,
+            super::VaultDBError::DBFilterError => Self::RetrieveDataFailed("locker"),
+            super::VaultDBError::DBInsertError => Self::DatabaseInsertFailed("locker"),
+            super::VaultDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
+            super::VaultDBError::UnknownError => Self::UnknownError,
+            super::VaultDBError::NotFoundError => Self::NotFoundError,
         }
     }
 }
