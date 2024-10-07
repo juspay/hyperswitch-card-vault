@@ -149,6 +149,13 @@ impl ApiClient {
                     .change_error(error::ApiClientError::ResponseDecodingFailed)?,
             )
             .into()),
+            StatusCode::UNAUTHORIZED => Err(error::ApiClientError::Unauthorized(
+                response
+                    .bytes()
+                    .await
+                    .change_error(error::ApiClientError::ResponseDecodingFailed)?,
+            )
+            .into()),
             _ => Err(error::ApiClientError::Unexpected {
                 status_code: response.status(),
                 message: response

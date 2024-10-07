@@ -184,6 +184,8 @@ pub enum ApiClientError {
     ResponseDecodingFailed,
     #[error("Received bad request: {0:?}")]
     BadRequest(bytes::Bytes),
+    #[error("Tenant authorization failed: {0:?}")]
+    Unauthorized(bytes::Bytes),
     #[error("Unexpected error occurred: status_code-{status_code:?} message-{message:?}")]
     Unexpected {
         status_code: StatusCode,
@@ -207,6 +209,8 @@ pub enum KeyManagerError {
     DbError,
     #[error("Response decoding failed")]
     ResponseDecodingFailed,
+    #[error("Authorization failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -225,6 +229,8 @@ pub enum DataKeyCreationError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authorization failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -243,6 +249,8 @@ pub enum DataKeyTransferError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authorization failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -261,6 +269,8 @@ pub enum DataEncryptionError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authorization failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -279,6 +289,8 @@ pub enum DataDecryptionError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authorization failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]

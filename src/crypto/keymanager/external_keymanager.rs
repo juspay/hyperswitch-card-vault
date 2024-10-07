@@ -3,21 +3,25 @@ pub mod types;
 use crate::{
     api_client::{ApiResponse, Method},
     app::TenantAppState,
-    crypto::keymanager::{
-        external_keymanager::{
-            self,
-            types::{
-                DataDecryptionRequest, DataDecryptionResponse, DataEncryptionRequest,
-                DataKeyCreateRequest, DataKeyCreateResponse, DataKeyTransferRequest,
-                DateEncryptionResponse, DecryptedData, EncryptedData,
+    crypto::{
+        consts::BASE64_ENGINE,
+        keymanager::{
+            external_keymanager::{
+                self,
+                types::{
+                    DataDecryptionRequest, DataDecryptionResponse, DataEncryptionRequest,
+                    DataKeyCreateRequest, DataKeyCreateResponse, DataKeyTransferRequest,
+                    DateEncryptionResponse, DecryptedData, EncryptedData,
+                },
             },
+            CryptoOperationsManager,
         },
-        CryptoOperationsManager,
     },
     error::{self, ContainerError, NotFoundError},
     routes::health,
     storage::{consts::headers, types::Entity, EntityInterface},
 };
+use base64::Engine;
 use masking::Secret;
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -147,9 +151,24 @@ where
     T: serde::Serialize + Send + Sync + 'static,
     ContainerError<E>: From<ContainerError<error::ApiClientError>> + Send + Sync,
 {
-    let headers = [(headers::CONTENT_TYPE.into(), "application/json".into())]
-        .into_iter()
-        .collect::<std::collections::HashSet<_>>();
+    let headers = [
+        (headers::CONTENT_TYPE.into(), "application/json".into()),
+        (
+            headers::AUTHORIZATION.into(),
+            format!(
+                "Basic {}",
+                BASE64_ENGINE.encode(format!(
+                    "{}:{}",
+                    &tenant_app_state.config.tenant_id,
+                    hex::encode(&tenant_app_state.config.tenant_secrets.master_key)
+                ))
+            )
+            .into(),
+        ),
+    ]
+    .into_iter()
+    .collect::<std::collections::HashSet<_>>();
+
     let response = tenant_app_state
         .api_client
         .send_request::<_>(url, headers, method, request_body)

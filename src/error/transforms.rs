@@ -301,6 +301,7 @@ impl<'a> From<&'a super::KeyManagerError> for super::ApiError {
             super::KeyManagerError::ResponseDecodingFailed => {
                 Self::KeyManagerError("Failed to deserialize from bytes")
             }
+            super::KeyManagerError::Unauthorized => Self::TenantError("Invalid master key"),
         }
     }
 }
@@ -332,6 +333,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyCreationError {
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -347,6 +349,7 @@ impl<'a> From<&'a super::DataKeyCreationError> for super::KeyManagerError {
             | super::DataKeyCreationError::BadRequest
             | super::DataKeyCreationError::CertificateParseFailed
             | super::DataKeyCreationError::RequestConstructionFailed => Self::KeyAddFailed,
+            super::DataKeyCreationError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -365,6 +368,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyTransferError {
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -380,6 +384,7 @@ impl<'a> From<&'a super::DataKeyTransferError> for super::KeyManagerError {
             | super::DataKeyTransferError::BadRequest
             | super::DataKeyTransferError::CertificateParseFailed
             | super::DataKeyTransferError::RequestConstructionFailed => Self::KeyTransferFailed,
+            super::DataKeyTransferError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -395,6 +400,7 @@ impl<'a> From<&'a super::DataEncryptionError> for super::KeyManagerError {
             | super::DataEncryptionError::BadRequest
             | super::DataEncryptionError::CertificateParseFailed
             | super::DataEncryptionError::RequestConstructionFailed => Self::EncryptionFailed,
+            super::DataEncryptionError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -413,6 +419,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataEncryptionError {
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -428,6 +435,7 @@ impl<'a> From<&'a super::DataDecryptionError> for super::KeyManagerError {
             | super::DataDecryptionError::BadRequest
             | super::DataDecryptionError::CertificateParseFailed
             | super::DataDecryptionError::RequestConstructionFailed => Self::DecryptionFailed,
+            super::DataDecryptionError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -446,6 +454,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataDecryptionError {
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -463,7 +472,8 @@ impl<'a> From<&'a super::ApiClientError> for super::KeyManagerHealthCheckError {
             | super::ApiClientError::ResponseDecodingFailed
             | super::ApiClientError::BadRequest(_)
             | super::ApiClientError::Unexpected { .. }
-            | super::ApiClientError::InternalServerError(_) => Self::FailedToConnect,
+            | super::ApiClientError::InternalServerError(_)
+            | super::ApiClientError::Unauthorized(_) => Self::FailedToConnect,
         }
     }
 }
