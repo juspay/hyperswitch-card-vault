@@ -7,7 +7,7 @@ use crate::{
     app::TenantAppState,
     error::{self, ContainerError},
 };
-use masking::Secret;
+use masking::{Secret, StrongSecret};
 
 #[async_trait::async_trait]
 pub trait KeyProvider: Send + Sync {
@@ -29,13 +29,13 @@ pub trait CryptoOperationsManager: Send + Sync {
     async fn encrypt_data(
         &self,
         tenant_app_state: &TenantAppState,
-        decryted_data: Secret<Vec<u8>>,
+        decryted_data: StrongSecret<Vec<u8>>,
     ) -> Result<Secret<Vec<u8>>, ContainerError<error::ApiError>>;
     async fn decrypt_data(
         &self,
         tenant_app_state: &TenantAppState,
         encrypted_data: Secret<Vec<u8>>,
-    ) -> Result<Secret<Vec<u8>>, ContainerError<error::ApiError>>;
+    ) -> Result<StrongSecret<Vec<u8>>, ContainerError<error::ApiError>>;
 }
 
 pub const fn get_dek_manager() -> impl KeyProvider {

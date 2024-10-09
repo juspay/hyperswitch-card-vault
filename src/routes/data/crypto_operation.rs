@@ -4,7 +4,7 @@ use crate::{
     error::{self, ContainerError, ResultContainerExt},
     routes::data::types,
     storage::{
-        types::{Locker, LockerNew},
+        types::{Encryptable, Locker, LockerNew},
         LockerInterface,
     },
 };
@@ -45,7 +45,7 @@ pub async fn decrypt_data(
             .decrypt_data(tenant_app_state, encrypted_data)
             .await?;
 
-        locker.data.into_decrypted(decrypted_data);
+        locker.data = Encryptable::from_decrypted_data(decrypted_data)
     }
 
     Ok(locker)

@@ -19,7 +19,7 @@ use crate::{
     routes::health,
     storage::{types::Entity, EntityInterface},
 };
-use masking::Secret;
+use masking::{Secret, StrongSecret};
 
 #[derive(Debug, serde::Deserialize, Clone)]
 pub struct ExternalKeyManagerConfig {
@@ -227,7 +227,7 @@ impl super::CryptoOperationsManager for ExternalCryptoManager {
     async fn encrypt_data(
         &self,
         tenant_app_state: &TenantAppState,
-        decryted_data: Secret<Vec<u8>>,
+        decryted_data: StrongSecret<Vec<u8>>,
     ) -> Result<Secret<Vec<u8>>, ContainerError<error::ApiError>> {
         let encryption_req = DataEncryptionRequest::create_request(
             self.get_inner().enc_key_id.clone(),
@@ -243,7 +243,7 @@ impl super::CryptoOperationsManager for ExternalCryptoManager {
         &self,
         tenant_app_state: &TenantAppState,
         encrypted_data: Secret<Vec<u8>>,
-    ) -> Result<Secret<Vec<u8>>, ContainerError<error::ApiError>> {
+    ) -> Result<StrongSecret<Vec<u8>>, ContainerError<error::ApiError>> {
         let decryption_req = DataDecryptionRequest::create_request(
             self.get_inner().enc_key_id.clone(),
             encrypted_data,

@@ -1,4 +1,4 @@
-use masking::{ExposeInterface, Secret};
+use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use crate::{
     app::TenantAppState,
@@ -68,15 +68,18 @@ impl CryptoOperationsManager for InternalCryptoManager {
     async fn encrypt_data(
         &self,
         _tenant_app_state: &TenantAppState,
-        decryted_data: Secret<Vec<u8>>,
+        decryted_data: StrongSecret<Vec<u8>>,
     ) -> Result<Secret<Vec<u8>>, ContainerError<error::ApiError>> {
-        Ok(self.get_inner().encrypt(decryted_data.expose())?.into())
+        Ok(self
+            .get_inner()
+            .encrypt(decryted_data.peek().clone())?
+            .into())
     }
     async fn decrypt_data(
         &self,
         _tenant_app_state: &TenantAppState,
         encrypted_data: Secret<Vec<u8>>,
-    ) -> Result<Secret<Vec<u8>>, ContainerError<error::ApiError>> {
+    ) -> Result<StrongSecret<Vec<u8>>, ContainerError<error::ApiError>> {
         Ok(self.get_inner().decrypt(encrypted_data.expose())?.into())
     }
 }

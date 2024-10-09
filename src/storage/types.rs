@@ -84,7 +84,7 @@ pub struct Locker {
 #[derive(Debug)]
 pub enum Encryptable {
     Encrypted(Secret<Vec<u8>>),
-    Decrypted(Secret<Vec<u8>>),
+    Decrypted(StrongSecret<Vec<u8>>),
 }
 
 impl Encryptable {
@@ -95,15 +95,15 @@ impl Encryptable {
         }
     }
 
-    pub fn get_decrypted_inner_value(&self) -> Option<Secret<Vec<u8>>> {
+    pub fn get_decrypted_inner_value(&self) -> Option<StrongSecret<Vec<u8>>> {
         match self {
             Self::Encrypted(_) => None,
             Self::Decrypted(secret) => Some(secret.clone()),
         }
     }
 
-    pub fn into_decrypted(&mut self, decrypted_data: Secret<Vec<u8>>) {
-        *self = Self::Decrypted(decrypted_data)
+    pub fn from_decrypted_data(decrypted_data: StrongSecret<Vec<u8>>) -> Self {
+        Self::Decrypted(decrypted_data)
     }
 }
 

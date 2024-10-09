@@ -4,7 +4,7 @@ use crate::{
     storage::{consts, types::Encrypted, utils},
 };
 use base64::Engine;
-use masking::{ExposeInterface, PeekInterface, Secret};
+use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 use serde::{
     de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -58,7 +58,7 @@ pub struct DataEncryptionRequest {
 impl DataEncryptionRequest {
     pub fn create_request(
         key_identifier: String,
-        data: Secret<Vec<u8>>,
+        data: StrongSecret<Vec<u8>>,
     ) -> Result<Self, error::ContainerError<error::ApiError>> {
         Ok(Self {
             identifier: Identifier::Entity(key_identifier),
@@ -156,18 +156,20 @@ impl<'de> Deserialize<'de> for EncryptedData {
 }
 
 #[derive(Clone, Debug)]
-pub struct DecryptedData(Secret<Vec<u8>>);
+pub struct DecryptedData(StrongSecret<Vec<u8>>);
 
 impl DecryptedData {
-    pub fn from_secret(data: Secret<Vec<u8>>) -> Self {
+    pub fn from_secret(data: StrongSecret<Vec<u8>>) -> Self {
         Self(data)
     }
-    pub fn inner(self) -> Secret<Vec<u8>> {
+    pub fn inner(self) -> StrongSecret<Vec<u8>> {
         self.0
     }
-    pub fn from_value<T>(data: &Secret<T>) -> Result<Self, error::ContainerError<error::ApiError>>
+    pub fn from_value<T>(
+        data: &StrongSecret<T>,
+    ) -> Result<Self, error::ContainerError<error::ApiError>>
     where
-        T: Serialize,
+        T: Serialize + masking::DefaultIsZeroes,
     {
         Ok(Self(
             serde_json::to_vec(data.peek())
