@@ -266,7 +266,7 @@ impl super::HashInterface for Storage {
                 let mut conn = self.get_conn().await?;
                 let query =
                     diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
-                        hash_id: uuid::Uuid::new_v4().to_string(),
+                        hash_id: utils::generate_uuid(),
                         data_hash,
                     });
 

@@ -28,8 +28,12 @@ impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
 impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
     type Error = ContainerError<error::ApiError>;
     fn try_from(value: storage::types::Locker) -> Result<Self, Self::Error> {
+        let decrypted_data = value
+            .data
+            .get_decrypted_inner_value()
+            .ok_or::<ContainerError<_>>(error::ApiError::DecodingError.into())?;
         let (card, enc_card_data) =
-            match serde_json::from_slice::<types::StoredData>(&value.enc_data.expose())
+            match serde_json::from_slice::<types::StoredData>(decrypted_data.peek())
                 .change_error(error::ApiError::DecodingError)?
             {
                 types::StoredData::EncData(data) => (None, Some(data)),
@@ -93,7 +97,11 @@ pub fn validate_card_metadata(
     stored_payload: &storage::types::Locker,
     request_data: &types::Data,
 ) -> Result<DataDuplicationCheck, ContainerError<error::ApiError>> {
-    let stored_data = serde_json::from_slice::<types::StoredData>(stored_payload.enc_data.peek())
+    let decrypted_data = stored_payload
+        .data
+        .get_decrypted_inner_value()
+        .ok_or::<ContainerError<_>>(error::ApiError::DecodingError.into())?;
+    let stored_data = serde_json::from_slice::<types::StoredData>(decrypted_data.peek())
         .change_error(error::ApiError::DecodingError)?;
 
     let is_metadata_duplicated = stored_data.eq(request_data);

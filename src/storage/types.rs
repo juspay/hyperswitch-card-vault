@@ -62,7 +62,7 @@ impl From<LockerInner> for Locker {
             locker_id: value.locker_id,
             merchant_id: value.merchant_id,
             customer_id: value.customer_id,
-            enc_data: value.enc_data.into_inner(),
+            data: value.enc_data.into(),
             created_at: value.created_at,
             hash_id: value.hash_id,
             ttl: value.ttl,
@@ -75,10 +75,42 @@ pub struct Locker {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
     pub customer_id: String,
-    pub enc_data: Secret<Vec<u8>>,
+    pub data: Encryptable,
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
+}
+
+#[derive(Debug)]
+pub enum Encryptable {
+    Encrypted(Secret<Vec<u8>>),
+    Decrypted(Secret<Vec<u8>>),
+}
+
+impl Encryptable {
+    pub fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>> {
+        match self {
+            Self::Encrypted(secret) => Some(secret.clone()),
+            Self::Decrypted(_) => None,
+        }
+    }
+
+    pub fn get_decrypted_inner_value(&self) -> Option<Secret<Vec<u8>>> {
+        match self {
+            Self::Encrypted(_) => None,
+            Self::Decrypted(secret) => Some(secret.clone()),
+        }
+    }
+
+    pub fn into_decrypted(&mut self, decrypted_data: Secret<Vec<u8>>) {
+        *self = Self::Decrypted(decrypted_data)
+    }
+}
+
+impl From<Encrypted> for Encryptable {
+    fn from(value: Encrypted) -> Self {
+        Self::Encrypted(value.into_inner())
+    }
 }
 
 #[derive(Debug, Insertable, Clone)]

@@ -40,11 +40,13 @@ pub async fn decrypt_data(
     crypto_operator: Box<dyn CryptoOperationsManager>,
     mut locker: Locker,
 ) -> Result<Locker, ContainerError<error::ApiError>> {
-    let decrypted_data = crypto_operator
-        .decrypt_data(tenant_app_state, locker.enc_data)
-        .await?;
+    if let Some(encrypted_data) = locker.data.get_encrypted_inner_value() {
+        let decrypted_data = crypto_operator
+            .decrypt_data(tenant_app_state, encrypted_data)
+            .await?;
 
-    locker.enc_data = decrypted_data;
+        locker.data.into_decrypted(decrypted_data);
+    }
 
     Ok(locker)
 }

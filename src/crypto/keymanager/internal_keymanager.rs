@@ -27,7 +27,7 @@ impl super::KeyProvider for InternalKeyManager {
             .find_by_merchant_id(&entity_id, &master_encryption)
             .await
             .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })?)
+            .map(Box::new)?)
     }
 
     async fn find_or_create_entity(
@@ -45,7 +45,7 @@ impl super::KeyProvider for InternalKeyManager {
 
         let response = entity
             .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })?;
+            .map(Box::new)?;
 
         Ok(response)
     }

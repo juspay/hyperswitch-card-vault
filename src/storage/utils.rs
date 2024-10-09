@@ -6,5 +6,5 @@ pub fn generate_nano_id(id_length: usize) -> String {
 
 /// Generate UUID v4 as strings to be used in storage layer
 pub fn generate_uuid() -> String {
-    uuid::Uuid::new_v4().to_string()
+    uuid::Uuid::now_v7().to_string()
 }

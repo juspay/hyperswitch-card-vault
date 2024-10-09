@@ -1,27 +1,24 @@
 pub mod types;
+pub mod utils;
 
 use crate::{
     api_client::{ApiResponse, Method},
     app::TenantAppState,
-    crypto::{
-        consts::BASE64_ENGINE,
-        keymanager::{
-            external_keymanager::{
-                self,
-                types::{
-                    DataDecryptionRequest, DataDecryptionResponse, DataEncryptionRequest,
-                    DataKeyCreateRequest, DataKeyCreateResponse, DataKeyTransferRequest,
-                    DateEncryptionResponse, DecryptedData, EncryptedData,
-                },
+    crypto::keymanager::{
+        external_keymanager::{
+            self,
+            types::{
+                DataDecryptionRequest, DataDecryptionResponse, DataEncryptionRequest,
+                DataKeyCreateRequest, DataKeyCreateResponse, DataKeyTransferRequest,
+                DateEncryptionResponse, DecryptedData, EncryptedData,
             },
-            CryptoOperationsManager,
         },
+        CryptoOperationsManager,
     },
     error::{self, ContainerError, NotFoundError},
     routes::health,
-    storage::{consts::headers, types::Entity, EntityInterface},
+    storage::{types::Entity, EntityInterface},
 };
-use base64::Engine;
 use masking::Secret;
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -151,23 +148,7 @@ where
     T: serde::Serialize + Send + Sync + 'static,
     ContainerError<E>: From<ContainerError<error::ApiClientError>> + Send + Sync,
 {
-    let headers = [
-        (headers::CONTENT_TYPE.into(), "application/json".into()),
-        (
-            headers::AUTHORIZATION.into(),
-            format!(
-                "Basic {}",
-                BASE64_ENGINE.encode(format!(
-                    "{}:{}",
-                    &tenant_app_state.config.tenant_id,
-                    hex::encode(&tenant_app_state.config.tenant_secrets.master_key)
-                ))
-            )
-            .into(),
-        ),
-    ]
-    .into_iter()
-    .collect::<std::collections::HashSet<_>>();
+    let headers = utils::get_key_manager_header(tenant_app_state);
 
     let response = tenant_app_state
         .api_client
@@ -192,7 +173,7 @@ impl super::KeyProvider for ExternalKeyManager {
             .find_by_entity_id(&entity_id)
             .await
             .map(ExternalCryptoManager::from_entity)
-            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })?)
+            .map(Box::new)?)
     }
 
     async fn find_or_create_entity(
@@ -220,13 +201,12 @@ impl super::KeyProvider for ExternalKeyManager {
                         )
                         .await?)
                 }
-                false => Err(inner_err.into()),
+                false => Err::<_, ContainerError<error::ApiError>>(inner_err.into()),
             },
         };
-
-        entity
+        Ok(entity
             .map(ExternalCryptoManager::from_entity)
-            .map(|inner| -> Box<dyn CryptoOperationsManager> { Box::new(inner) })
+            .map(Box::new)?)
     }
 }
 
