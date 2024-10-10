@@ -104,8 +104,10 @@ where
                 #[cfg(any(feature = "middleware", feature = "limit"))]
                 global_app_state.clone(),
             ),
-        )
-        .route("/key/transfer", post(routes::key_migration::transfer_keys));
+        );
+
+    #[cfg(feature = "external_key_manager")]
+    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());

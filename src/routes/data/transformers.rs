@@ -8,34 +8,6 @@ use crate::{
 
 use super::types::{self, DataDuplicationCheck};
 
-impl<'a> TryFrom<(super::types::StoreCardRequest, &'a str)> for storage::types::LockerNew<'a> {
-    type Error = ContainerError<error::ApiError>;
-
-    fn try_from(
-        (value, hash_id): (super::types::StoreCardRequest, &'a str),
-    ) -> Result<Self, Self::Error> {
-        let data = match value.data {
-            types::Data::Card { card } => Ok(types::StoredData::CardData(card)),
-            types::Data::EncData { enc_card_data } => Ok(types::StoredData::EncData(enc_card_data)),
-        }
-        .and_then(|inner| {
-            serde_json::to_vec(&inner).change_error(error::ApiError::EncodingError)
-        })?;
-
-        Ok(Self {
-            locker_id: value
-                .requestor_card_reference
-                .unwrap_or_else(generate_uuid)
-                .into(),
-            merchant_id: value.merchant_id,
-            customer_id: value.merchant_customer_id,
-            enc_data: data.into(),
-            hash_id,
-            ttl: *value.ttl,
-        })
-    }
-}
-
 impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
     for super::types::StoreCardResponse
 {
@@ -56,8 +28,12 @@ impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
 impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
     type Error = ContainerError<error::ApiError>;
     fn try_from(value: storage::types::Locker) -> Result<Self, Self::Error> {
+        let decrypted_data = value
+            .data
+            .get_decrypted_inner_value()
+            .ok_or::<ContainerError<_>>(error::ApiError::DecodingError.into())?;
         let (card, enc_card_data) =
-            match serde_json::from_slice::<types::StoredData>(&value.enc_data.expose())
+            match serde_json::from_slice::<types::StoredData>(decrypted_data.peek())
                 .change_error(error::ApiError::DecodingError)?
             {
                 types::StoredData::EncData(data) => (None, Some(data)),
@@ -94,11 +70,6 @@ impl std::cmp::PartialEq<types::Data> for super::types::StoredData {
     }
 }
 
-/// Generate UUID v4 as strings to be used in storage layer
-pub fn generate_uuid() -> String {
-    uuid::Uuid::new_v4().to_string()
-}
-
 pub fn get_hash<T>(
     request: &types::Data,
     hash_algorithm: T,
@@ -123,21 +94,20 @@ where
 }
 
 pub fn validate_card_metadata(
-    stored_payload: Option<&storage::types::Locker>,
+    stored_payload: &storage::types::Locker,
     request_data: &types::Data,
-) -> Result<Option<DataDuplicationCheck>, ContainerError<error::ApiError>> {
-    stored_payload
-        .map(|stored_data| {
-            let stored_data =
-                serde_json::from_slice::<types::StoredData>(stored_data.enc_data.peek())
-                    .change_error(error::ApiError::DecodingError)?;
+) -> Result<DataDuplicationCheck, ContainerError<error::ApiError>> {
+    let decrypted_data = stored_payload
+        .data
+        .get_decrypted_inner_value()
+        .ok_or::<ContainerError<_>>(error::ApiError::DecodingError.into())?;
+    let stored_data = serde_json::from_slice::<types::StoredData>(decrypted_data.peek())
+        .change_error(error::ApiError::DecodingError)?;
 
-            let is_metadata_duplicated = stored_data.eq(request_data);
+    let is_metadata_duplicated = stored_data.eq(request_data);
 
-            Ok(match is_metadata_duplicated {
-                true => DataDuplicationCheck::Duplicated,
-                false => DataDuplicationCheck::MetaDataChanged,
-            })
-        })
-        .transpose()
+    Ok(match is_metadata_duplicated {
+        true => DataDuplicationCheck::Duplicated,
+        false => DataDuplicationCheck::MetaDataChanged,
+    })
 }

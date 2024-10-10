@@ -66,5 +66,5 @@ AQIDAQAB
 -----END PUBLIC KEY-----
 """, schema = "public" }
 
-[key_manager]
+[external_key_manager]
 url = "http://localhost:5000"
