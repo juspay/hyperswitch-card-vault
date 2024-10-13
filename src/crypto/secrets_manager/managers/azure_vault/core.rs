@@ -32,7 +32,7 @@ impl AzureKeyVaultClient {
     pub async fn new(config: &AzureKeyVaultConfig) -> Self {
         let credential = DefaultAzureCredential::default();
         let client = KeyClient::new(&config.key_vault_url, credential)
-            .expect("Failed to create KeyClient");
+            .expect("Failed to create azure vault KeyClient");
 
         Self {
             inner_client: Arc::new(client),
