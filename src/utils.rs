@@ -1,5 +1,7 @@
 use axum::{body::Body, extract::Request};
 
+use crate::storage::consts;
+
 /// Date-time utilities.
 pub mod date_time {
     use time::{OffsetDateTime, PrimitiveDateTime};
@@ -21,7 +23,7 @@ pub fn record_tenant_id_from_header(request: &Request<Body>) -> tracing::Span {
 
     match request
         .headers()
-        .get("x-tenant-id")
+        .get(consts::X_TENANT_ID)
         .and_then(|value| value.to_str().ok())
     {
         Some(value) => inner_trace!(value),

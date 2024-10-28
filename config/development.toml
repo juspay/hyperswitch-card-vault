@@ -5,18 +5,18 @@ log_format = "default"
 
 [server]
 host = "127.0.0.1"
-port = 8080
+port = 3030
 
 [limit]
 request_count = 1
 duration = 60
 
 [database]
-username = "sam"
-password = "damn"
+username = "db_user"
+password = "db_pass"
 host = "localhost"
 port = 5432
-dbname = "locker"
+dbname = "locker_copy"
 
 [cache]
 tti = 7200 # i.e. 2 hours

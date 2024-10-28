@@ -118,7 +118,11 @@ where
         axum::Router::new()
             .route("/delete", post(routes_v2::data::delete_data))
             .route("/add", post(routes_v2::data::add_data))
-            .route("/retrieve", post(routes_v2::data::retrieve_data)),
+            .route("/retrieve", post(routes_v2::data::retrieve_data))
+            .route(
+                "/fingerprint",
+                post(routes::data::get_or_insert_fingerprint),
+            ),
     );
 
     let router = router.layer(
