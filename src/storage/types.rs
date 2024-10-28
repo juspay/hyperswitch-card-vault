@@ -299,6 +299,16 @@ pub(super) trait StorageDecryption: Sized {
     ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
 }
 
+#[cfg(not(feature = "external_key_manager"))]
+pub(super) trait StorageEncryption: Sized {
+    type Output;
+    type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
+    fn encrypt(
+        self,
+        algo: &Self::Algorithm,
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
+}
+
 impl StorageDecryption for MerchantInner {
     type Output = Merchant;
 
@@ -312,6 +322,23 @@ impl StorageDecryption for MerchantInner {
             merchant_id: self.merchant_id,
             enc_key: algo.decrypt(self.enc_key.into_inner().expose())?.into(),
             created_at: self.created_at,
+        })
+    }
+}
+
+#[cfg(not(feature = "external_key_manager"))]
+impl<'a> StorageEncryption for MerchantNew<'a> {
+    type Output = MerchantNewInner<'a>;
+
+    type Algorithm = GcmAes256;
+
+    fn encrypt(
+        self,
+        algo: &Self::Algorithm,
+    ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
+        Ok(Self::Output {
+            merchant_id: self.merchant_id,
+            enc_key: algo.encrypt(self.enc_key.expose())?.into(),
         })
     }
 }
