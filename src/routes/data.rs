@@ -117,17 +117,14 @@ pub async fn add_card(
                 .await?;
 
             let (duplication_check, output) = match stored_data {
-                Some(locker) => {
-                    let decrypted_locker_data =
-                        crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, locker)
-                            .await?;
+                Some(mut locker) => {
+                    crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, &mut locker)
+                        .await?;
 
-                    let duplication_check = transformers::validate_card_metadata(
-                        &decrypted_locker_data,
-                        &request.data,
-                    )?;
+                    let duplication_check =
+                        transformers::validate_card_metadata(&locker, &request.data)?;
 
-                    (Some(duplication_check), decrypted_locker_data)
+                    (Some(duplication_check), locker)
                 }
                 None => {
                     let encrypted_locker_data = crypto_operation::encrypt_data_and_insert_into_db(
@@ -197,7 +194,7 @@ pub async fn retrieve_card(
         .find_by_entity_id(&tenant_app_state, request.merchant_id.clone())
         .await?;
 
-    let locker = tenant_app_state
+    let mut locker = tenant_app_state
         .db
         .find_by_locker_id_merchant_id_customer_id(
             request.card_reference.clone().into(),
@@ -206,10 +203,9 @@ pub async fn retrieve_card(
         )
         .await?;
 
-    let decrypted_locker_data =
-        crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, locker).await?;
+    crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, &mut locker).await?;
 
-    decrypted_locker_data
+    locker
         .ttl
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
@@ -231,7 +227,7 @@ pub async fn retrieve_card(
         })
         .transpose()?;
 
-    Ok(Json(decrypted_locker_data.try_into()?))
+    Ok(Json(locker.try_into()?))
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint

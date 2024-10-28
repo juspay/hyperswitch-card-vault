@@ -1,6 +1,9 @@
-use masking::Secret;
+use masking::{Secret, StrongSecret};
 
-use crate::routes::data::types::Ttl;
+use crate::{
+    routes::data::types::{SecretDataManager, Ttl},
+    storage::{storage_v2::types::Vault, types::Encryptable},
+};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct DeleteDataRequest {
@@ -22,7 +25,7 @@ pub struct RetrieveDataRequest {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct RetrieveDataResponse {
-    pub payload: Secret<serde_json::Value>,
+    pub data: Secret<serde_json::Value>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -37,4 +40,14 @@ pub struct StoreDataRequest {
 pub struct StoreDataResponse {
     pub entity_id: String,
     pub vault_id: String,
+}
+
+impl SecretDataManager for Vault {
+    fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>> {
+        self.data.get_encrypted_inner_value()
+    }
+
+    fn set_decrypted_data(&mut self, decrypted_data: StrongSecret<Vec<u8>>) {
+        self.data = Encryptable::from_decrypted_data(decrypted_data);
+    }
 }

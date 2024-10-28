@@ -19,14 +19,12 @@ pub(crate) trait VaultInterface {
         &self,
         vault_id: Secret<String>,
         entity_id: &str,
-        key: &Self::Algorithm,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
     /// Insert data into vault table
     async fn insert_or_get_from_vault(
         &self,
         new: types::VaultNew,
-        key: &Self::Algorithm,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
     /// Delete data from the vault

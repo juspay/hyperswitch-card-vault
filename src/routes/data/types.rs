@@ -1,15 +1,13 @@
-// #[derive(serde::Serialize, serde::Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Dedup {
-//     hash1: Option<String>,
-//     hash2: Option<String>,
-//     hash1_reference: Option<String>,
-//     hash2_reference: Option<String>,
-// }
+use masking::{Secret, StrongSecret};
 
-use masking::Secret;
-
-use crate::{error, storage, utils};
+use crate::{
+    error,
+    storage::{
+        self,
+        types::{Encryptable, Locker},
+    },
+    utils,
+};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Card {
@@ -178,5 +176,20 @@ impl Validation for StoreCardRequest {
             Data::EncData { .. } => Ok(()),
             Data::Card { card } => card.card_number.validate(),
         }
+    }
+}
+
+pub trait SecretDataManager {
+    fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>>;
+    fn set_decrypted_data(&mut self, decrypted_data: StrongSecret<Vec<u8>>);
+}
+
+impl SecretDataManager for Locker {
+    fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>> {
+        self.data.get_encrypted_inner_value()
+    }
+
+    fn set_decrypted_data(&mut self, decrypted_data: StrongSecret<Vec<u8>>) {
+        self.data = Encryptable::from_decrypted_data(decrypted_data);
     }
 }
