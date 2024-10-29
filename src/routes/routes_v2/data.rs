@@ -38,14 +38,15 @@ pub async fn retrieve_data(
         .find_by_entity_id(&tenant_app_state, request.entity_id.clone())
         .await?;
 
-    let mut vault = tenant_app_state
+    let vault_data = tenant_app_state
         .db
         .find_by_vault_id_entity_id(request.vault_id.clone().into(), &request.entity_id)
         .await?;
 
-    crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, &mut vault).await?;
+    let decrypted_data =
+        crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, vault_data).await?;
 
-    vault
+    decrypted_data
         .expires_at
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
@@ -62,17 +63,15 @@ pub async fn retrieve_data(
             }
         })
         .transpose()?;
-    let decrypted_data = vault
+    let decrypted_inner_data = decrypted_data
         .data
         .get_decrypted_inner_value()
         .ok_or(error::ApiError::UnknownError)
         .attach_printable("Failed to decrypt the stored data")?;
-    let decrypted_data_value = serde_json::from_slice(decrypted_data.peek().as_ref())
+    let data_value = serde_json::from_slice(decrypted_inner_data.peek().as_ref())
         .change_error(error::ApiError::DecodingError)?;
 
-    Ok(Json(types::RetrieveDataResponse {
-        data: decrypted_data_value,
-    }))
+    Ok(Json(types::RetrieveDataResponse { data: data_value }))
 }
 
 pub async fn add_data(

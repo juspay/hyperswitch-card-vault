@@ -181,7 +181,7 @@ impl Validation for StoreCardRequest {
 
 pub trait SecretDataManager {
     fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>>;
-    fn set_decrypted_data(&mut self, decrypted_data: StrongSecret<Vec<u8>>);
+    fn set_decrypted_data(self, decrypted_data: StrongSecret<Vec<u8>>) -> Self;
 }
 
 impl SecretDataManager for Locker {
@@ -189,7 +189,8 @@ impl SecretDataManager for Locker {
         self.data.get_encrypted_inner_value()
     }
 
-    fn set_decrypted_data(&mut self, decrypted_data: StrongSecret<Vec<u8>>) {
+    fn set_decrypted_data(mut self, decrypted_data: StrongSecret<Vec<u8>>) -> Self {
         self.data = Encryptable::from_decrypted_data(decrypted_data);
+        self
     }
 }

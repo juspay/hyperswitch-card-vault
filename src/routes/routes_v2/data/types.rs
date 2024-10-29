@@ -39,7 +39,7 @@ pub struct StoreDataRequest {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct StoreDataResponse {
     pub entity_id: String,
-    pub vault_id: String,
+    pub vault_id: Secret<String>,
 }
 
 impl SecretDataManager for Vault {
@@ -47,7 +47,8 @@ impl SecretDataManager for Vault {
         self.data.get_encrypted_inner_value()
     }
 
-    fn set_decrypted_data(&mut self, decrypted_data: StrongSecret<Vec<u8>>) {
+    fn set_decrypted_data(mut self, decrypted_data: StrongSecret<Vec<u8>>) -> Self {
         self.data = Encryptable::from_decrypted_data(decrypted_data);
+        self
     }
 }

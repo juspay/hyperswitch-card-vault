@@ -31,7 +31,7 @@ impl From<storage::storage_v2::types::Vault>
     fn from(value: storage::storage_v2::types::Vault) -> Self {
         Self {
             entity_id: value.entity_id,
-            vault_id: value.vault_id.expose(),
+            vault_id: value.vault_id,
         }
     }
 }

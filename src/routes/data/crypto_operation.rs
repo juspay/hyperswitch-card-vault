@@ -41,8 +41,8 @@ pub async fn encrypt_data_and_insert_into_db<'a>(
 pub async fn decrypt_data<T>(
     tenant_app_state: &TenantAppState,
     crypto_operator: Box<dyn CryptoOperationsManager>,
-    data: &mut T,
-) -> Result<(), ContainerError<error::ApiError>>
+    mut data: T,
+) -> Result<T, ContainerError<error::ApiError>>
 where
     T: types::SecretDataManager,
 {
@@ -51,9 +51,11 @@ where
             .decrypt_data(tenant_app_state, encrypted_data)
             .await?;
 
-        data.set_decrypted_data(decrypted_data);
+        data = data.set_decrypted_data(decrypted_data);
+        Ok(data)
+    } else {
+        Err(error::ApiError::NotFoundError.into())
     }
-    Ok(())
 }
 
 pub async fn encrypt_data_and_insert_into_db_v2(
