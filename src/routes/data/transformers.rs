@@ -25,6 +25,17 @@ impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
     }
 }
 
+impl From<storage::storage_v2::types::Vault>
+    for crate::routes::routes_v2::data::types::StoreDataResponse
+{
+    fn from(value: storage::storage_v2::types::Vault) -> Self {
+        Self {
+            entity_id: value.entity_id,
+            vault_id: value.vault_id,
+        }
+    }
+}
+
 impl TryFrom<storage::types::Locker> for super::types::RetrieveCardResponse {
     type Error = ContainerError<error::ApiError>;
     fn try_from(value: storage::types::Locker) -> Result<Self, Self::Error> {

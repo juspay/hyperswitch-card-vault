@@ -7,11 +7,7 @@ use masking::{ExposeInterface, Secret};
 use crate::{
     crypto::encryption_manager::managers::aes::GcmAes256,
     error::{self, ContainerError, ResultContainerExt},
-    storage::{
-        schema,
-        types::{StorageDecryption, StorageEncryption},
-        Storage,
-    },
+    storage::{schema, Storage},
 };
 
 use super::{types, VaultInterface};
@@ -24,7 +20,6 @@ impl VaultInterface for Storage {
         &self,
         vault_id: Secret<String>,
         entity_id: &str,
-        key: &Self::Algorithm,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
@@ -44,31 +39,30 @@ impl VaultInterface for Storage {
             })
             .map_err(error::ContainerError::from)
             .map_err(From::from)
-            .and_then(|inner| Ok(inner.decrypt(key)?))
+            .map(|inner| inner.into())
     }
 
     async fn insert_or_get_from_vault(
         &self,
         new: types::VaultNew,
-        key: &Self::Algorithm,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
         let query: Result<_, diesel::result::Error> =
             diesel::insert_into(types::VaultInner::table())
-                .values(new.encrypt(key)?)
+                .values(new)
                 .get_result::<types::VaultInner>(&mut conn)
                 .await;
 
         match query {
-            Ok(inner) => Ok(inner.decrypt(key)?),
+            Ok(inner) => Ok(inner.into()),
             Err(error) => match error {
                 diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::UniqueViolation,
                     _,
                 ) => {
-                    self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id, key)
+                    self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id)
                         .await
                 }
                 error => Err(error).change_error(error::StorageError::InsertError)?,

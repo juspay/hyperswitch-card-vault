@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 
-use crate::{app::TenantAppState, error::ApiError, tenant::GlobalAppState};
+use crate::{app::TenantAppState, error::ApiError, storage::consts, tenant::GlobalAppState};
 
 #[derive(Clone)]
 pub struct TenantStateResolver(pub Arc<TenantAppState>);
@@ -17,7 +17,7 @@ impl FromRequestParts<Arc<GlobalAppState>> for TenantStateResolver {
     ) -> Result<Self, Self::Rejection> {
         let tenant_id = parts
             .headers
-            .get("x-tenant-id")
+            .get(consts::X_TENANT_ID)
             .and_then(|h| h.to_str().ok())
             .ok_or(ApiError::TenantError("x-tenant-id not found in headers"))?;
 
@@ -41,7 +41,7 @@ impl FromRequestParts<Arc<GlobalAppState>> for TenantId {
     ) -> Result<Self, Self::Rejection> {
         let tenant_id = parts
             .headers
-            .get("x-tenant-id")
+            .get(consts::X_TENANT_ID)
             .and_then(|h| h.to_str().ok())
             .map(ToString::to_string)
             .ok_or(ApiError::TenantError("x-tenant-id not found in header"))?;

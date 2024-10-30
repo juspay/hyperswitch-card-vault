@@ -1,10 +1,13 @@
+use masking::ExposeInterface;
+
 use crate::{
     app::TenantAppState,
     crypto::keymanager::CryptoOperationsManager,
     error::{self, ContainerError, ResultContainerExt},
     routes::data::types,
     storage::{
-        types::{Encryptable, Locker, LockerNew},
+        storage_v2::{types::VaultNew, VaultInterface},
+        types::{Locker, LockerNew},
         LockerInterface,
     },
 };
@@ -35,18 +38,42 @@ pub async fn encrypt_data_and_insert_into_db<'a>(
     Ok(locker)
 }
 
-pub async fn decrypt_data(
+pub async fn decrypt_data<T>(
     tenant_app_state: &TenantAppState,
     crypto_operator: Box<dyn CryptoOperationsManager>,
-    mut locker: Locker,
-) -> Result<Locker, ContainerError<error::ApiError>> {
-    if let Some(encrypted_data) = locker.data.get_encrypted_inner_value() {
+    mut data: T,
+) -> Result<T, ContainerError<error::ApiError>>
+where
+    T: types::SecretDataManager,
+{
+    if let Some(encrypted_data) = data.get_encrypted_inner_value() {
         let decrypted_data = crypto_operator
             .decrypt_data(tenant_app_state, encrypted_data)
             .await?;
 
-        locker.data = Encryptable::from_decrypted_data(decrypted_data)
+        data = data.set_decrypted_data(decrypted_data);
     }
+    Ok(data)
+}
 
-    Ok(locker)
+pub async fn encrypt_data_and_insert_into_db_v2(
+    tenant_app_state: &TenantAppState,
+    crypto_operator: Box<dyn CryptoOperationsManager>,
+    request: crate::routes::routes_v2::data::types::StoreDataRequest,
+) -> Result<crate::storage::storage_v2::types::Vault, ContainerError<error::ApiError>> {
+    let data_to_be_encrypted = serde_json::to_vec(&request.data.clone().expose())
+        .change_error(error::ApiError::EncodingError)?;
+
+    let encrypted_data = crypto_operator
+        .encrypt_data(tenant_app_state, data_to_be_encrypted.into())
+        .await?;
+
+    let vault_new = VaultNew::new(request, encrypted_data.into());
+
+    let vault = tenant_app_state
+        .db
+        .insert_or_get_from_vault(vault_new)
+        .await?;
+
+    Ok(vault)
 }
