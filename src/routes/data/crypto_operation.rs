@@ -52,10 +52,8 @@ where
             .await?;
 
         data = data.set_decrypted_data(decrypted_data);
-        Ok(data)
-    } else {
-        Err(error::ApiError::NotFoundError.into())
     }
+    Ok(data)
 }
 
 pub async fn encrypt_data_and_insert_into_db_v2(
