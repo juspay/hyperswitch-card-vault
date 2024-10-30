@@ -9,7 +9,7 @@ rust-version = "1.78"
 
 [features]
 default = ["caching"]
-release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager_mtls"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
