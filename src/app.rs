@@ -3,6 +3,12 @@ use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
 
+#[cfg(feature = "middleware")]
+use crate::middleware as custom_middleware;
+
+#[cfg(feature = "middleware")]
+use axum::middleware;
+
 use std::sync::Arc;
 
 use crate::{
@@ -94,14 +100,14 @@ where
         .nest(
             "/data",
             routes::data::serve(
-                #[cfg(any(feature = "middleware", feature = "limit"))]
+                #[cfg(feature = "limit")]
                 global_app_state.clone(),
             ),
         )
         .nest(
             "/cards",
             routes::data::serve(
-                #[cfg(any(feature = "middleware", feature = "limit"))]
+                #[cfg(feature = "limit")]
                 global_app_state.clone(),
             ),
         );
@@ -124,6 +130,12 @@ where
                 post(routes::data::get_or_insert_fingerprint),
             ),
     );
+
+    #[cfg(feature = "middleware")]
+    let router = router.layer(middleware::from_fn_with_state(
+        global_app_state.clone(),
+        custom_middleware::middleware,
+    ));
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()

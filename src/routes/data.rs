@@ -5,9 +5,6 @@ use axum::{routing::post, Json};
 #[cfg(feature = "limit")]
 use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 
-#[cfg(feature = "middleware")]
-use axum::middleware;
-
 use crate::{
     crypto::{
         hash_manager::managers::sha::Sha512,
@@ -19,9 +16,6 @@ use crate::{
     tenant::GlobalAppState,
     utils,
 };
-
-#[cfg(feature = "middleware")]
-use crate::middleware as custom_middleware;
 
 use self::types::Validation;
 
@@ -41,7 +35,7 @@ async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
 ///
 #[allow(clippy::let_and_return)]
 pub fn serve(
-    #[cfg(any(feature = "middleware", feature = "limit"))] global_app_state: Arc<GlobalAppState>,
+    #[cfg(feature = "limit")] global_app_state: Arc<GlobalAppState>,
 ) -> axum::Router<Arc<GlobalAppState>> {
     #[cfg(feature = "limit")]
     let ratelimit_middleware = tower::ServiceBuilder::new()
@@ -72,20 +66,6 @@ pub fn serve(
         .route("/retrieve", post(retrieve_card))
         .route("/fingerprint", post(get_or_insert_fingerprint));
 
-    // v2 routes
-    let router = router.nest(
-        "/v2",
-        axum::Router::new().route("/fingerprint", post(get_or_insert_fingerprint)),
-    );
-
-    #[cfg(feature = "middleware")]
-    {
-        router.layer(middleware::from_fn_with_state(
-            global_app_state,
-            custom_middleware::middleware,
-        ))
-    }
-    #[cfg(not(feature = "middleware"))]
     router
 }
 
