@@ -33,8 +33,9 @@ vaultrs = { version = "0.7.2", optional = true }
 
 # Tokio Dependencies
 tokio = { version = "1.39.3", features = ["macros", "rt-multi-thread"] }
-axum = "0.7.5"
+axum = { version = "0.7.5", features = ["macros"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls"] }
+axum-extra = { version = "0.9.4" }
 hyper = "1.4.1"
 tower = { version = "0.5.0", features = ["limit", "buffer", "load-shed"] }
 tower-http = { version = "0.5.2", features = ["trace"] }

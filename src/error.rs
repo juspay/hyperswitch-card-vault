@@ -6,6 +6,8 @@ pub mod container;
 mod custom_error;
 mod transforms;
 
+use axum::extract::rejection::JsonRejection;
+use axum::response::IntoResponse;
 pub use container::*;
 pub use custom_error::*;
 use reqwest::StatusCode;
@@ -419,27 +421,34 @@ impl ApiErrorResponse {
     }
 }
 
-// pub trait LogReport<T, E> {
-//     fn report_unwrap(self) -> Result<T, E>;
-// }
+#[derive(Debug, Clone)]
+pub struct JsonError {
+    message: String,
+}
 
-// impl<T, E1, E2> LogReport<T, E1> for Result<T, Report<E2>>
-// where
-//     E1: Send + Sync + std::error::Error + Copy + 'static,
-//     E2: Send + Sync + std::error::Error + Copy + 'static,
-//     E1: From<E2>,
-// {
-//     #[track_caller]
-//     fn report_unwrap(self) -> Result<T, E1> {
-//         let output = match self {
-//             Ok(inner_val) => Ok(inner_val),
-//             Err(inner_err) => {
-//                 let new_error: E1 = (*inner_err.current_context()).into();
-//                 crate::logger::error!(?inner_err);
-//                 Err(inner_err.change_context(new_error))
-//             }
-//         };
+impl From<JsonRejection> for JsonError {
+    fn from(rejection: JsonRejection) -> Self {
+        Self {
+            message: rejection.body_text(),
+        }
+    }
+}
 
-//         output.map_err(|err| (*err.current_context()))
-//     }
-// }
+impl IntoResponse for JsonError {
+    fn into_response(self) -> axum::response::Response {
+        crate::logger::error!(?self);
+        (
+            hyper::StatusCode::BAD_REQUEST,
+            axum::Json(ApiErrorResponse::new(
+                error_codes::TE_03,
+                self.message,
+                None,
+            )),
+        )
+            .into_response()
+    }
+}
+
+#[derive(axum::extract::FromRequest)]
+#[from_request(via(axum::Json), rejection(JsonError))]
+pub struct Json<T>(pub T);
