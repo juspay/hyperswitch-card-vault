@@ -4,6 +4,17 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.5.1 (2024-12-10)
+
+### Miscellaneous Tasks
+
+- Include `reqwest/rustls-tls` feature to keymanager_mtls ([#134](https://github.com/juspay/hyperswitch-card-vault/pull/134)) ([`5cbb06f`](https://github.com/juspay/hyperswitch-card-vault/commit/5cbb06fc9a983f48d719146d8cb37ce9904eae8b))
+
+**Full Changelog:** [`v0.5.0...v0.5.1`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.5.0...v0.5.1)
+
+- - -
+
+
 ## 0.5.0 (2024-12-10)
 
 ### Features
