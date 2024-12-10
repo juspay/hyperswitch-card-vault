@@ -150,7 +150,7 @@ where
     let headers = [
         (headers::CONTENT_TYPE.into(), "application/json".into()),
         (
-            "authorization".into(),
+            headers::AUTHORIZATION.into(),
             format!("Basic {}", broken_master_key).into(),
         ),
     ]
