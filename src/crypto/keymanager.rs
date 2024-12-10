@@ -145,7 +145,7 @@ where
         let (left_half, right_half) = broken_master_key.split_at(broken_master_key.len() / 2);
         let hex_left = hex::encode(left_half);
         let hex_right = hex::encode(right_half);
-        BASE64_ENGINE.encode(format!("{}{}", hex_left, hex_right))
+        BASE64_ENGINE.encode(format!("{}:{}", hex_left, hex_right))
     };
     let headers = [
         (headers::CONTENT_TYPE.into(), "application/json".into()),
