@@ -1,4 +1,5 @@
 pub mod types;
+use base64::Engine;
 use masking::{ExposeInterface, Secret};
 use serde::Deserialize;
 
@@ -17,6 +18,8 @@ use crate::{
     routes::health,
     storage::{consts::headers, types::Entity, EntityInterface},
 };
+
+use super::consts::BASE64_ENGINE;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct KeyManagerConfig {
@@ -137,9 +140,22 @@ where
     T: serde::Serialize + Send + Sync + 'static,
     ContainerError<E>: From<ContainerError<ApiClientError>> + Send + Sync,
 {
-    let headers = [(headers::CONTENT_TYPE.into(), "application/json".into())]
-        .into_iter()
-        .collect::<std::collections::HashSet<_>>();
+    let broken_master_key = {
+        let broken_master_key = &state.config.tenant_secrets.master_key;
+        let (left_half, right_half) = broken_master_key.split_at(broken_master_key.len() / 2);
+        let hex_left = hex::encode(left_half);
+        let hex_right = hex::encode(right_half);
+        BASE64_ENGINE.encode(format!("{}:{}", hex_left, hex_right))
+    };
+    let headers = [
+        (headers::CONTENT_TYPE.into(), "application/json".into()),
+        (
+            headers::AUTHORIZATION.into(),
+            format!("Basic {}", broken_master_key).into(),
+        ),
+    ]
+    .into_iter()
+    .collect::<std::collections::HashSet<_>>();
     let response = state
         .api_client
         .send_request::<_>(url, headers, method, request_body)

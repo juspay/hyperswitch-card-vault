@@ -12,4 +12,5 @@ pub const ID_LENGTH: usize = 20;
 /// Header Constants
 pub mod headers {
     pub const CONTENT_TYPE: &str = "Content-Type";
+    pub const AUTHORIZATION: &str = "Authorization";
 }
