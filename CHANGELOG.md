@@ -4,6 +4,17 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.6.2 (2024-12-17)
+
+### Bug Fixes
+
+- **custodian:** Remove custodian from under JWE+JWS ([#137](https://github.com/juspay/hyperswitch-card-vault/pull/137)) ([`f050062`](https://github.com/juspay/hyperswitch-card-vault/commit/f050062dc11357646183f90ed7613f914ea4d24d))
+
+**Full Changelog:** [`v0.6.1...v0.6.2`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.1...v0.6.2)
+
+- - -
+
+
 ## 0.6.1 (2024-12-17)
 
 ### Bug Fixes
