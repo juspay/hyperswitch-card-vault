@@ -1,17 +1,15 @@
-// #[derive(serde::Serialize, serde::Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Dedup {
-//     hash1: Option<String>,
-//     hash2: Option<String>,
-//     hash1_reference: Option<String>,
-//     hash2_reference: Option<String>,
-// }
+use masking::{Secret, StrongSecret};
 
-use masking::Secret;
+use crate::{
+    error,
+    storage::{
+        self,
+        types::{Encryptable, Locker},
+    },
+    utils,
+};
 
-use crate::{error, storage, utils};
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Card {
     pub card_number: storage::types::CardNumber,
     name_on_card: Option<String>,
@@ -57,7 +55,7 @@ pub struct StoreCardRequest {
     pub ttl: Ttl,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum Data {
     EncData { enc_card_data: String },
@@ -142,7 +140,7 @@ pub struct FingerprintResponse {
     pub fingerprint_id: Secret<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
 pub enum StoredData {
     EncData(String),
     CardData(Card),
@@ -178,5 +176,21 @@ impl Validation for StoreCardRequest {
             Data::EncData { .. } => Ok(()),
             Data::Card { card } => card.card_number.validate(),
         }
+    }
+}
+
+pub trait SecretDataManager {
+    fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>>;
+    fn set_decrypted_data(self, decrypted_data: StrongSecret<Vec<u8>>) -> Self;
+}
+
+impl SecretDataManager for Locker {
+    fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>> {
+        self.data.get_encrypted_inner_value()
+    }
+
+    fn set_decrypted_data(mut self, decrypted_data: StrongSecret<Vec<u8>>) -> Self {
+        self.data = Encryptable::from_decrypted_data(decrypted_data);
+        self
     }
 }

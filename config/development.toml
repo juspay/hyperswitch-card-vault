@@ -12,8 +12,8 @@ request_count = 1
 duration = 60
 
 [database]
-username = "sam"
-password = "damn"
+username = "db_user"
+password = "db_pass"
 host = "localhost"
 port = 5432
 dbname = "locker"
@@ -66,5 +66,5 @@ AQIDAQAB
 -----END PUBLIC KEY-----
 """, schema = "public" }
 
-[key_manager]
+[external_key_manager]
 url = "http://localhost:5000"

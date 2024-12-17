@@ -3,12 +3,20 @@ use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
 
+#[cfg(feature = "middleware")]
+use crate::middleware as custom_middleware;
+
+#[cfg(feature = "middleware")]
+use axum::middleware;
+
 use std::sync::Arc;
 
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
-    error, logger, routes, storage,
+    error, logger,
+    routes::{self, routes_v2},
+    storage,
     tenant::GlobalAppState,
     utils,
 };
@@ -92,21 +100,42 @@ where
         .nest(
             "/data",
             routes::data::serve(
-                #[cfg(any(feature = "middleware", feature = "limit"))]
+                #[cfg(feature = "limit")]
                 global_app_state.clone(),
             ),
         )
         .nest(
             "/cards",
             routes::data::serve(
-                #[cfg(any(feature = "middleware", feature = "limit"))]
+                #[cfg(feature = "limit")]
                 global_app_state.clone(),
             ),
-        )
-        .route("/key/transfer", post(routes::key_migration::transfer_keys));
+        );
+
+    #[cfg(feature = "external_key_manager")]
+    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());
+
+    // v2 routes
+    let router = router.nest(
+        "/api/v2/vault",
+        axum::Router::new()
+            .route("/delete", post(routes_v2::data::delete_data))
+            .route("/add", post(routes_v2::data::add_data))
+            .route("/retrieve", post(routes_v2::data::retrieve_data))
+            .route(
+                "/fingerprint",
+                post(routes::data::get_or_insert_fingerprint),
+            ),
+    );
+
+    #[cfg(feature = "middleware")]
+    let router = router.layer(middleware::from_fn_with_state(
+        global_app_state.clone(),
+        custom_middleware::middleware,
+    ));
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()

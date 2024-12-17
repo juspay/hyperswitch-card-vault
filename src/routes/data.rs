@@ -5,30 +5,21 @@ use axum::{routing::post, Json};
 #[cfg(feature = "limit")]
 use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 
-#[cfg(feature = "middleware")]
-use axum::middleware;
-
-use masking::ExposeInterface;
-
-use types::StoreCardResponse;
-
 use crate::{
     crypto::{
-        encryption_manager::managers::aes::GcmAes256, hash_manager::managers::sha::Sha512,
-        keymanager,
+        hash_manager::managers::sha::Sha512,
+        keymanager::{self, KeyProvider},
     },
     custom_extractors::TenantStateResolver,
-    error::{self, ContainerError, NotFoundError, ResultContainerExt},
-    storage::{FingerprintInterface, HashInterface, LockerInterface, MerchantInterface},
+    error::{self, ContainerError, ResultContainerExt},
+    storage::{FingerprintInterface, HashInterface, LockerInterface},
     tenant::GlobalAppState,
     utils,
 };
 
-#[cfg(feature = "middleware")]
-use crate::middleware as custom_middleware;
-
 use self::types::Validation;
 
+pub mod crypto_operation;
 mod transformers;
 pub mod types;
 
@@ -44,7 +35,7 @@ async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
 ///
 #[allow(clippy::let_and_return)]
 pub fn serve(
-    #[cfg(any(feature = "middleware", feature = "limit"))] global_app_state: Arc<GlobalAppState>,
+    #[cfg(feature = "limit")] global_app_state: Arc<GlobalAppState>,
 ) -> axum::Router<Arc<GlobalAppState>> {
     #[cfg(feature = "limit")]
     let ratelimit_middleware = tower::ServiceBuilder::new()
@@ -75,20 +66,6 @@ pub fn serve(
         .route("/retrieve", post(retrieve_card))
         .route("/fingerprint", post(get_or_insert_fingerprint));
 
-    // v2 routes
-    let router = router.nest(
-        "/v2",
-        axum::Router::new().route("/fingerprint", post(get_or_insert_fingerprint)),
-    );
-
-    #[cfg(feature = "middleware")]
-    {
-        router.layer(middleware::from_fn_with_state(
-            global_app_state,
-            custom_middleware::middleware,
-        ))
-    }
-    #[cfg(not(feature = "middleware"))]
     router
 }
 
@@ -99,44 +76,14 @@ pub async fn add_card(
 ) -> Result<Json<types::StoreCardResponse>, ContainerError<error::ApiError>> {
     request.validate()?;
 
-    let master_encryption =
-        GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
-
-    let is_new_merchant = tenant_app_state
-        .db
-        .find_by_merchant_id(&request.merchant_id, &master_encryption)
-        .await
-        .err()
-        .map(|err| err.is_not_found())
-        .unwrap_or(false);
-
-    let merchant = tenant_app_state
-        .db
-        .find_or_create_by_merchant_id(&request.merchant_id, &master_encryption)
-        .await?;
-
-    if is_new_merchant {
-        let key_transfer = keymanager::transfer_key_to_key_manager(
-            &tenant_app_state,
-            &merchant.merchant_id,
-            keymanager::types::DataKeyTransferRequest::create_request(
-                merchant.enc_key.clone().expose(),
-            ),
-        )
-        .await;
-
-        if let Err(err) = key_transfer {
-            tracing::warn!("Failed to transfer key to key manager");
-            tracing::error!(?err);
-        }
-    }
-
-    let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
-
     let hash_data = transformers::get_hash(&request.data, Sha512)
         .change_error(error::ApiError::EncodingError)?;
 
     let optional_hash_table = tenant_app_state.db.find_by_data_hash(&hash_data).await?;
+
+    let crypto_manager = keymanager::get_dek_manager()
+        .find_or_create_entity(&tenant_app_state, request.merchant_id.clone())
+        .await?;
 
     let (duplication_check, output) = match optional_hash_table {
         Some(hash_table) => {
@@ -146,23 +93,32 @@ pub async fn add_card(
                     &hash_table.hash_id,
                     &request.merchant_id,
                     &request.merchant_customer_id,
-                    &merchant_dek,
                 )
                 .await?;
 
-            let duplication_check =
-                transformers::validate_card_metadata(stored_data.as_ref(), &request.data)?;
+            let (duplication_check, output) = match stored_data {
+                Some(locker) => {
+                    let decrypted_locker_data =
+                        crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, locker)
+                            .await?;
 
-            let output = match stored_data {
-                Some(data) => data,
+                    let duplication_check = transformers::validate_card_metadata(
+                        &decrypted_locker_data,
+                        &request.data,
+                    )?;
+
+                    (Some(duplication_check), decrypted_locker_data)
+                }
                 None => {
-                    tenant_app_state
-                        .db
-                        .insert_or_get_from_locker(
-                            (request, hash_table.hash_id.as_str()).try_into()?,
-                            &merchant_dek,
-                        )
-                        .await?
+                    let encrypted_locker_data = crypto_operation::encrypt_data_and_insert_into_db(
+                        &tenant_app_state,
+                        crypto_manager,
+                        request,
+                        &hash_table.hash_id,
+                    )
+                    .await?;
+
+                    (None, encrypted_locker_data)
                 }
             };
 
@@ -171,19 +127,22 @@ pub async fn add_card(
         None => {
             let hash_table = tenant_app_state.db.insert_hash(hash_data).await?;
 
-            let output = tenant_app_state
-                .db
-                .insert_or_get_from_locker(
-                    (request, hash_table.hash_id.as_str()).try_into()?,
-                    &merchant_dek,
-                )
-                .await?;
+            let encrypted_locker_data = crypto_operation::encrypt_data_and_insert_into_db(
+                &tenant_app_state,
+                crypto_manager,
+                request,
+                &hash_table.hash_id,
+            )
+            .await?;
 
-            (None, output)
+            (None, encrypted_locker_data)
         }
     };
 
-    Ok(Json(StoreCardResponse::from((duplication_check, output))))
+    Ok(Json(types::StoreCardResponse::from((
+        duplication_check,
+        output,
+    ))))
 }
 
 /// `/data/delete` handling the requirement of deleting data
@@ -191,11 +150,8 @@ pub async fn delete_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::DeleteCardRequest>,
 ) -> Result<Json<types::DeleteCardResponse>, ContainerError<error::ApiError>> {
-    let master_key = GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
-
-    let _merchant = tenant_app_state
-        .db
-        .find_by_merchant_id(&request.merchant_id, &master_key)
+    let _entity = keymanager::get_dek_manager()
+        .find_by_entity_id(&tenant_app_state, request.merchant_id.clone())
         .await?;
 
     let _delete_status = tenant_app_state
@@ -217,26 +173,24 @@ pub async fn retrieve_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::RetrieveCardRequest>,
 ) -> Result<Json<types::RetrieveCardResponse>, ContainerError<error::ApiError>> {
-    let master_key = GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
-
-    let merchant = tenant_app_state
-        .db
-        .find_by_merchant_id(&request.merchant_id, &master_key)
+    let crypto_manager = keymanager::get_dek_manager()
+        .find_by_entity_id(&tenant_app_state, request.merchant_id.clone())
         .await?;
 
-    let merchant_dek = GcmAes256::new(merchant.enc_key.expose());
-
-    let card = tenant_app_state
+    let locker = tenant_app_state
         .db
         .find_by_locker_id_merchant_id_customer_id(
             request.card_reference.clone().into(),
             &request.merchant_id,
             &request.merchant_customer_id,
-            &merchant_dek,
         )
         .await?;
 
-    card.ttl
+    let decrypted_locker_data =
+        crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, locker).await?;
+
+    decrypted_locker_data
+        .ttl
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
                 tokio::spawn(async move {
@@ -257,7 +211,7 @@ pub async fn retrieve_card(
         })
         .transpose()?;
 
-    Ok(Json(card.try_into()?))
+    Ok(Json(decrypted_locker_data.try_into()?))
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint

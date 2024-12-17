@@ -5,18 +5,31 @@ use super::types;
 pub(super) type Cache<T, U> =
     moka::future::Cache<<T as super::Cacheable<U>>::Key, Arc<<T as super::Cacheable<U>>::Value>>;
 
+#[cfg(feature = "external_key_manager")]
+pub trait CacheableWithEntity<T>: super::Cacheable<types::Entity> {}
+
+#[cfg(feature = "external_key_manager")]
+impl<T: super::Cacheable<types::Entity>> CacheableWithEntity<T> for T {}
+
+#[cfg(not(feature = "external_key_manager"))]
+pub trait CacheableWithEntity<T> {}
+
+#[cfg(not(feature = "external_key_manager"))]
+impl<T> CacheableWithEntity<T> for T {}
+
 #[derive(Clone)]
 pub struct Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
         + super::Cacheable<types::Fingerprint>
-        + super::Cacheable<types::Entity>,
+        + CacheableWithEntity<T>,
 {
     inner: T,
     merchant_cache: Cache<T, types::Merchant>,
     hash_table_cache: Cache<T, types::HashTable>,
     fingerprint_cache: Cache<T, types::Fingerprint>,
+    #[cfg(feature = "external_key_manager")]
     entity_cache: Cache<T, types::Entity>,
 }
 
@@ -25,7 +38,7 @@ where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
         + super::Cacheable<types::Fingerprint>
-        + super::Cacheable<types::Entity>,
+        + CacheableWithEntity<T>,
 {
     type Target = T;
 
@@ -59,7 +72,7 @@ where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
         + super::Cacheable<types::Fingerprint>
-        + super::Cacheable<types::Entity>,
+        + CacheableWithEntity<T>,
 {
     fn get_cache(&self) -> &Cache<T, types::Merchant> {
         &self.merchant_cache
@@ -71,7 +84,7 @@ where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
         + super::Cacheable<types::Fingerprint>
-        + super::Cacheable<types::Entity>,
+        + CacheableWithEntity<T>,
 {
     fn get_cache(&self) -> &Cache<T, types::HashTable> {
         &self.hash_table_cache
@@ -83,19 +96,20 @@ where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
         + super::Cacheable<types::Fingerprint>
-        + super::Cacheable<types::Entity>,
+        + CacheableWithEntity<T>,
 {
     fn get_cache(&self) -> &Cache<T, types::Fingerprint> {
         &self.fingerprint_cache
     }
 }
 
+#[cfg(feature = "external_key_manager")]
 impl<T> GetCache<T, types::Entity> for Caching<T>
 where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
         + super::Cacheable<types::Fingerprint>
-        + super::Cacheable<types::Entity>,
+        + CacheableWithEntity<T>,
 {
     fn get_cache(&self) -> &Cache<T, types::Entity> {
         &self.entity_cache
@@ -107,7 +121,7 @@ where
     T: super::Cacheable<types::Merchant>
         + super::Cacheable<types::HashTable>
         + super::Cacheable<types::Fingerprint>
-        + super::Cacheable<types::Entity>,
+        + CacheableWithEntity<T>,
 {
     #[inline(always)]
     pub async fn lookup<U>(
@@ -144,18 +158,21 @@ where
             let merchant_cache = new_cache::<T, types::Merchant>(config, "merchant");
             let hash_table_cache = new_cache::<T, types::HashTable>(config, "hash_table");
             let fingerprint_cache = new_cache::<T, types::Fingerprint>(config, "fingerprint");
+            #[cfg(feature = "external_key_manager")]
             let entity_cache = new_cache::<T, types::Entity>(config, "entity");
             Self {
                 inner,
                 merchant_cache,
                 hash_table_cache,
                 fingerprint_cache,
+                #[cfg(feature = "external_key_manager")]
                 entity_cache,
             }
         }
     }
 }
 
+#[cfg(feature = "external_key_manager")]
 pub mod entity;
 pub mod fingerprint;
 pub mod hash_table;
