@@ -6,31 +6,31 @@ pub enum MerchantDBError {
     DEKDecryptionError,
     #[error("Error while connecting to database")]
     DBError,
-    #[error("Error while finding element in the database")]
+    #[error("Error while finding merchant record in the database")]
     DBFilterError,
-    #[error("Error while inserting element in the database")]
+    #[error("Error while inserting merchant record in the database")]
     DBInsertError,
-    #[error("Element not found in database")]
+    #[error("Merchant record not found in database")]
     NotFoundError,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum LockerDBError {
+pub enum VaultDBError {
     #[error("Error while encrypting data before adding to DB")]
     DataEncryptionError,
     #[error("Error while decrypting data from DB")]
     DataDecryptionError,
     #[error("Error while connecting to database")]
     DBError,
-    #[error("Error while finding element in the database")]
+    #[error("Error while finding vault record in the database")]
     DBFilterError,
-    #[error("Error while inserting element in the database")]
+    #[error("Error while inserting vault record in the database")]
     DBInsertError,
-    #[error("Error while deleting element in the database")]
+    #[error("Error while deleting vault record in the database")]
     DBDeleteError,
-    #[error("Element not found in database")]
+    #[error("Vault record not found in database")]
     NotFoundError,
     #[error("Unpredictable error occurred")]
     UnknownError,
@@ -40,9 +40,9 @@ pub enum LockerDBError {
 pub enum HashDBError {
     #[error("Error while connecting to database")]
     DBError,
-    #[error("Error while finding element in the database")]
+    #[error("Error while finding hash record in the database")]
     DBFilterError,
-    #[error("Error while inserting element in the database")]
+    #[error("Error while inserting hash record in the database")]
     DBInsertError,
     #[error("Unpredictable error occurred")]
     UnknownError,
@@ -66,9 +66,9 @@ pub enum TestDBError {
 pub enum FingerprintDBError {
     #[error("Error while connecting to database")]
     DBError,
-    #[error("Error while finding element in the database")]
+    #[error("Error while finding fingerprint record in the database")]
     DBFilterError,
-    #[error("Error while inserting element in the database")]
+    #[error("Error while inserting fingerprint record in the database")]
     DBInsertError,
     #[error("Unpredictable error occurred")]
     UnknownError,
@@ -80,13 +80,13 @@ pub enum FingerprintDBError {
 pub enum EntityDBError {
     #[error("Error while connecting to database")]
     DBError,
-    #[error("Error while finding element in the database")]
+    #[error("Error while finding entity record in the database")]
     DBFilterError,
-    #[error("Error while inserting element in the database")]
+    #[error("Error while inserting entity record in the database")]
     DBInsertError,
     #[error("Unpredictable error occurred")]
     UnknownError,
-    #[error("Element not found in database")]
+    #[error("Entity record not found in database")]
     NotFoundError,
 }
 

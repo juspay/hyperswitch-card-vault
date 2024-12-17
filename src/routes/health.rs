@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::{crypto::keymanager, logger, tenant::GlobalAppState};
+use crate::tenant::GlobalAppState;
+#[cfg(feature = "external_key_manager")]
+use crate::{crypto::keymanager, logger};
 
 use axum::{routing::get, Json};
 
@@ -32,6 +34,7 @@ pub async fn health() -> Json<HealthRespPayload> {
 pub struct Diagnostics {
     key_custodian_locked: bool,
     database: DatabaseHealth,
+    #[cfg(feature = "external_key_manager")]
     keymanager_status: HealthState,
 }
 
@@ -88,7 +91,8 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
         },
     };
 
-    let keymanager_status = keymanager::health_check_keymanager(&state)
+    #[cfg(feature = "external_key_manager")]
+    let keymanager_status = keymanager::external_keymanager::health_check_keymanager(&state)
         .await
         .map_err(|err| logger::error!(keymanager_err=?err))
         .unwrap_or_default();
@@ -96,6 +100,7 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
     axum::Json(Diagnostics {
         key_custodian_locked: false,
         database: db_health,
+        #[cfg(feature = "external_key_manager")]
         keymanager_status,
     })
 }

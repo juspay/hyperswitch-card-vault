@@ -7,6 +7,7 @@ diesel::table! {
         entity_id -> Varchar,
         #[max_length = 255]
         enc_key_id -> Varchar,
+        created_at -> Timestamp,
     }
 }
 

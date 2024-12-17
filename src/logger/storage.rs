@@ -23,7 +23,7 @@ pub struct Storage<'a> {
     pub values: HashMap<&'a str, serde_json::Value>,
 }
 
-impl<'a> Storage<'a> {
+impl Storage<'_> {
     /// Default constructor.
     pub fn new() -> Self {
         Self::default()

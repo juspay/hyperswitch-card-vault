@@ -1,21 +1,19 @@
+#[cfg(feature = "external_key_manager")]
+use crate::crypto::keymanager::external_keymanager::ExternalKeyManagerConfig;
+use crate::{
+    api_client::ApiClientConfig,
+    crypto::secrets_manager::{
+        secrets_interface::SecretManager, secrets_management::SecretsManagementConfig,
+    },
+    error,
+    logger::config::Log,
+};
 use error_stack::ResultExt;
 use masking::ExposeInterface;
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     path::PathBuf,
-};
-
-use crate::{
-    api_client::ApiClientConfig,
-    crypto::{
-        keymanager::KeyManagerConfig,
-        secrets_manager::{
-            secrets_interface::SecretManager, secrets_management::SecretsManagementConfig,
-        },
-    },
-    error,
-    logger::config::Log,
 };
 
 #[derive(Clone, serde::Deserialize, Debug)]
@@ -34,7 +32,8 @@ pub struct GlobalConfig {
     pub tls: Option<ServerTls>,
     #[serde(default)]
     pub api_client: ApiClientConfig,
-    pub key_manager: KeyManagerConfig,
+    #[cfg(feature = "external_key_manager")]
+    pub external_key_manager: ExternalKeyManagerConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -42,7 +41,8 @@ pub struct TenantConfig {
     pub tenant_id: String,
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
-    pub key_manager: KeyManagerConfig,
+    #[cfg(feature = "external_key_manager")]
+    pub external_key_manager: ExternalKeyManagerConfig,
 }
 
 impl TenantConfig {
@@ -61,7 +61,8 @@ impl TenantConfig {
                 .get(&tenant_id)
                 .cloned()
                 .unwrap(),
-            key_manager: global_config.key_manager.clone(),
+            #[cfg(feature = "external_key_manager")]
+            external_key_manager: global_config.external_key_manager.clone(),
         }
     }
 }
@@ -159,7 +160,7 @@ impl Default for ApiClientConfig {
         Self {
             client_idle_timeout: 90,
             pool_max_idle_per_host: 5,
-            #[cfg(feature = "keymanager_mtls")]
+            #[cfg(feature = "external_key_manager_mtls")]
             identity: masking::Secret::default(),
         }
     }
@@ -283,13 +284,13 @@ impl GlobalConfig {
                 ))?;
         }
 
-        #[cfg(feature = "keymanager_mtls")]
+        #[cfg(feature = "external_key_manager_mtls")]
         {
-            self.key_manager.cert = secret_management_client
-                .get_secret(self.key_manager.cert.clone())
+            self.external_key_manager.cert = secret_management_client
+                .get_secret(self.external_key_manager.cert.clone())
                 .await
                 .change_context(error::ConfigurationError::KmsDecryptError(
-                    "key_manager-cert",
+                    "external_key_manager-cert",
                 ))?;
 
             self.api_client.identity = secret_management_client

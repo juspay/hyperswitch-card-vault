@@ -9,7 +9,7 @@ rust-version = "1.78"
 
 [features]
 default = ["caching"]
-release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "keymanager_mtls"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager_mtls"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
@@ -18,6 +18,8 @@ key_custodian = []
 caching = ["dep:moka"]
 keymanager_mtls = ["reqwest/rustls-tls"]
 console = ["tokio/tracing", "dep:console-subscriber"]
+external_key_manager = []
+external_key_manager_mtls = ["external_key_manager"]
 
 [dependencies]
 async-trait = "0.1.81"
@@ -62,7 +64,7 @@ masking = { git = "https://github.com/juspay/hyperswitch", tag = "v1.111.1" }
 ring = { version = "0.17.8", features = ["std"] }
 hex = "0.4.3"
 time = { version = "0.3.36", features = ["serde"] }
-uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
+uuid = { version = "1.10.0", features = ["v7", "fast-rng"] }
 moka = { version = "0.12.8", features = ["future"], optional = true }
 reqwest = { version = "0.12.7", features = ["json", "__rustls"] }
 

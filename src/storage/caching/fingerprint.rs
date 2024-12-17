@@ -11,7 +11,7 @@ where
         + storage::Cacheable<types::Fingerprint, Key = Vec<u8>, Value = types::Fingerprint>
         + storage::Cacheable<types::Merchant>
         + storage::Cacheable<types::HashTable>
-        + storage::Cacheable<types::Entity>
+        + super::CacheableWithEntity<T>
         + Sync
         + Send,
 {

@@ -1,10 +1,11 @@
-use futures_util::TryFutureExt;
-
+#[cfg(not(feature = "external_key_manager"))]
+use crate::crypto::encryption_manager::managers::aes;
 use crate::{
-    crypto::encryption_manager::managers::aes::generate_aes256_key,
     error::{ContainerError, NotFoundError},
     storage::{self, types},
 };
+#[cfg(not(feature = "external_key_manager"))]
+use futures_util::TryFutureExt;
 
 impl<T> storage::MerchantInterface for super::Caching<T>
 where
@@ -12,7 +13,7 @@ where
         + storage::Cacheable<types::Merchant, Key = String, Value = types::Merchant>
         + storage::Cacheable<types::HashTable>
         + storage::Cacheable<types::Fingerprint>
-        + storage::Cacheable<types::Entity>
+        + super::CacheableWithEntity<T>
         + Sync
         + Send,
     ContainerError<<T as storage::MerchantInterface>::Error>: NotFoundError,
@@ -20,6 +21,7 @@ where
     type Algorithm = T::Algorithm;
     type Error = T::Error;
 
+    #[cfg(not(feature = "external_key_manager"))]
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -39,6 +41,7 @@ where
         }
     }
 
+    #[cfg(not(feature = "external_key_manager"))]
     async fn find_or_create_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -52,7 +55,7 @@ where
                         self.insert_merchant(
                             types::MerchantNew {
                                 merchant_id,
-                                enc_key: generate_aes256_key().to_vec().into(),
+                                enc_key: aes::generate_aes256_key().to_vec().into(),
                             },
                             key,
                         )
@@ -63,6 +66,7 @@ where
             .await
     }
 
+    #[cfg(not(feature = "external_key_manager"))]
     async fn insert_merchant(
         &self,
         new: types::MerchantNew<'_>,
