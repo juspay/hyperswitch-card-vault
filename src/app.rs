@@ -96,7 +96,6 @@ where
         global_app_state.global_config.server.port,
     );
     let router = axum::Router::new()
-        .nest("/tenant", routes::tenant::serve())
         .nest(
             "/data",
             routes::data::serve(
@@ -111,12 +110,6 @@ where
                 global_app_state.clone(),
             ),
         );
-
-    #[cfg(feature = "external_key_manager")]
-    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
-
-    #[cfg(feature = "key_custodian")]
-    let router = router.nest("/custodian", routes::key_custodian::serve());
 
     // v2 routes
     let router = router.nest(
@@ -136,6 +129,12 @@ where
         global_app_state.clone(),
         custom_middleware::middleware,
     ));
+
+    #[cfg(feature = "external_key_manager")]
+    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
+
+    #[cfg(feature = "key_custodian")]
+    let router = router.nest("/custodian", routes::key_custodian::serve());
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
