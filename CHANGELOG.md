@@ -4,6 +4,17 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.6.0 (2024-12-17)
+
+### Features
+
+- **v2:** Adding support for v2 API ([#135](https://github.com/juspay/hyperswitch-card-vault/pull/135)) ([`229c4d3`](https://github.com/juspay/hyperswitch-card-vault/commit/229c4d384629ca01fa5d9eba96ef46ee2108098e))
+
+**Full Changelog:** [`v0.5.1...v0.6.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.5.1...v0.6.0)
+
+- - -
+
+
 ## 0.5.1 (2024-12-10)
 
 ### Miscellaneous Tasks
