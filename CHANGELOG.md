@@ -4,6 +4,17 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.6.1 (2024-12-17)
+
+### Bug Fixes
+
+- **mtls:** Fix provider import for mtls ([#136](https://github.com/juspay/hyperswitch-card-vault/pull/136)) ([`ea1a024`](https://github.com/juspay/hyperswitch-card-vault/commit/ea1a02465c7f6c21e5489b27ae8d29b2bcee5c1c))
+
+**Full Changelog:** [`v0.6.0...v0.6.1`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.0...v0.6.1)
+
+- - -
+
+
 ## 0.6.0 (2024-12-17)
 
 ### Features
