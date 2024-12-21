@@ -30,8 +30,6 @@ const MESSAGE: &str = "message";
 const HOSTNAME: &str = "hostname";
 const PID: &str = "pid";
 const LEVEL: &str = "level";
-const X_TENANT_ID: &str = "tenant_id";
-const X_REQUEST_ID: &str = "request_id";
 const TARGET: &str = "target";
 const SERVICE: &str = "service";
 const LINE: &str = "line";
@@ -55,17 +53,6 @@ pub static IMPLICIT_KEYS: Lazy<rustc_hash::FxHashSet<&str>> = Lazy::new(|| {
     set.insert(FN);
     set.insert(FULL_NAME);
     set.insert(TIME);
-
-    set
-});
-
-/// Extra implicit keys. Keys that are not purely implicit but need to be logged alongside
-/// other implicit keys in the log json.
-pub static EXTRA_IMPLICIT_KEYS: Lazy<rustc_hash::FxHashSet<&str>> = Lazy::new(|| {
-    let mut set = rustc_hash::FxHashSet::default();
-
-    set.insert(X_TENANT_ID);
-    set.insert(X_REQUEST_ID);
 
     set
 });
@@ -160,7 +147,6 @@ where
         S: Subscriber + for<'a> LookupSpan<'a>,
     {
         let is_extra = |s: &str| !IMPLICIT_KEYS.contains(s);
-        let is_extra_implicit = |s: &str| is_extra(s) && EXTRA_IMPLICIT_KEYS.contains(s);
 
         map_serializer.serialize_entry(MESSAGE, &message)?;
         map_serializer.serialize_entry(HOSTNAME, &self.hostname)?;
@@ -200,9 +186,7 @@ where
             let extensions = span.extensions();
             if let Some(visitor) = extensions.get::<Storage<'_>>() {
                 for (key, value) in &visitor.values {
-                    if is_extra_implicit(key) && !explicit_entries_set.contains(key)
-                        || is_extra(key) && !explicit_entries_set.contains(key)
-                    {
+                    if is_extra(key) && !explicit_entries_set.contains(key) {
                         map_serializer.serialize_entry(key, value)?;
                     } else {
                         tracing::warn!(
