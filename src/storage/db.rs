@@ -33,12 +33,18 @@ impl MerchantInterface for Storage {
                 .filter(schema::merchant::merchant_id.eq(merchant_id))
                 .get_result(&mut conn)
                 .await;
+
+        let output = match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(merchant) => Ok(merchant),
+        };
+
         output
-            .map_err(|error| match error {
-                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
-                _ => error::StorageError::FindError,
-            })
-            .map_err(error::ContainerError::from)
             .map_err(From::from)
             .and_then(|inner| Ok(inner.decrypt(key)?))
     }
@@ -142,14 +148,17 @@ impl LockerInterface for Storage {
             .get_result(&mut conn)
             .await;
 
-        output
-            .map_err(|error| match error {
-                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
-                _ => error::StorageError::FindError,
-            })
-            .map_err(error::ContainerError::from)
-            .map_err(From::from)
-            .map(|inner| inner.into())
+        let output = match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(locker) => Ok(locker),
+        };
+
+        output.map_err(From::from).map(|inner| inner.into())
     }
 
     async fn find_by_hash_id_merchant_id_customer_id(
@@ -388,13 +397,18 @@ impl super::EntityInterface for Storage {
             .filter(schema::entity::entity_id.eq(entity_id))
             .get_result(&mut conn)
             .await;
-        output
-            .map_err(|error| match error {
-                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
-                _ => error::StorageError::FindError,
-            })
-            .map_err(error::ContainerError::from)
-            .map_err(From::from)
+
+        let output = match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(entity) => Ok(entity),
+        };
+
+        output.map_err(From::from)
     }
 
     async fn insert_entity(

@@ -86,7 +86,7 @@ pub enum ApiError {
     #[error("Failed while decoding data")]
     DecodingError,
 
-    #[error("Failed while inserting data into \"{0}\"")]
+    #[error("Failed while inserting data into {0}")]
     DatabaseInsertFailed(&'static str),
 
     #[error("failed while deleting data from {0}")]
