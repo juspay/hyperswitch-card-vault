@@ -158,7 +158,7 @@ impl LockerInterface for Storage {
             Ok(locker) => Ok(locker),
         };
 
-        output.map_err(From::from).map(|inner| inner.into())
+        output.map_err(From::from).map(From::from)
     }
 
     async fn find_by_hash_id_merchant_id_customer_id(

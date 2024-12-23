@@ -42,7 +42,6 @@ const TIME: &str = "time";
 pub static IMPLICIT_KEYS: Lazy<rustc_hash::FxHashSet<&str>> = Lazy::new(|| {
     let mut set = rustc_hash::FxHashSet::default();
 
-    set.insert(MESSAGE);
     set.insert(HOSTNAME);
     set.insert(PID);
     set.insert(LEVEL);
@@ -118,11 +117,23 @@ where
     pub fn new_with_implicit_entries(
         service: &str,
         dst_writer: W,
-        default_fields: HashMap<String, Value>,
+        mut default_fields: HashMap<String, Value>,
     ) -> Self {
         let pid = std::process::id();
         let hostname = gethostname::gethostname().to_string_lossy().into_owned();
         let service = service.to_string();
+        default_fields.retain(|key, value| {
+            if !IMPLICIT_KEYS.contains(key.as_str()) {
+                true
+            } else {
+                tracing::warn!(
+                    ?key,
+                    ?value,
+                    "Attempting to log a reserved entry. It won't be added to the logs"
+                );
+                false
+            }
+        });
 
         Self {
             dst_writer,
@@ -139,16 +150,14 @@ where
         map_serializer: &mut impl SerializeMap<Error = serde_json::Error>,
         metadata: &Metadata<'_>,
         span: Option<&SpanRef<'_, S>>,
-        storage: Option<&Storage<'_>>,
+        storage: &Storage<'_>,
         name: &str,
-        message: &str,
     ) -> Result<(), std::io::Error>
     where
         S: Subscriber + for<'a> LookupSpan<'a>,
     {
         let is_extra = |s: &str| !IMPLICIT_KEYS.contains(s);
 
-        map_serializer.serialize_entry(MESSAGE, &message)?;
         map_serializer.serialize_entry(HOSTNAME, &self.hostname)?;
         map_serializer.serialize_entry(PID, &self.pid)?;
         map_serializer.serialize_entry(LEVEL, &format_args!("{}", metadata.level()))?;
@@ -165,20 +174,15 @@ where
 
         // Write down implicit default entries.
         for (key, value) in self.default_fields.iter() {
-            if !IMPLICIT_KEYS.contains(key.as_str()) {
-                map_serializer.serialize_entry(key, value)?;
-            } else {
-                tracing::warn!("{} is a reserved field. Skipping it.", key);
-            }
+            map_serializer.serialize_entry(key, value)?;
         }
 
         let mut explicit_entries_set: HashSet<&str> = HashSet::default();
         // Write down explicit event's entries.
-        if let Some(storage) = storage {
-            for (key, value) in storage.values.iter() {
-                map_serializer.serialize_entry(key, value)?;
-                explicit_entries_set.insert(key);
-            }
+
+        for (key, value) in storage.values.iter() {
+            map_serializer.serialize_entry(key, value)?;
+            explicit_entries_set.insert(key);
         }
 
         // Write down entries from the span, if it exists.
@@ -225,14 +229,15 @@ where
         let mut serializer = serde_json::Serializer::new(&mut buffer);
         let mut map_serializer = serializer.serialize_map(None)?;
         let message = Self::span_message(span, ty);
+        let mut storage = Storage::default();
+        storage.record_value(MESSAGE, message.into());
 
         self.common_serialize(
             &mut map_serializer,
             span.metadata(),
             Some(span),
-            None,
+            &storage,
             span.name(),
-            &message,
         )?;
 
         map_serializer.end()?;
@@ -256,16 +261,9 @@ where
         event.record(&mut storage);
 
         let name = span.map_or("?", SpanRef::name);
-        let message = Self::event_message(span, event, &storage);
+        Self::event_message(span, event, &mut storage);
 
-        self.common_serialize(
-            &mut map_serializer,
-            event.metadata(),
-            *span,
-            Some(&storage),
-            name,
-            &message,
-        )?;
+        self.common_serialize(&mut map_serializer, event.metadata(), *span, &storage, name)?;
 
         map_serializer.end()?;
         Ok(buffer)
@@ -291,32 +289,19 @@ where
     fn event_message<S>(
         span: &Option<&SpanRef<'_, S>>,
         event: &Event<'_>,
-        storage: &Storage<'_>,
-    ) -> String
-    where
+        storage: &mut Storage<'_>,
+    ) where
         S: Subscriber + for<'a> LookupSpan<'a>,
     {
-        // Get value of kept "message" or "target" if does not exist.
-        let mut message = storage
+        let message = storage
             .values
-            .get("message")
-            .and_then(|v| match v {
-                Value::String(s) => Some(s.as_str()),
-                _ => None,
-            })
-            .unwrap_or_else(|| event.metadata().target())
-            .to_owned();
+            .entry(MESSAGE)
+            .or_insert_with(|| event.metadata().target().into());
 
         // Prepend the span name to the message if span exists.
-        if let Some(span) = span {
-            message = format!(
-                "{} {}",
-                Self::span_message(span, RecordType::Event),
-                message,
-            );
+        if let (Some(span), Value::String(a)) = (span, message) {
+            *a = format!("{} {}", Self::span_message(span, RecordType::Event), a,);
         }
-
-        message
     }
 }
 
