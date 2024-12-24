@@ -193,9 +193,7 @@ where
                         map_serializer.serialize_entry(key, value)?;
                     } else {
                         tracing::warn!(
-                            ?key,
-                            ?value,
-                            "Attempting to log a reserved entry. It won't be added to the logs"
+                            "Attempting to log a reserved entry. It won't be added to the logs. key: {key:?}, value: {value:?}"
                         );
                     }
                 }
