@@ -126,10 +126,9 @@ where
             if !IMPLICIT_KEYS.contains(key.as_str()) {
                 true
             } else {
-                tracing::warn!(
-                    ?key,
-                    ?value,
-                    "Attempting to log a reserved entry. It won't be added to the logs"
+                eprintln!(
+                    "Attempting to log a reserved entry. It won't be added to the logs. key: {:?}, value: {:?}",
+                    key, value
                 );
                 false
             }
