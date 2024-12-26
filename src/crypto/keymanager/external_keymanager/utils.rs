@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use base64::Engine;
 use hyper::header::{AUTHORIZATION, CONTENT_TYPE};
-use masking::Maskable;
+use masking::{Mask, Maskable};
 
+use crate::storage::consts::X_TENANT_ID;
 use crate::{app::TenantAppState, crypto::consts::BASE64_ENGINE};
 
 pub fn get_key_manager_header(
@@ -20,7 +21,11 @@ pub fn get_key_manager_header(
         (CONTENT_TYPE.to_string(), "application/json".into()),
         (
             AUTHORIZATION.to_string(),
-            format!("Basic {}", broken_master_key).into(),
+            format!("Basic {}", broken_master_key).into_masked(),
+        ),
+        (
+            X_TENANT_ID.to_string(),
+            tenant_app_state.config.tenant_id.clone().into(),
         ),
     ]
     .into_iter()
