@@ -11,6 +11,8 @@ pub const ID_LENGTH: usize = 20;
 
 /// Header key for tenant ID
 pub const X_TENANT_ID: &str = "x-tenant-id";
+/// Header key for request ID
+pub const X_REQUEST_ID: &str = "x-request-id";
 /// Header Constants
 pub mod headers {
     pub const CONTENT_TYPE: &str = "Content-Type";

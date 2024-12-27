@@ -138,7 +138,7 @@ where
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
-            .make_span_with(|request: &Request<_>| utils::record_tenant_id_from_header(request))
+            .make_span_with(|request: &Request<_>| utils::record_fields_from_header(request))
             .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
             .on_response(
                 tower_trace::DefaultOnResponse::new()
