@@ -87,7 +87,7 @@ impl GlobalAppState {
             .ok_or(ApiError::CustodianLocked)
     }
 
-    pub async fn is_known_tenant(&self, tenant_id: &str) -> Result<(), ApiError> {
+    pub fn is_known_tenant(&self, tenant_id: &str) -> Result<(), ApiError> {
         self.known_tenants
             .contains(tenant_id)
             .then_some(())

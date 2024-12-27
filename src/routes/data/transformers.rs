@@ -104,7 +104,7 @@ where
     Ok(hash_data)
 }
 
-pub fn validate_card_metadata(
+pub fn get_data_duplication_status(
     stored_payload: &storage::types::Locker,
     request_data: &types::Data,
 ) -> Result<DataDuplicationCheck, ContainerError<error::ApiError>> {

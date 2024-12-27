@@ -66,6 +66,24 @@ pub enum Data {
 #[derive(Debug, serde::Serialize, Default)]
 pub struct Ttl(pub Option<time::PrimitiveDateTime>);
 
+impl Validation for Ttl {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        self.0
+            .map(|ttl| -> Result<(), Self::Error> {
+                if ttl <= utils::date_time::now() {
+                    Err(error::ApiError::InvalidTtl)
+                } else {
+                    Ok(())
+                }
+            })
+            .transpose()?;
+
+        Ok(())
+    }
+}
+
 impl<'de> serde::Deserialize<'de> for Ttl {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -90,7 +108,7 @@ impl std::ops::Deref for Ttl {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct StoreCardResponse {
     pub status: Status,
     pub payload: Option<StoreCardRespPayload>,
@@ -124,7 +142,7 @@ pub struct DeleteCardRequest {
     pub card_reference: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct DeleteCardResponse {
     pub status: Status,
 }
@@ -135,7 +153,7 @@ pub struct FingerprintRequest {
     pub key: Secret<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct FingerprintResponse {
     pub fingerprint_id: Secret<String>,
 }
@@ -146,7 +164,7 @@ pub enum StoredData {
     CardData(Card),
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub enum Status {
     Ok,
@@ -162,15 +180,7 @@ impl Validation for StoreCardRequest {
     type Error = error::ApiError;
 
     fn validate(&self) -> Result<(), Self::Error> {
-        self.ttl
-            .map(|ttl| -> Result<(), Self::Error> {
-                if ttl <= utils::date_time::now() {
-                    Err(error::ApiError::InvalidTtl)
-                } else {
-                    Ok(())
-                }
-            })
-            .transpose()?;
+        self.ttl.validate()?;
 
         match &self.data {
             Data::EncData { .. } => Ok(()),
