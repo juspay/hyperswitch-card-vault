@@ -32,14 +32,17 @@ impl VaultInterface for Storage {
             .get_result(&mut conn)
             .await;
 
-        output
-            .map_err(|error| match error {
-                diesel::result::Error::NotFound => error::StorageError::NotFoundError,
-                _ => error::StorageError::FindError,
-            })
-            .map_err(error::ContainerError::from)
-            .map_err(From::from)
-            .map(|inner| inner.into())
+        let output = match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(vault) => Ok(vault),
+        };
+
+        output.map_err(From::from).map(From::from)
     }
 
     async fn insert_or_get_from_vault(

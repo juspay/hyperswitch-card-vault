@@ -131,12 +131,9 @@ pub async fn decrypt(
                 message: "Decryption of Custodian key is successful".into(),
             }))
         }
-        _ => {
-            logger::error!("Both the custodian keys are not present to decrypt");
-            Err(error::ApiError::DecryptingKeysFailed(
-                "Both the custodain keys are not present to decrypt",
-            ))
-        }
+        _ => Err(error::ApiError::DecryptingKeysFailed(
+            "Both the custodain keys are not present to decrypt",
+        )),
     };
     match decrypt_output {
         Ok(inner) => Ok(inner),
