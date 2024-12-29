@@ -7,7 +7,8 @@ use crate::{
     crypto::keymanager::{self, KeyProvider},
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
-    routes::data::crypto_operation,
+    logger,
+    routes::data::{crypto_operation, types::Validation},
     storage::storage_v2::VaultInterface,
     utils,
 };
@@ -20,14 +21,22 @@ pub async fn delete_data(
         .find_by_entity_id(&tenant_app_state, request.entity_id.clone())
         .await?;
 
-    let _delete_status = tenant_app_state
+    let delete_status = tenant_app_state
         .db
         .delete_from_vault(request.vault_id.clone().into(), &request.entity_id)
         .await?;
-    Ok(Json(types::DeleteDataResponse {
+
+    let response = Json(types::DeleteDataResponse {
         entity_id: request.entity_id,
-        vault_id: request.vault_id,
-    }))
+        vault_id: request.vault_id.into(),
+    });
+
+    match delete_status {
+        0 => logger::info!(delete_data_response = "data not found to delete"),
+        _ => logger::info!(delete_data_response=?response, "delete data was successful"),
+    }
+
+    Ok(response)
 }
 
 pub async fn retrieve_data(
@@ -71,6 +80,8 @@ pub async fn retrieve_data(
     let data_value = serde_json::from_slice(decrypted_inner_data.peek().as_ref())
         .change_error(error::ApiError::DecodingError)?;
 
+    logger::info!(retrieve_data_response = "retrieve data was successful");
+
     Ok(Json(types::RetrieveDataResponse { data: data_value }))
 }
 
@@ -78,6 +89,8 @@ pub async fn add_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::StoreDataRequest>,
 ) -> Result<Json<types::StoreDataResponse>, ContainerError<error::ApiError>> {
+    request.validate()?;
+
     let crypto_manager = keymanager::get_dek_manager()
         .find_or_create_entity(&tenant_app_state, request.entity_id.clone())
         .await?;
@@ -89,5 +102,8 @@ pub async fn add_data(
     )
     .await?;
 
-    Ok(Json(types::StoreDataResponse::from(insert_data)))
+    let response = Json(types::StoreDataResponse::from(insert_data));
+    logger::info!(add_data_response=?response, "add data was successful");
+
+    Ok(response)
 }

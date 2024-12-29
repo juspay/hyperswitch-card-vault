@@ -12,6 +12,7 @@ use crate::{
     },
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
+    logger,
     storage::{FingerprintInterface, HashInterface, LockerInterface},
     tenant::GlobalAppState,
     utils,
@@ -102,7 +103,7 @@ pub async fn add_card(
                         crypto_operation::decrypt_data(&tenant_app_state, crypto_manager, locker)
                             .await?;
 
-                    let duplication_check = transformers::validate_card_metadata(
+                    let duplication_check = transformers::get_data_duplication_status(
                         &decrypted_locker_data,
                         &request.data,
                     )?;
@@ -139,10 +140,10 @@ pub async fn add_card(
         }
     };
 
-    Ok(Json(types::StoreCardResponse::from((
-        duplication_check,
-        output,
-    ))))
+    let response = Json(types::StoreCardResponse::from((duplication_check, output)));
+    logger::info!(add_card_response=?response);
+
+    Ok(response)
 }
 
 /// `/data/delete` handling the requirement of deleting data
@@ -163,9 +164,12 @@ pub async fn delete_card(
         )
         .await?;
 
-    Ok(Json(types::DeleteCardResponse {
+    let response = Json(types::DeleteCardResponse {
         status: types::Status::Ok,
-    }))
+    });
+    logger::info!(delete_card_response=?response);
+
+    Ok(response)
 }
 
 /// `/data/retrieve` handling the requirement of retrieving data
@@ -211,7 +215,10 @@ pub async fn retrieve_card(
         })
         .transpose()?;
 
-    Ok(Json(decrypted_locker_data.try_into()?))
+    let response = Json(decrypted_locker_data.try_into()?);
+    logger::info!(retrieve_card_response = "card retrieve was successful");
+
+    Ok(response)
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
@@ -224,5 +231,8 @@ pub async fn get_or_insert_fingerprint(
         .get_or_insert_fingerprint(request.data, request.key)
         .await?;
 
-    Ok(Json(fingerprint.into()))
+    let response = Json(fingerprint.into());
+    logger::info!(fingerprint_response=?response);
+
+    Ok(response)
 }
