@@ -55,7 +55,8 @@ pub fn setup(
             }
             config::LogFormat::Json => {
                 error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
-                let logging_layer = FormattingLayer::new(service_name, console_writer);
+                let logging_layer =
+                    FormattingLayer::new(service_name, console_writer).with_filter(console_filter);
                 subscriber.with(logging_layer).init();
             }
         }
