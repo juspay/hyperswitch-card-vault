@@ -86,7 +86,7 @@ pub enum ApiError {
     #[error("Failed while decoding data")]
     DecodingError,
 
-    #[error("Failed while inserting data into \"{0}\"")]
+    #[error("Failed while inserting data into {0}")]
     DatabaseInsertFailed(&'static str),
 
     #[error("failed while deleting data from {0}")]
@@ -409,7 +409,7 @@ impl<T: axum::response::IntoResponse + error_stack::Context + Copy> axum::respon
     for ContainerError<T>
 {
     fn into_response(self) -> axum::response::Response {
-        crate::logger::error!(?self.error);
+        crate::logger::error!(error=?self.error);
         (*self.error.current_context()).into_response()
     }
 }

@@ -13,20 +13,27 @@ pub mod date_time {
     }
 }
 
-/// Record the tenant_id field in request's trace
-pub fn record_tenant_id_from_header(request: &Request<Body>) -> tracing::Span {
-    macro_rules! inner_trace {
-        ($v:expr) => {
-            tracing::debug_span!("request", method = %request.method(), uri = %request.uri(), version = ?request.version(), tenant_id = $v)
-        };
-    }
-
-    match request
+/// Record the header's fields in request's trace
+pub fn record_fields_from_header(request: &Request<Body>) -> tracing::Span {
+    let span = tracing::debug_span!(
+        "request",
+        method = %request.method(),
+        uri = %request.uri(),
+        version = ?request.version(),
+        tenant_id = tracing::field::Empty,
+        request_id = tracing::field::Empty,
+    );
+    request
         .headers()
         .get(consts::X_TENANT_ID)
         .and_then(|value| value.to_str().ok())
-    {
-        Some(value) => inner_trace!(value),
-        None => inner_trace!(tracing::field::Empty),
-    }
+        .map(|tenant_id| span.record("tenant_id", tenant_id));
+
+    request
+        .headers()
+        .get(consts::X_REQUEST_ID)
+        .and_then(|value| value.to_str().ok())
+        .map(|request_id| span.record("request_id", request_id));
+
+    span
 }
