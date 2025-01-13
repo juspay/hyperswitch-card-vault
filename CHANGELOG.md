@@ -4,6 +4,26 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.6.3 (2025-01-13)
+
+### Bug Fixes
+
+- Add console filters for json logs ([#142](https://github.com/juspay/hyperswitch-card-vault/pull/142)) ([`890c9e6`](https://github.com/juspay/hyperswitch-card-vault/commit/890c9e64a8d7e3354dd25d6fc09c691365ec9626))
+
+### Refactors
+
+- Record `tenant_id` and `request_id` from header in the trace span ([#139](https://github.com/juspay/hyperswitch-card-vault/pull/139)) ([`e2c964c`](https://github.com/juspay/hyperswitch-card-vault/commit/e2c964c25cb32ef162255621087ea2a8aa0a2739))
+- Add logs wherever necessary and fix few error propagation ([#141](https://github.com/juspay/hyperswitch-card-vault/pull/141)) ([`a5351d2`](https://github.com/juspay/hyperswitch-card-vault/commit/a5351d2f2389ce43aab939818b57179d924b4929))
+
+### Miscellaneous Tasks
+
+- Add x-tenant-id in encryption service call ([#140](https://github.com/juspay/hyperswitch-card-vault/pull/140)) ([`46d0eef`](https://github.com/juspay/hyperswitch-card-vault/commit/46d0eefe1a7d049e3db9df4ba8cfb96b4c92b882))
+
+**Full Changelog:** [`v0.6.2...v0.6.3`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.2...v0.6.3)
+
+- - -
+
+
 ## 0.6.2 (2024-12-17)
 
 ### Bug Fixes
