@@ -4,6 +4,17 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.6.4 (2025-01-14)
+
+### Bug Fixes
+
+- **logger:** Remove warn from subscriber ([#143](https://github.com/juspay/hyperswitch-card-vault/pull/143)) ([`ceff279`](https://github.com/juspay/hyperswitch-card-vault/commit/ceff2791e76cfb78f3d5a66e410ee89ca58cd9bb))
+
+**Full Changelog:** [`v0.6.3...v0.6.4`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.3...v0.6.4)
+
+- - -
+
+
 ## 0.6.3 (2025-01-13)
 
 ### Bug Fixes
