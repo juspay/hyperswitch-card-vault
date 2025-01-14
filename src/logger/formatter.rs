@@ -192,7 +192,7 @@ where
                     if is_extra(key) && !explicit_entries_set.contains(key) {
                         map_serializer.serialize_entry(key, value)?;
                     } else {
-                        tracing::warn!(
+                        eprintln!(
                             "Attempting to log a reserved entry. It won't be added to the logs. key: {key:?}, value: {value:?}"
                         );
                     }
