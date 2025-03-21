@@ -1246,9 +1246,9 @@ dependencies = [
 
 [[package]]
 name = "diesel"
-version = "2.2.3"
+version = "2.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65e13bab2796f412722112327f3e575601a3e9cdcbe426f0d30dbf43f3f5dc71"
+checksum = "470eb10efc8646313634c99bb1593f402a6434cbd86e266770c6e39219adb86a"
 dependencies = [
  "bitflags 2.6.0",
  "byteorder",
@@ -2327,6 +2327,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bbb9b017b98c4cde5802998113e182eecc1ebce8d47e9ea1697b9a623d53870"
 dependencies = [
+ "bindgen",
  "pkg-config",
  "vcpkg",
 ]
@@ -3659,6 +3660,7 @@ dependencies = [
  "josekit",
  "masking",
  "moka",
+ "mysqlclient-sys",
  "nanoid",
  "once_cell",
  "rand",
