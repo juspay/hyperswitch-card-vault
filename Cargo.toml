@@ -91,19 +91,6 @@ strip = true
 lto = true
 codegen-units = 1
 
-[[bench]]
-name = "luhn-test"
-harness = false
-
-[[bench]]
-name = "encryption"
-harness = false
-
-
-[[bench]]
-name = "hashing"
-harness = false
-
 [lints.rust]
 unsafe_code = "forbid"
 rust_2018_idioms = { level = "warn", priority = -1 }
