@@ -15,16 +15,16 @@ pub struct InternalKeyManager;
 impl super::KeyProvider for InternalKeyManager {
     async fn find_by_entity_id(
         &self,
-        tenant_app_state: &TenantAppState,
-        entity_id: String,
+        _tenant_app_state: &TenantAppState,
+        _entity_id: String,
     ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
         todo!()
     }
 
     async fn find_or_create_entity(
         &self,
-        tenant_app_state: &TenantAppState,
-        entity_id: String,
+        _tenant_app_state: &TenantAppState,
+        _entity_id: String,
     ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
         todo!()
     }
@@ -33,9 +33,9 @@ impl super::KeyProvider for InternalKeyManager {
 pub struct InternalCryptoManager(GcmAes256);
 
 impl InternalCryptoManager {
-    fn from_secret_key(key: Secret<Vec<u8>>) -> Self {
-        Self(GcmAes256::new(key.expose()))
-    }
+    // fn from_secret_key(key: Secret<Vec<u8>>) -> Self {
+    //     Self(GcmAes256::new(key.expose()))
+    // }
 
     fn get_inner(&self) -> &GcmAes256 {
         &self.0

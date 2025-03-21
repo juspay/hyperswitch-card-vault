@@ -1,17 +1,7 @@
-use diesel::BoolExpressionMethods;
-use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use masking::ExposeInterface;
-use masking::Secret;
 
-use crate::{
-    crypto::{
-        encryption_manager::managers::aes,
-        hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
-    },
-    error::{self, ContainerError, ResultContainerExt},
-};
-use super::{ Storage};
+use crate::error::{self, ContainerError, ResultContainerExt};
+use super::Storage;
 //https://github.com/juspay/hyperswitch-card-vault/blob/main/src/storage/db.rs
 
 impl super::TestInterface for Storage {
@@ -29,8 +19,6 @@ impl super::TestInterface for Storage {
                         .get_result(x)
                         .await
                         .change_error(error::StorageError::FindError)?;
-
-                    /// Test for insert and delete
 
                     Ok::<_, ContainerError<Self::Error>>(())
                 })

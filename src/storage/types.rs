@@ -2,16 +2,11 @@ use diesel::{
     backend::Backend,
     deserialize::{self, FromSql},
     serialize::ToSql,
-    sql_types, AsExpression, Identifiable, Insertable, Queryable,
+    sql_types, AsExpression, Queryable,
 };
-use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
+use masking::{PeekInterface, Secret, StrongSecret};
 
-use crate::{
-    crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
-    // routes::data::types::{StoreCardRequest, Validation},
-};
-
-use super::schema;
+// use super::schema;
 
 // #[derive(Debug, Identifiable, Queryable)]
 // #[diesel(table_name = schema::merchant)]

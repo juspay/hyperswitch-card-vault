@@ -1,6 +1,5 @@
 use crate::{
     config::Database,
-    crypto::encryption_manager::encryption_interface::Encryption,
     error::{self, ContainerError},
 };
 
@@ -14,7 +13,7 @@ use diesel_async::{
     AsyncMysqlConnection,
 };
 use error_stack::ResultExt;
-use masking::{PeekInterface, Secret};
+use masking::PeekInterface;
 
 #[cfg(feature = "caching")]
 pub mod caching;
@@ -22,7 +21,6 @@ pub mod caching;
 pub mod consts;
 pub mod db;
 pub mod schema;
-pub mod storage_v2;
 pub mod types;
 pub mod utils;
 

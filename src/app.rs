@@ -83,10 +83,6 @@ where
         .route(
             "/decision_gateway",
             post(routes::decision_gateway::decision_gateway)
-        )
-        .route(
-            "/update_score",
-            post(routes::update_score::update_score)
         );
 
 
