@@ -21,11 +21,9 @@ use crate::{
     utils,
 };
 
-#[cfg(feature = "caching")]
-use crate::storage::caching::Caching;
 
 #[cfg(feature = "caching")]
-type Storage = Caching<storage::Storage>;
+type Storage = storage::Storage;
 
 #[cfg(not(feature = "caching"))]
 type Storage = storage::Storage;
@@ -58,12 +56,6 @@ impl TenantAppState {
             &tenant_config.tenant_secrets.schema,
         )
         .await
-        .map(
-            #[cfg(feature = "caching")]
-            Caching::implement_cache(&global_config.cache),
-            #[cfg(not(feature = "caching"))]
-            std::convert::identity,
-        )
         .change_context(error::ConfigurationError::DatabaseError)?;
 
         Ok(Self {

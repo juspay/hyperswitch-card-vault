@@ -6,7 +6,8 @@ use crate::{crypto::keymanager, logger};
 
 use axum::{routing::get, Json};
 
-use crate::{custom_extractors::TenantStateResolver, error, storage::TestInterface};
+use crate::{custom_extractors::TenantStateResolver, error};
+use crate::storage::TestInterface;
 
 ///
 /// Function for registering routes that is specifically handling the health apis

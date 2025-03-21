@@ -7,7 +7,6 @@ use crate::{
         keymanager::CryptoOperationsManager,
     },
     error::{self, ContainerError},
-    storage::MerchantInterface,
 };
 
 pub struct InternalKeyManager;
@@ -19,15 +18,7 @@ impl super::KeyProvider for InternalKeyManager {
         tenant_app_state: &TenantAppState,
         entity_id: String,
     ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
-        let master_encryption =
-            GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
-
-        Ok(tenant_app_state
-            .db
-            .find_by_merchant_id(&entity_id, &master_encryption)
-            .await
-            .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(Box::new)?)
+        todo!()
     }
 
     async fn find_or_create_entity(
@@ -35,19 +26,7 @@ impl super::KeyProvider for InternalKeyManager {
         tenant_app_state: &TenantAppState,
         entity_id: String,
     ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
-        let master_encryption =
-            GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
-
-        let entity = tenant_app_state
-            .db
-            .find_or_create_by_merchant_id(&entity_id, &master_encryption)
-            .await;
-
-        let response = entity
-            .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(Box::new)?;
-
-        Ok(response)
+        todo!()
     }
 }
 
