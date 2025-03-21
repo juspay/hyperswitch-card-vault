@@ -8,8 +8,7 @@ use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
-    error,
-    routes::data::types::{StoreCardRequest, Validation},
+    // routes::data::types::{StoreCardRequest, Validation},
 };
 
 use super::schema;
@@ -124,21 +123,21 @@ pub struct LockerNew<'a> {
     pub ttl: Option<time::PrimitiveDateTime>,
 }
 
-impl<'a> LockerNew<'a> {
-    pub fn new(request: StoreCardRequest, hash_id: &'a str, enc_data: Encrypted) -> Self {
-        Self {
-            locker_id: request
-                .requestor_card_reference
-                .unwrap_or_else(super::utils::generate_uuid)
-                .into(),
-            merchant_id: request.merchant_id,
-            customer_id: request.merchant_customer_id,
-            enc_data,
-            hash_id,
-            ttl: *request.ttl,
-        }
-    }
-}
+// impl<'a> LockerNew<'a> {
+//     pub fn new(request: StoreCardRequest, hash_id: &'a str, enc_data: Encrypted) -> Self {
+//         Self {
+//             locker_id: request
+//                 .requestor_card_reference
+//                 .unwrap_or_else(super::utils::generate_uuid)
+//                 .into(),
+//             merchant_id: request.merchant_id,
+//             customer_id: request.merchant_customer_id,
+//             enc_data,
+//             hash_id,
+//             ttl: *request.ttl,
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::hash_table)]
@@ -170,15 +169,15 @@ pub struct Entity {
 #[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Clone)]
 pub struct CardNumber(StrongSecret<String>);
 
-impl Validation for CardNumber {
-    type Error = error::ApiError;
+// impl Validation for CardNumber {
+//     type Error = error::ApiError;
 
-    fn validate(&self) -> Result<(), Self::Error> {
-        crate::validations::sanitize_card_number(self.0.peek())?
-            .then_some(())
-            .ok_or(error::ApiError::ValidationError("card number invalid"))
-    }
-}
+//     fn validate(&self) -> Result<(), Self::Error> {
+//         crate::validations::sanitize_card_number(self.0.peek())?
+//             .then_some(())
+//             .ok_or(error::ApiError::ValidationError("card number invalid"))
+//     }
+// }
 
 impl CardNumber {
     pub fn into_bytes(self) -> Vec<u8> {

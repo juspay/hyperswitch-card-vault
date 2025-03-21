@@ -2,7 +2,7 @@ use diesel::{Identifiable, Insertable, Queryable};
 use masking::Secret;
 
 use crate::{
-    routes::routes_v2::data::types::StoreDataRequest,
+    // routes::routes_v2::data::types::StoreDataRequest,
     storage::{
         schema,
         types::{Encryptable, Encrypted},
@@ -27,16 +27,16 @@ pub struct VaultNew {
     pub expires_at: Option<time::PrimitiveDateTime>,
 }
 
-impl VaultNew {
-    pub fn new(request: StoreDataRequest, encrypted_data: Encrypted) -> Self {
-        Self {
-            vault_id: request.vault_id.into(),
-            entity_id: request.entity_id,
-            encrypted_data,
-            expires_at: *request.ttl,
-        }
-    }
-}
+// impl VaultNew {
+//     pub fn new(request: StoreDataRequest, encrypted_data: Encrypted) -> Self {
+//         Self {
+//             vault_id: request.vault_id.into(),
+//             entity_id: request.entity_id,
+//             encrypted_data,
+//             expires_at: *request.ttl,
+//         }
+//     }
+// }
 
 #[derive(Debug, Identifiable, Queryable)]
 #[diesel(table_name = schema::vault)]

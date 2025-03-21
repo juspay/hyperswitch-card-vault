@@ -9,12 +9,11 @@ rust-version = "1.78"
 
 [features]
 default = ["caching"]
-release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager_mtls"]
+release = ["kms-aws", "middleware", "limit", "kms-hashicorp-vault", "caching", "external_key_manager_mtls"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
 middleware = []
-key_custodian = []
 caching = ["dep:moka"]
 console = ["tokio/tracing", "dep:console-subscriber"]
 external_key_manager = []

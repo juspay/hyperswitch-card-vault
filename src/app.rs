@@ -15,7 +15,7 @@ use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
     error, logger,
-    routes::{self, routes_v2},
+    routes,
     storage,
     tenant::GlobalAppState,
     utils,
@@ -74,14 +74,6 @@ impl TenantAppState {
     }
 }
 
-/// Temporary State to store keys
-#[cfg(feature = "key_custodian")]
-#[derive(Default, Debug)]
-pub struct CustodianKeys {
-    pub key1: Option<String>,
-    pub key2: Option<String>,
-}
-
 ///
 /// The server responsible for the custodian APIs and main locker APIs this will perform all storage, retrieval and
 /// deletion operation
@@ -96,33 +88,15 @@ where
         global_app_state.global_config.server.port,
     );
     let router = axum::Router::new()
-        .nest(
-            "/data",
-            routes::data::serve(
-                #[cfg(feature = "limit")]
-                global_app_state.clone(),
-            ),
+        .route(
+            "/decision_gateway",
+            post(routes::decision_gateway::decision_gateway)
         )
-        .nest(
-            "/cards",
-            routes::data::serve(
-                #[cfg(feature = "limit")]
-                global_app_state.clone(),
-            ),
+        .route(
+            "/update_score",
+            post(routes::update_score::update_score)
         );
 
-    // v2 routes
-    let router = router.nest(
-        "/api/v2/vault",
-        axum::Router::new()
-            .route("/delete", post(routes_v2::data::delete_data))
-            .route("/add", post(routes_v2::data::add_data))
-            .route("/retrieve", post(routes_v2::data::retrieve_data))
-            .route(
-                "/fingerprint",
-                post(routes::data::get_or_insert_fingerprint),
-            ),
-    );
 
     #[cfg(feature = "middleware")]
     let router = router.layer(middleware::from_fn_with_state(
@@ -130,11 +104,7 @@ where
         custom_middleware::middleware,
     ));
 
-    #[cfg(feature = "external_key_manager")]
-    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
 
-    #[cfg(feature = "key_custodian")]
-    let router = router.nest("/custodian", routes::key_custodian::serve());
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
