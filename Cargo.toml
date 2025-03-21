@@ -79,12 +79,8 @@ axum-test = "15.6.0"
 [build-dependencies]
 cargo_metadata = "0.18.1"
 
-
 [[bin]]
 name = "locker"
-
-[[bin]]
-name = "utils"
 
 [profile.release]
 strip = true
