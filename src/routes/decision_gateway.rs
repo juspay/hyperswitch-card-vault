@@ -18,6 +18,7 @@ use crate::{
     utils,
 };
 
+#[axum::debug_handler]
 pub async fn decision_gateway() -> &'static str {
     "hello world!"
 }

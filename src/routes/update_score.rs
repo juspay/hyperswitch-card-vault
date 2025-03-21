@@ -18,6 +18,7 @@ use crate::{
     utils,
 };
 
+#[axum::debug_handler]
 pub async fn update_score() -> &'static str {
     "hello world!"
 }

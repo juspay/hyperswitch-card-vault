@@ -15,6 +15,7 @@ use std::{
     ops::{Deref, DerefMut},
     path::PathBuf,
 };
+use redis_interface::RedisSettings;
 
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct GlobalConfig {
@@ -26,6 +27,7 @@ pub struct GlobalConfig {
     pub log: Log,
     #[cfg(feature = "limit")]
     pub limit: Limit,
+    pub redis: RedisSettings,
     #[cfg(feature = "caching")]
     pub cache: Cache,
     pub tenant_secrets: TenantsSecrets,
