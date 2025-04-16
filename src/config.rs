@@ -273,7 +273,7 @@ impl GlobalConfig {
                 tenant_secrets.public_key = secret_management_client
                     .get_secret(tenant_secrets.public_key.clone())
                     .await
-                    .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
+                    .change_context(error::ConfigurationError::KmsDecryptError("public_key"))?;
             }
 
             self.secrets.locker_private_key = secret_management_client
