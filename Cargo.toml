@@ -50,8 +50,8 @@ http-body-util = "0.1.2"
 diesel = { version = "2.2.3", features = ["postgres", "serde_json", "time"] }
 diesel-async = { version = "0.5.0", features = ["postgres", "deadpool"] }
 
-serde = { version = "1.0.209", features = ["derive"] }
-serde_json = "1.0.127"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 josekit = "0.8.7"
 
 thiserror = "1.0.63"

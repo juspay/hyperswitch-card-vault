@@ -185,10 +185,10 @@ impl GlobalConfig {
     pub fn new_with_config_path(
         explicit_config_path: Option<PathBuf>,
     ) -> Result<Self, config::ConfigError> {
-        let env = "dev";
-        let config_path = Self::config_path(env, explicit_config_path);
+        let env = Env::current_env();
+        let config_path = Self::config_path(&env, explicit_config_path);
 
-        let config = Self::builder(env)?
+        let config = Self::builder(&env)?
             .add_source(config::File::from(config_path).required(false))
             .add_source(config::Environment::with_prefix("LOCKER").separator("__"))
             .build()?;
@@ -200,27 +200,23 @@ impl GlobalConfig {
     }
 
     pub fn builder(
-        environment: &str,
+        environment: &Env,
     ) -> Result<config::ConfigBuilder<config::builder::DefaultState>, config::ConfigError> {
         config::Config::builder()
             // Here, it should be `set_override()` not `set_default()`.
             // "env" can't be altered by config field.
             // Should be single source of truth.
-            .set_override("env", environment)
+            .set_override("env", environment.to_string())
     }
 
     /// Config path.
-    pub fn config_path(environment: &str, explicit_config_path: Option<PathBuf>) -> PathBuf {
+    pub fn config_path(environment: &Env, explicit_config_path: Option<PathBuf>) -> PathBuf {
         let mut config_path = PathBuf::new();
         if let Some(explicit_config_path_val) = explicit_config_path {
             config_path.push(explicit_config_path_val);
         } else {
             let config_directory: String = "config".into();
-            let config_file_name = match environment {
-                "production" => "production.toml",
-                "sandbox" => "sandbox.toml",
-                _ => "development.toml",
-            };
+            let config_file_name = environment.config_path();
 
             config_path.push(workspace_path());
             config_path.push(config_directory);
@@ -273,7 +269,7 @@ impl GlobalConfig {
                 tenant_secrets.public_key = secret_management_client
                     .get_secret(tenant_secrets.public_key.clone())
                     .await
-                    .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?;
+                    .change_context(error::ConfigurationError::KmsDecryptError("public_key"))?;
             }
 
             self.secrets.locker_private_key = secret_management_client
@@ -307,6 +303,38 @@ impl GlobalConfig {
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Env {
+    Development,
+    Release,
+}
+
+impl Env {
+    pub const fn current_env() -> Self {
+        if cfg!(debug_assertions) {
+            Self::Development
+        } else {
+            Self::Release
+        }
+    }
+
+    pub const fn config_path(self) -> &'static str {
+        match self {
+            Self::Development => "development.toml",
+            Self::Release => "production.toml",
+        }
+    }
+}
+
+impl std::fmt::Display for Env {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Development => write!(f, "development"),
+            Self::Release => write!(f, "release"),
+        }
     }
 }
 
