@@ -1,4 +1,4 @@
-FROM rust:slim-bookworm as builder
+FROM rust:slim-bookworm AS builder
 
 WORKDIR /locker
 
@@ -6,11 +6,21 @@ ENV CARGO_NET_RETRY=10
 ENV RUSTUP_MAX_RETRIES=10
 ENV CARGO_INCREMENTAL=0
 
+# Build argument to determine which features to use
+ARG DEV=false
+
 RUN apt-get update \
     && apt-get install -y libpq-dev libssl-dev pkg-config
 
 COPY . .
-RUN cargo build --release --features release ${EXTRA_FEATURES}
+# Use a conditional to set the features flag based on DEV value
+RUN if [ "$DEV" = "true" ]; then \
+        cargo build --release --features dev ${EXTRA_FEATURES}; \
+        echo "Building with dev features"; \
+    else \
+        cargo build --release --features release ${EXTRA_FEATURES}; \
+        echo "Building with release features"; \
+    fi
 
 
 FROM debian:bookworm-slim
@@ -30,5 +40,5 @@ COPY --from=builder /locker/target/release/${BINARY} ${BIN_DIR}/${BINARY}
 
 WORKDIR ${BIN_DIR}
 
-CMD ./locker
+CMD ["./locker"]
 
