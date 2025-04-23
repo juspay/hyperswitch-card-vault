@@ -329,7 +329,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyCreationError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
@@ -364,7 +364,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyTransferError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
@@ -415,7 +415,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataEncryptionError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
@@ -450,7 +450,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataDecryptionError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
