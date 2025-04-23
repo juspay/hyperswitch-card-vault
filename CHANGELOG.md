@@ -4,6 +4,32 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.6.5 (2025-04-23)
+
+### Bug Fixes
+
+- **config:** Use `cfg.debug_assertions` to decide env ([#145](https://github.com/juspay/hyperswitch-card-vault/pull/145)) ([`97ec865`](https://github.com/juspay/hyperswitch-card-vault/commit/97ec8656deef339d421329d853071673b068eeee))
+- **keys:** Remove hardcoded keys from tests ([#146](https://github.com/juspay/hyperswitch-card-vault/pull/146)) ([`10f3f85`](https://github.com/juspay/hyperswitch-card-vault/commit/10f3f854f240112dd41b780e7ea59f65a0cef874))
+
+### Refactors
+
+- Add dev feature flag ([#148](https://github.com/juspay/hyperswitch-card-vault/pull/148)) ([`bc75b97`](https://github.com/juspay/hyperswitch-card-vault/commit/bc75b97b599a878e3992aca955a40540339f70b8))
+
+### Miscellaneous Tasks
+
+- Add rsa key generation ([#149](https://github.com/juspay/hyperswitch-card-vault/pull/149)) ([`4cb3cc7`](https://github.com/juspay/hyperswitch-card-vault/commit/4cb3cc798c78c49e7ed3312bde08f3a8793ff724))
+- Ignore `map_identity` in caching ([#150](https://github.com/juspay/hyperswitch-card-vault/pull/150)) ([`149d894`](https://github.com/juspay/hyperswitch-card-vault/commit/149d89401fc6211add492eebfa0755862790375d))
+- Cleanup the docker image and locker main ([#151](https://github.com/juspay/hyperswitch-card-vault/pull/151)) ([`627d121`](https://github.com/juspay/hyperswitch-card-vault/commit/627d121a07d520a7be2c4c558834cc60dadcdc5b))
+
+### Build System / Dependencies
+
+- **deps:** Bump `openssl` from 0.10.66 to 0.10.70 ([#144](https://github.com/juspay/hyperswitch-card-vault/pull/144)) ([`63df522`](https://github.com/juspay/hyperswitch-card-vault/commit/63df522a5e7f90e27098618ed83a152c59e24ac5))
+
+**Full Changelog:** [`v0.6.4...v0.6.5`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.4...v0.6.5)
+
+- - -
+
+
 ## 0.6.4 (2025-01-14)
 
 ### Bug Fixes
