@@ -3,14 +3,14 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use josekit::jwe;
+use rand::rngs::OsRng;
+use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey};
 use tartarus::crypto::encryption_manager::{
     encryption_interface::Encryption,
     managers::{aes, jw},
 };
 
 const ITERATION: u32 = 14;
-const JWE_PRIVATE_KEY: &str = include_str!("bench-private-key.pem");
-const JWE_PUBLIC_KEY: &str = include_str!("bench-public-key.pem");
 
 criterion_main!(benches);
 criterion_group!(benches, criterion_aes, criterion_jwe_jws);
@@ -71,6 +71,19 @@ pub fn criterion_aes(c: &mut Criterion) {
 }
 
 pub fn criterion_jwe_jws(c: &mut Criterion) {
+    let mut rng = OsRng;
+    let bits = 2048;
+    let private_key = RsaPrivateKey::new(&mut rng, bits)?;
+    let public_key = RsaPublicKey::from(&private_key);
+
+    // Convert to PEM format
+    let private_key_pem = private_key
+        .to_pkcs8_pem(Default::default())
+        .expect("Failed to convert private key to PEM");
+    let public_key_pem = public_key
+        .to_public_key_pem(Default::default())
+        .expect("Failed to convert public key to PEM");
+
     let algo = jw::JWEncryption::new(
         JWE_PRIVATE_KEY.to_string(),
         JWE_PUBLIC_KEY.to_string(),
