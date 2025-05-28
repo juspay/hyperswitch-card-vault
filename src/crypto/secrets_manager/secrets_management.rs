@@ -4,6 +4,8 @@ use masking::Secret;
 
 #[cfg(feature = "kms-aws")]
 use crate::crypto::secrets_manager::managers::aws_kms::core::{AwsKmsClient, AwsKmsConfig};
+#[cfg(feature = "kms-gcp")]
+use crate::crypto::secrets_manager::managers::gcp_kms::core::{GcpKmsClient, GcpKmsConfig};
 #[cfg(feature = "kms-hashicorp-vault")]
 use crate::crypto::secrets_manager::managers::hcvault::core::{
     HashiCorpVault, HashiCorpVaultConfig,
@@ -29,6 +31,13 @@ pub enum SecretsManagementConfig {
         aws_kms: AwsKmsConfig,
     },
 
+    /// GCP KMS configuration
+    #[cfg(feature = "kms-gcp")]
+    GcpKms {
+        /// GCP KMS config
+        gcp_kms: GcpKmsConfig,
+    },
+
     /// HashiCorp-Vault configuration
     #[cfg(feature = "kms-hashicorp-vault")]
     HashiCorpVault {
@@ -44,6 +53,8 @@ pub enum SecretsManagementConfig {
 enum SecretsManagerClient {
     #[cfg(feature = "kms-aws")]
     AwsKms(AwsKmsClient),
+    #[cfg(feature = "kms-gcp")]
+    GcpKms(GcpKmsClient),
     #[cfg(feature = "kms-hashicorp-vault")]
     HashiCorp(HashiCorpVault),
     NoEncryption(NoEncryption),
@@ -58,6 +69,8 @@ impl SecretManager for SecretsManagerClient {
         match self {
             #[cfg(feature = "kms-aws")]
             Self::AwsKms(config) => config.get_secret(input).await,
+            #[cfg(feature = "kms-gcp")]
+            Self::GcpKms(config) => config.get_secret(input).await,
             #[cfg(feature = "kms-hashicorp-vault")]
             Self::HashiCorp(config) => config.get_secret(input).await,
             Self::NoEncryption(config) => config.get_secret(input).await,
@@ -71,6 +84,8 @@ impl SecretsManagementConfig {
         match self {
             #[cfg(feature = "kms-aws")]
             Self::AwsKms { aws_kms } => aws_kms.validate(),
+            #[cfg(feature = "kms-gcp")]
+            Self::GcpKms { gcp_kms } => gcp_kms.validate(),
             #[cfg(feature = "kms-hashicorp-vault")]
             Self::HashiCorpVault { hashi_corp_vault } => hashi_corp_vault.validate(),
             Self::NoEncryption => Ok(()),
@@ -85,6 +100,10 @@ impl SecretsManagementConfig {
             #[cfg(feature = "kms-aws")]
             Self::AwsKms { aws_kms } => Ok(SecretsManagerClient::AwsKms(
                 AwsKmsClient::new(aws_kms).await,
+            )),
+            #[cfg(feature = "kms-gcp")]
+            Self::GcpKms { gcp_kms } => Ok(SecretsManagerClient::GcpKms(
+                GcpKmsClient::new(gcp_kms).await,
             )),
             #[cfg(feature = "kms-hashicorp-vault")]
             Self::HashiCorpVault { hashi_corp_vault } => HashiCorpVault::new(hashi_corp_vault)

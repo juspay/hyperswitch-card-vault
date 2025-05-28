@@ -424,4 +424,76 @@ mod tests {
             _ => assert!(false),
         }
     }
+
+    #[cfg(feature = "kms-gcp")]
+    #[test]
+    fn test_gcp_kms_case() {
+        let data = r#"
+        [secrets_management]
+        secrets_manager = "gcp_kms"
+
+        [secrets_management.gcp_kms]
+        project_id = "test-project"
+        location = "us-central1"
+        key_ring = "test-keyring"
+        key_name = "test-key"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.secrets_management {
+            SecretsManagementConfig::GcpKms { gcp_kms } => {
+                assert!(
+                    gcp_kms.project_id == "test-project"
+                        && gcp_kms.location == "us-central1"
+                        && gcp_kms.key_ring == "test-keyring"
+                        && gcp_kms.key_name == "test-key"
+                        && gcp_kms.service_account_key_path.is_none()
+                )
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[cfg(feature = "kms-gcp")]
+    #[test]
+    fn test_gcp_kms_case_with_service_account() {
+        let data = r#"
+        [secrets_management]
+        secrets_manager = "gcp_kms"
+
+        [secrets_management.gcp_kms]
+        project_id = "test-project"
+        location = "europe-west4"
+        key_ring = "test-keyring"
+        key_name = "test-key"
+        service_account_key_path = "/path/to/service-account.json"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.secrets_management {
+            SecretsManagementConfig::GcpKms { gcp_kms } => {
+                assert!(
+                    gcp_kms.project_id == "test-project"
+                        && gcp_kms.location == "europe-west4"
+                        && gcp_kms.key_ring == "test-keyring"
+                        && gcp_kms.key_name == "test-key"
+                        && gcp_kms.service_account_key_path
+                            == Some("/path/to/service-account.json".to_string())
+                )
+            }
+            _ => assert!(false),
+        }
+    }
 }
