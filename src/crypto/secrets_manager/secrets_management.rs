@@ -4,6 +4,8 @@ use masking::Secret;
 
 #[cfg(feature = "kms-aws")]
 use crate::crypto::secrets_manager::managers::aws_kms::core::{AwsKmsClient, AwsKmsConfig};
+#[cfg(feature = "kms-gcp")]
+use crate::crypto::secrets_manager::managers::gcp_kms::core::{GcpKmsClient, GcpKmsConfig};
 #[cfg(feature = "kms-hashicorp-vault")]
 use crate::crypto::secrets_manager::managers::hcvault::core::{
     HashiCorpVault, HashiCorpVaultConfig,
@@ -36,6 +38,13 @@ pub enum SecretsManagementConfig {
         hashi_corp_vault: HashiCorpVaultConfig,
     },
 
+    /// GCP KMS configuration
+    #[cfg(feature = "kms-gcp")]
+    GcpKms {
+        /// GCP KMS config
+        gcp_kms: GcpKmsConfig,
+    },
+
     /// Variant representing no encryption
     #[default]
     NoEncryption,
@@ -46,6 +55,8 @@ enum SecretsManagerClient {
     AwsKms(AwsKmsClient),
     #[cfg(feature = "kms-hashicorp-vault")]
     HashiCorp(HashiCorpVault),
+    #[cfg(feature = "kms-gcp")]
+    GcpKms(GcpKmsClient),
     NoEncryption(NoEncryption),
 }
 
@@ -60,6 +71,8 @@ impl SecretManager for SecretsManagerClient {
             Self::AwsKms(config) => config.get_secret(input).await,
             #[cfg(feature = "kms-hashicorp-vault")]
             Self::HashiCorp(config) => config.get_secret(input).await,
+            #[cfg(feature = "kms-gcp")]
+            Self::GcpKms(config) => config.get_secret(input).await,
             Self::NoEncryption(config) => config.get_secret(input).await,
         }
     }
@@ -73,6 +86,8 @@ impl SecretsManagementConfig {
             Self::AwsKms { aws_kms } => aws_kms.validate(),
             #[cfg(feature = "kms-hashicorp-vault")]
             Self::HashiCorpVault { hashi_corp_vault } => hashi_corp_vault.validate(),
+            #[cfg(feature = "kms-gcp")]
+            Self::GcpKms { gcp_kms } => gcp_kms.validate(),
             Self::NoEncryption => Ok(()),
         }
     }
@@ -90,6 +105,10 @@ impl SecretsManagementConfig {
             Self::HashiCorpVault { hashi_corp_vault } => HashiCorpVault::new(hashi_corp_vault)
                 .change_context(SecretsManagementError::ClientCreationFailed)
                 .map(SecretsManagerClient::HashiCorp),
+            #[cfg(feature = "kms-gcp")]
+            Self::GcpKms { gcp_kms } => Ok(SecretsManagerClient::GcpKms(
+                GcpKmsClient::new(gcp_kms).await,
+            )),
             Self::NoEncryption => Ok(SecretsManagerClient::NoEncryption(NoEncryption)),
         }
     }
