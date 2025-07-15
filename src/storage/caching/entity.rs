@@ -20,8 +20,7 @@ where
         &self,
         entity_id: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
-        let entity_idd = entity_id.to_string();
-        let cached_data = self.lookup::<types::Entity>(entity_idd.clone()).await;
+        let cached_data = self.lookup::<types::Entity>(entity_id.to_string()).await;
         match cached_data {
             Some(value) => Ok(value),
             None => {

@@ -28,6 +28,14 @@ impl<'a> Storage<'a> {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub fn record_value(&mut self, key: &'a str, value: serde_json::Value) {
+        if super::formatter::IMPLICIT_KEYS.contains(key) {
+            eprintln!("{key} is a reserved entry. Skipping it. value: {value}");
+        } else {
+            self.values.insert(key, value);
+        }
+    }
 }
 
 /// Default constructor.
@@ -43,32 +51,27 @@ impl Default for Storage<'_> {
 impl Visit for Storage<'_> {
     /// A i64.
     fn record_i64(&mut self, field: &Field, value: i64) {
-        self.values
-            .insert(field.name(), serde_json::Value::from(value));
+        self.record_value(field.name(), serde_json::Value::from(value));
     }
 
     /// A u64.
     fn record_u64(&mut self, field: &Field, value: u64) {
-        self.values
-            .insert(field.name(), serde_json::Value::from(value));
+        self.record_value(field.name(), serde_json::Value::from(value));
     }
 
     /// A 64-bit floating point.
     fn record_f64(&mut self, field: &Field, value: f64) {
-        self.values
-            .insert(field.name(), serde_json::Value::from(value));
+        self.record_value(field.name(), serde_json::Value::from(value));
     }
 
     /// A boolean.
     fn record_bool(&mut self, field: &Field, value: bool) {
-        self.values
-            .insert(field.name(), serde_json::Value::from(value));
+        self.record_value(field.name(), serde_json::Value::from(value));
     }
 
     /// A string.
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.values
-            .insert(field.name(), serde_json::Value::from(value));
+        self.record_value(field.name(), serde_json::Value::from(value));
     }
 
     /// Otherwise.
@@ -77,12 +80,10 @@ impl Visit for Storage<'_> {
             // Skip fields which are already handled
             name if name.starts_with("log.") => (),
             name if name.starts_with("r#") => {
-                self.values
-                    .insert(&name[2..], serde_json::Value::from(format!("{value:?}")));
+                self.record_value(&name[2..], serde_json::Value::from(format!("{value:?}")));
             }
             name => {
-                self.values
-                    .insert(name, serde_json::Value::from(format!("{value:?}")));
+                self.record_value(name, serde_json::Value::from(format!("{value:?}")));
             }
         };
     }
@@ -148,7 +149,7 @@ impl<S: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>> Layer
             .expect("No visitor in extensions");
 
         if let Ok(elapsed) = serde_json::to_value(elapsed_milliseconds) {
-            visitor.values.insert("elapsed_milliseconds", elapsed);
+            visitor.record_value("elapsed_milliseconds", elapsed);
         }
     }
 }

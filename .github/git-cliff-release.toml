@@ -22,12 +22,12 @@ body = """
         - {{ "**" ~ scope ~ ":" ~ "**" -}}
         {% for commit in commits -%}
             {% if commits | length != 1 %}{{ newline ~ "  - " }}{% else %}{{ " " }}{% endif -%}
-            {{ commit.message | upper_first | trim }} ([`{{ commit.id | truncate(length=7, end="") }}`]({{ commit_base_url ~ commit.id }})) by {{ commit.author.email -}}
+            {{ commit.message | upper_first | trim }} ([`{{ commit.id | truncate(length=7, end="") }}`]({{ commit_base_url ~ commit.id }})) by @{{ commit.remote.username -}}
         {%- endfor -%}
     {%- endfor -%}
     {%- for commit in commits -%}
         {% if commit.scope %}{% else %}
-        - {{ commit.message | upper_first | trim }} ([`{{ commit.id | truncate(length=7, end="") }}`]({{ commit_base_url ~ commit.id }})) by {{ commit.author.email -}}
+        - {{ commit.message | upper_first | trim }} ([`{{ commit.id | truncate(length=7, end="") }}`]({{ commit_base_url ~ commit.id }})) by @{{ commit.remote.username -}}
         {%- endif %}
     {%- endfor %}
 {% endfor %}
@@ -87,3 +87,7 @@ topo_order = true
 sort_commits = "oldest"
 # limit the number of commits included in the changelog.
 # limit_commits = 42
+
+[remote]
+owner = "juspay"
+repo = "hyperswitch-card-vault"

@@ -86,7 +86,7 @@ pub enum ApiError {
     #[error("Failed while decoding data")]
     DecodingError,
 
-    #[error("Failed while inserting data into \"{0}\"")]
+    #[error("Failed while inserting data into {0}")]
     DatabaseInsertFailed(&'static str),
 
     #[error("failed while deleting data from {0}")]
@@ -184,6 +184,8 @@ pub enum ApiClientError {
     ResponseDecodingFailed,
     #[error("Received bad request: {0:?}")]
     BadRequest(bytes::Bytes),
+    #[error("Tenant authentication failed: {0:?}")]
+    Unauthorized(bytes::Bytes),
     #[error("Unexpected error occurred: status_code-{status_code:?} message-{message:?}")]
     Unexpected {
         status_code: StatusCode,
@@ -207,6 +209,8 @@ pub enum KeyManagerError {
     DbError,
     #[error("Response decoding failed")]
     ResponseDecodingFailed,
+    #[error("Authentication failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -225,6 +229,8 @@ pub enum DataKeyCreationError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authentication failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -243,6 +249,8 @@ pub enum DataKeyTransferError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authentication failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -261,6 +269,8 @@ pub enum DataEncryptionError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authentication failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -279,6 +289,8 @@ pub enum DataDecryptionError {
     CertificateParseFailed,
     #[error("Failed while constructing client request")]
     RequestConstructionFailed,
+    #[error("Authentication failed")]
+    Unauthorized,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -397,7 +409,7 @@ impl<T: axum::response::IntoResponse + error_stack::Context + Copy> axum::respon
     for ContainerError<T>
 {
     fn into_response(self) -> axum::response::Response {
-        crate::logger::error!(?self.error);
+        crate::logger::error!(error=?self.error);
         (*self.error.current_context()).into_response()
     }
 }

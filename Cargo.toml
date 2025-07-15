@@ -9,15 +9,17 @@ rust-version = "1.78"
 
 [features]
 default = ["caching"]
-release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager_mtls"]
+dev = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
 middleware = []
 key_custodian = []
 caching = ["dep:moka"]
-keymanager_mtls = []
 console = ["tokio/tracing", "dep:console-subscriber"]
+external_key_manager = []
+external_key_manager_mtls = ["external_key_manager", "reqwest/rustls-tls"]
 
 [dependencies]
 async-trait = "0.1.81"
@@ -48,8 +50,8 @@ http-body-util = "0.1.2"
 diesel = { version = "2.2.3", features = ["postgres", "serde_json", "time"] }
 diesel-async = { version = "0.5.0", features = ["postgres", "deadpool"] }
 
-serde = { version = "1.0.209", features = ["derive"] }
-serde_json = "1.0.127"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 josekit = "0.8.7"
 
 thiserror = "1.0.63"
@@ -62,7 +64,7 @@ masking = { git = "https://github.com/juspay/hyperswitch", tag = "v1.111.1" }
 ring = { version = "0.17.8", features = ["std"] }
 hex = "0.4.3"
 time = { version = "0.3.36", features = ["serde"] }
-uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
+uuid = { version = "1.10.0", features = ["v7", "fast-rng"] }
 moka = { version = "0.12.8", features = ["future"], optional = true }
 reqwest = { version = "0.12.7", features = ["json", "__rustls"] }
 
@@ -74,7 +76,7 @@ nanoid = "0.4.0"
 rand = "0.8.5"
 criterion = "0.5.1"
 axum-test = "15.6.0"
-
+rsa = "0.9.2"
 [build-dependencies]
 cargo_metadata = "0.18.1"
 

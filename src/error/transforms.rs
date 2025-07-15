@@ -13,8 +13,8 @@ impl<'a> From<&'a super::CryptoError> for super::MerchantDBError {
     }
 }
 
-error_transform!(super::CryptoError => super::LockerDBError);
-impl<'a> From<&'a super::CryptoError> for super::LockerDBError {
+error_transform!(super::CryptoError => super::VaultDBError);
+impl<'a> From<&'a super::CryptoError> for super::VaultDBError {
     fn from(value: &'a super::CryptoError) -> Self {
         match value {
             super::CryptoError::SerdeJsonError(_)
@@ -45,8 +45,8 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
     }
 }
 
-error_transform!(super::StorageError => super::LockerDBError);
-impl<'a> From<&'a super::StorageError> for super::LockerDBError {
+error_transform!(super::StorageError => super::VaultDBError);
+impl<'a> From<&'a super::StorageError> for super::VaultDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
             super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
@@ -176,18 +176,19 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
     }
 }
 
-error_transform!(super::LockerDBError => super::ApiError);
-impl<'a> From<&'a super::LockerDBError> for super::ApiError {
-    fn from(value: &'a super::LockerDBError) -> Self {
+error_transform!(super::VaultDBError => super::ApiError);
+impl<'a> From<&'a super::VaultDBError> for super::ApiError {
+    fn from(value: &'a super::VaultDBError) -> Self {
         match value {
-            super::LockerDBError::DataEncryptionError
-            | super::LockerDBError::DataDecryptionError => Self::MerchantKeyError,
-            super::LockerDBError::DBError => Self::DatabaseError,
-            super::LockerDBError::DBFilterError => Self::RetrieveDataFailed("locker"),
-            super::LockerDBError::DBInsertError => Self::DatabaseInsertFailed("locker"),
-            super::LockerDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
-            super::LockerDBError::UnknownError => Self::UnknownError,
-            super::LockerDBError::NotFoundError => Self::NotFoundError,
+            super::VaultDBError::DataEncryptionError | super::VaultDBError::DataDecryptionError => {
+                Self::MerchantKeyError
+            }
+            super::VaultDBError::DBError => Self::DatabaseError,
+            super::VaultDBError::DBFilterError => Self::RetrieveDataFailed("locker"),
+            super::VaultDBError::DBInsertError => Self::DatabaseInsertFailed("locker"),
+            super::VaultDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
+            super::VaultDBError::UnknownError => Self::UnknownError,
+            super::VaultDBError::NotFoundError => Self::NotFoundError,
         }
     }
 }
@@ -300,6 +301,7 @@ impl<'a> From<&'a super::KeyManagerError> for super::ApiError {
             super::KeyManagerError::ResponseDecodingFailed => {
                 Self::KeyManagerError("Failed to deserialize from bytes")
             }
+            super::KeyManagerError::Unauthorized => Self::TenantError("Invalid master key"),
         }
     }
 }
@@ -327,10 +329,11 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyCreationError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -346,6 +349,7 @@ impl<'a> From<&'a super::DataKeyCreationError> for super::KeyManagerError {
             | super::DataKeyCreationError::BadRequest
             | super::DataKeyCreationError::CertificateParseFailed
             | super::DataKeyCreationError::RequestConstructionFailed => Self::KeyAddFailed,
+            super::DataKeyCreationError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -360,10 +364,11 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyTransferError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -379,6 +384,7 @@ impl<'a> From<&'a super::DataKeyTransferError> for super::KeyManagerError {
             | super::DataKeyTransferError::BadRequest
             | super::DataKeyTransferError::CertificateParseFailed
             | super::DataKeyTransferError::RequestConstructionFailed => Self::KeyTransferFailed,
+            super::DataKeyTransferError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -394,6 +400,7 @@ impl<'a> From<&'a super::DataEncryptionError> for super::KeyManagerError {
             | super::DataEncryptionError::BadRequest
             | super::DataEncryptionError::CertificateParseFailed
             | super::DataEncryptionError::RequestConstructionFailed => Self::EncryptionFailed,
+            super::DataEncryptionError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -408,10 +415,11 @@ impl<'a> From<&'a super::ApiClientError> for super::DataEncryptionError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -427,6 +435,7 @@ impl<'a> From<&'a super::DataDecryptionError> for super::KeyManagerError {
             | super::DataDecryptionError::BadRequest
             | super::DataDecryptionError::CertificateParseFailed
             | super::DataDecryptionError::RequestConstructionFailed => Self::DecryptionFailed,
+            super::DataDecryptionError::Unauthorized => Self::Unauthorized,
         }
     }
 }
@@ -441,10 +450,11 @@ impl<'a> From<&'a super::ApiClientError> for super::DataDecryptionError {
             | super::ApiClientError::UrlEncodingFailed => Self::RequestConstructionFailed,
             super::ApiClientError::IdentityParseFailed
             | super::ApiClientError::CertificateParseFailed { .. } => Self::CertificateParseFailed,
-            super::ApiClientError::RequestNotSent { .. } => Self::RequestSendFailed,
+            super::ApiClientError::RequestNotSent => Self::RequestSendFailed,
             super::ApiClientError::ResponseDecodingFailed => Self::ResponseDecodingFailed,
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
+            super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
         }
     }
 }
@@ -462,7 +472,8 @@ impl<'a> From<&'a super::ApiClientError> for super::KeyManagerHealthCheckError {
             | super::ApiClientError::ResponseDecodingFailed
             | super::ApiClientError::BadRequest(_)
             | super::ApiClientError::Unexpected { .. }
-            | super::ApiClientError::InternalServerError(_) => Self::FailedToConnect,
+            | super::ApiClientError::InternalServerError(_)
+            | super::ApiClientError::Unauthorized(_) => Self::FailedToConnect,
         }
     }
 }

@@ -4,6 +4,150 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.6.5 (2025-04-23)
+
+### Bug Fixes
+
+- **config:** Use `cfg.debug_assertions` to decide env ([#145](https://github.com/juspay/hyperswitch-card-vault/pull/145)) ([`97ec865`](https://github.com/juspay/hyperswitch-card-vault/commit/97ec8656deef339d421329d853071673b068eeee))
+- **keys:** Remove hardcoded keys from tests ([#146](https://github.com/juspay/hyperswitch-card-vault/pull/146)) ([`10f3f85`](https://github.com/juspay/hyperswitch-card-vault/commit/10f3f854f240112dd41b780e7ea59f65a0cef874))
+
+### Refactors
+
+- Add dev feature flag ([#148](https://github.com/juspay/hyperswitch-card-vault/pull/148)) ([`bc75b97`](https://github.com/juspay/hyperswitch-card-vault/commit/bc75b97b599a878e3992aca955a40540339f70b8))
+
+### Miscellaneous Tasks
+
+- Add rsa key generation ([#149](https://github.com/juspay/hyperswitch-card-vault/pull/149)) ([`4cb3cc7`](https://github.com/juspay/hyperswitch-card-vault/commit/4cb3cc798c78c49e7ed3312bde08f3a8793ff724))
+- Ignore `map_identity` in caching ([#150](https://github.com/juspay/hyperswitch-card-vault/pull/150)) ([`149d894`](https://github.com/juspay/hyperswitch-card-vault/commit/149d89401fc6211add492eebfa0755862790375d))
+- Cleanup the docker image and locker main ([#151](https://github.com/juspay/hyperswitch-card-vault/pull/151)) ([`627d121`](https://github.com/juspay/hyperswitch-card-vault/commit/627d121a07d520a7be2c4c558834cc60dadcdc5b))
+
+### Build System / Dependencies
+
+- **deps:** Bump `openssl` from 0.10.66 to 0.10.70 ([#144](https://github.com/juspay/hyperswitch-card-vault/pull/144)) ([`63df522`](https://github.com/juspay/hyperswitch-card-vault/commit/63df522a5e7f90e27098618ed83a152c59e24ac5))
+
+**Full Changelog:** [`v0.6.4...v0.6.5`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.4...v0.6.5)
+
+- - -
+
+
+## 0.6.4 (2025-01-14)
+
+### Bug Fixes
+
+- **logger:** Remove warn from subscriber ([#143](https://github.com/juspay/hyperswitch-card-vault/pull/143)) ([`ceff279`](https://github.com/juspay/hyperswitch-card-vault/commit/ceff2791e76cfb78f3d5a66e410ee89ca58cd9bb))
+
+**Full Changelog:** [`v0.6.3...v0.6.4`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.3...v0.6.4)
+
+- - -
+
+
+## 0.6.3 (2025-01-13)
+
+### Bug Fixes
+
+- Add console filters for json logs ([#142](https://github.com/juspay/hyperswitch-card-vault/pull/142)) ([`890c9e6`](https://github.com/juspay/hyperswitch-card-vault/commit/890c9e64a8d7e3354dd25d6fc09c691365ec9626))
+
+### Refactors
+
+- Record `tenant_id` and `request_id` from header in the trace span ([#139](https://github.com/juspay/hyperswitch-card-vault/pull/139)) ([`e2c964c`](https://github.com/juspay/hyperswitch-card-vault/commit/e2c964c25cb32ef162255621087ea2a8aa0a2739))
+- Add logs wherever necessary and fix few error propagation ([#141](https://github.com/juspay/hyperswitch-card-vault/pull/141)) ([`a5351d2`](https://github.com/juspay/hyperswitch-card-vault/commit/a5351d2f2389ce43aab939818b57179d924b4929))
+
+### Miscellaneous Tasks
+
+- Add x-tenant-id in encryption service call ([#140](https://github.com/juspay/hyperswitch-card-vault/pull/140)) ([`46d0eef`](https://github.com/juspay/hyperswitch-card-vault/commit/46d0eefe1a7d049e3db9df4ba8cfb96b4c92b882))
+
+**Full Changelog:** [`v0.6.2...v0.6.3`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.2...v0.6.3)
+
+- - -
+
+
+## 0.6.2 (2024-12-17)
+
+### Bug Fixes
+
+- **custodian:** Remove custodian from under JWE+JWS ([#137](https://github.com/juspay/hyperswitch-card-vault/pull/137)) ([`f050062`](https://github.com/juspay/hyperswitch-card-vault/commit/f050062dc11357646183f90ed7613f914ea4d24d))
+
+**Full Changelog:** [`v0.6.1...v0.6.2`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.1...v0.6.2)
+
+- - -
+
+
+## 0.6.1 (2024-12-17)
+
+### Bug Fixes
+
+- **mtls:** Fix provider import for mtls ([#136](https://github.com/juspay/hyperswitch-card-vault/pull/136)) ([`ea1a024`](https://github.com/juspay/hyperswitch-card-vault/commit/ea1a02465c7f6c21e5489b27ae8d29b2bcee5c1c))
+
+**Full Changelog:** [`v0.6.0...v0.6.1`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.0...v0.6.1)
+
+- - -
+
+
+## 0.6.0 (2024-12-17)
+
+### Features
+
+- **v2:** Adding support for v2 API ([#135](https://github.com/juspay/hyperswitch-card-vault/pull/135)) ([`229c4d3`](https://github.com/juspay/hyperswitch-card-vault/commit/229c4d384629ca01fa5d9eba96ef46ee2108098e))
+
+**Full Changelog:** [`v0.5.1...v0.6.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.5.1...v0.6.0)
+
+- - -
+
+
+## 0.5.1 (2024-12-10)
+
+### Miscellaneous Tasks
+
+- Include `reqwest/rustls-tls` feature to keymanager_mtls ([#134](https://github.com/juspay/hyperswitch-card-vault/pull/134)) ([`5cbb06f`](https://github.com/juspay/hyperswitch-card-vault/commit/5cbb06fc9a983f48d719146d8cb37ce9904eae8b))
+
+**Full Changelog:** [`v0.5.0...v0.5.1`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.5.0...v0.5.1)
+
+- - -
+
+
+## 0.5.0 (2024-12-10)
+
+### Features
+
+- **caching+fingerprint:** Add support for caching for fingerprint API ([#80](https://github.com/juspay/hyperswitch-card-vault/pull/80)) ([`7deb933`](https://github.com/juspay/hyperswitch-card-vault/commit/7deb9336e3d4c433692fd57a93aacef4aaf6d329))
+- **health:** Add deep health check with support for diagnostics ([#64](https://github.com/juspay/hyperswitch-card-vault/pull/64)) ([`07a115b`](https://github.com/juspay/hyperswitch-card-vault/commit/07a115bb363ef7a674143e2d299d0ce3da522966))
+- **keymanager:** Add support for sending master key to key manager ([#131](https://github.com/juspay/hyperswitch-card-vault/pull/131)) ([`3e7cf0f`](https://github.com/juspay/hyperswitch-card-vault/commit/3e7cf0fc79002662fe3b85ed518e7841394d6f35))
+- **logging:** Add `console-subscriber` to support monitoring on tokio ([#123](https://github.com/juspay/hyperswitch-card-vault/pull/123)) ([`07bc64e`](https://github.com/juspay/hyperswitch-card-vault/commit/07bc64e4910d32f4603fa4e70f4823cbc056c1dd))
+- **router:**
+  - Handle 4xx errors ([#81](https://github.com/juspay/hyperswitch-card-vault/pull/81)) ([`71fe9d1`](https://github.com/juspay/hyperswitch-card-vault/commit/71fe9d1aee98b3dac6218081bfbf0d086d1be901))
+  - Add v2 api for /fingerprint ([#119](https://github.com/juspay/hyperswitch-card-vault/pull/119)) ([`cc083fa`](https://github.com/juspay/hyperswitch-card-vault/commit/cc083fa99b3fd4c924dc5103c6593793d0823536))
+- **ttl:** Add ttl to locker entries ([#88](https://github.com/juspay/hyperswitch-card-vault/pull/88)) ([`2a10a09`](https://github.com/juspay/hyperswitch-card-vault/commit/2a10a090c880ca289657bf007d31cc2dee224f60))
+- Add support for multi-tenancy ([#97](https://github.com/juspay/hyperswitch-card-vault/pull/97)) ([`0b41de8`](https://github.com/juspay/hyperswitch-card-vault/commit/0b41de8d9880a326a26883ba7be84733ea139c33))
+- Integrate a secret manager ([#110](https://github.com/juspay/hyperswitch-card-vault/pull/110)) ([`8849f42`](https://github.com/juspay/hyperswitch-card-vault/commit/8849f429c82c7677dd0a58c6235084ddaae99334))
+
+### Bug Fixes
+
+- Address non-digit character cases in card number validation ([#93](https://github.com/juspay/hyperswitch-card-vault/pull/93)) ([`f25efeb`](https://github.com/juspay/hyperswitch-card-vault/commit/f25efeb5ac44d4ea021dd9535d5b166b7f10826d))
+
+### Refactors
+
+- **ttl:** Add support for accepting ttl in seconds as opposed to datetime ([#89](https://github.com/juspay/hyperswitch-card-vault/pull/89)) ([`4c193a4`](https://github.com/juspay/hyperswitch-card-vault/commit/4c193a4a2372c89bbefee4fe35d19a213dff29fa))
+- Move crypto related managers to separate modules ([#95](https://github.com/juspay/hyperswitch-card-vault/pull/95)) ([`d2a153f`](https://github.com/juspay/hyperswitch-card-vault/commit/d2a153f61d3f97baee1f54c1a813d7f55396716f))
+- Remove `tenant_id` column from all existing tables ([#105](https://github.com/juspay/hyperswitch-card-vault/pull/105)) ([`1ec3248`](https://github.com/juspay/hyperswitch-card-vault/commit/1ec32480353e7f128d0b5062a460f92ad983b2c4))
+- Add db migrations for v2 ([#107](https://github.com/juspay/hyperswitch-card-vault/pull/107)) ([`7f1c0d1`](https://github.com/juspay/hyperswitch-card-vault/commit/7f1c0d1bc8b0790770ce12a35634e587d238b43e))
+
+### Miscellaneous Tasks
+
+- Include postman collection in docs ([#87](https://github.com/juspay/hyperswitch-card-vault/pull/87)) ([`4412bbd`](https://github.com/juspay/hyperswitch-card-vault/commit/4412bbd20a552f3cf6b6740e526fbaf74b64b830))
+- Add support for schema as a key in tenant secrets ([#120](https://github.com/juspay/hyperswitch-card-vault/pull/120)) ([`06a0414`](https://github.com/juspay/hyperswitch-card-vault/commit/06a04149f4fc689aedfaf21b3964658f5861138f))
+- Include tenancy docs in setup ([#122](https://github.com/juspay/hyperswitch-card-vault/pull/122)) ([`db89f3b`](https://github.com/juspay/hyperswitch-card-vault/commit/db89f3be1e09dbf80a29828da20f5367c6d7fb1b))
+
+### Build System / Dependencies
+
+- **deps:** Bump dependencies to supported versions ([#115](https://github.com/juspay/hyperswitch-card-vault/pull/115)) ([`4aa7441`](https://github.com/juspay/hyperswitch-card-vault/commit/4aa744169191b1f1fe444bb666b6ac1c3f4efa01))
+- Bump MSRV to 1.75.0 ([#77](https://github.com/juspay/hyperswitch-card-vault/pull/77)) ([`4e4fb9b`](https://github.com/juspay/hyperswitch-card-vault/commit/4e4fb9bc321b95a13e4aa2955933960ea3a1475b))
+- Obtain workspace member package names from cargo_metadata more deterministically ([#84](https://github.com/juspay/hyperswitch-card-vault/pull/84)) ([`2f08c4e`](https://github.com/juspay/hyperswitch-card-vault/commit/2f08c4e00fd29898865ca310a3576ee638ef98ac))
+
+**Full Changelog:** [`v0.4.0...v0.5.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.4.0...v0.5.0)
+
+- - -
+
+
 ## 0.4.0 (2024-02-08)
 
 ### Features

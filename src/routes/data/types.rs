@@ -1,17 +1,15 @@
-// #[derive(serde::Serialize, serde::Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Dedup {
-//     hash1: Option<String>,
-//     hash2: Option<String>,
-//     hash1_reference: Option<String>,
-//     hash2_reference: Option<String>,
-// }
+use masking::{Secret, StrongSecret};
 
-use masking::Secret;
+use crate::{
+    error,
+    storage::{
+        self,
+        types::{Encryptable, Locker},
+    },
+    utils,
+};
 
-use crate::{error, storage, utils};
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Card {
     pub card_number: storage::types::CardNumber,
     name_on_card: Option<String>,
@@ -57,7 +55,7 @@ pub struct StoreCardRequest {
     pub ttl: Ttl,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum Data {
     EncData { enc_card_data: String },
@@ -67,6 +65,24 @@ pub enum Data {
 /// The data expires at the specified date and time.
 #[derive(Debug, serde::Serialize, Default)]
 pub struct Ttl(pub Option<time::PrimitiveDateTime>);
+
+impl Validation for Ttl {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        self.0
+            .map(|ttl| -> Result<(), Self::Error> {
+                if ttl <= utils::date_time::now() {
+                    Err(error::ApiError::InvalidTtl)
+                } else {
+                    Ok(())
+                }
+            })
+            .transpose()?;
+
+        Ok(())
+    }
+}
 
 impl<'de> serde::Deserialize<'de> for Ttl {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -92,7 +108,7 @@ impl std::ops::Deref for Ttl {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct StoreCardResponse {
     pub status: Status,
     pub payload: Option<StoreCardRespPayload>,
@@ -126,7 +142,7 @@ pub struct DeleteCardRequest {
     pub card_reference: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct DeleteCardResponse {
     pub status: Status,
 }
@@ -137,18 +153,18 @@ pub struct FingerprintRequest {
     pub key: Secret<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct FingerprintResponse {
     pub fingerprint_id: Secret<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
 pub enum StoredData {
     EncData(String),
     CardData(Card),
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub enum Status {
     Ok,
@@ -164,19 +180,27 @@ impl Validation for StoreCardRequest {
     type Error = error::ApiError;
 
     fn validate(&self) -> Result<(), Self::Error> {
-        self.ttl
-            .map(|ttl| -> Result<(), Self::Error> {
-                if ttl <= utils::date_time::now() {
-                    Err(error::ApiError::InvalidTtl)
-                } else {
-                    Ok(())
-                }
-            })
-            .transpose()?;
+        self.ttl.validate()?;
 
         match &self.data {
             Data::EncData { .. } => Ok(()),
             Data::Card { card } => card.card_number.validate(),
         }
+    }
+}
+
+pub trait SecretDataManager {
+    fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>>;
+    fn set_decrypted_data(self, decrypted_data: StrongSecret<Vec<u8>>) -> Self;
+}
+
+impl SecretDataManager for Locker {
+    fn get_encrypted_inner_value(&self) -> Option<Secret<Vec<u8>>> {
+        self.data.get_encrypted_inner_value()
+    }
+
+    fn set_decrypted_data(mut self, decrypted_data: StrongSecret<Vec<u8>>) -> Self {
+        self.data = Encryptable::from_decrypted_data(decrypted_data);
+        self
     }
 }
