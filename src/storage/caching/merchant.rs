@@ -1,10 +1,8 @@
-#[cfg(not(feature = "external_key_manager"))]
 use crate::crypto::encryption_manager::managers::aes;
 use crate::{
     error::{ContainerError, NotFoundError},
     storage::{self, types},
 };
-#[cfg(not(feature = "external_key_manager"))]
 use futures_util::TryFutureExt;
 
 impl<T> storage::MerchantInterface for super::Caching<T>
@@ -21,7 +19,6 @@ where
     type Algorithm = T::Algorithm;
     type Error = T::Error;
 
-    #[cfg(not(feature = "external_key_manager"))]
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -41,7 +38,6 @@ where
         }
     }
 
-    #[cfg(not(feature = "external_key_manager"))]
     async fn find_or_create_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -66,7 +62,6 @@ where
             .await
     }
 
-    #[cfg(not(feature = "external_key_manager"))]
     async fn insert_merchant(
         &self,
         new: types::MerchantNew<'_>,

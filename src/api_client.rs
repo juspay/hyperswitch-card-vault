@@ -2,11 +2,10 @@ use std::str::FromStr;
 
 use crate::{
     config::GlobalConfig,
+    crypto::keymanager::KeyManagerMode,
     error::{self, ResultContainerExt},
 };
-use masking::Maskable;
-#[cfg(feature = "external_key_manager_mtls")]
-use masking::PeekInterface;
+use masking::{Maskable, PeekInterface};
 use reqwest::StatusCode;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -51,7 +50,6 @@ pub struct ApiClientConfig {
     pub client_idle_timeout: u64,
     pub pool_max_idle_per_host: usize,
     // KMS encrypted
-    #[cfg(feature = "external_key_manager_mtls")]
     pub identity: masking::Secret<String>,
 }
 
@@ -72,6 +70,7 @@ impl ApiClient {
     #[allow(unused_mut)]
     pub fn new(
         global_config: &GlobalConfig,
+        key_manager_mode: &KeyManagerMode,
     ) -> Result<Self, error::ContainerError<error::ApiClientError>> {
         let mut client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -80,8 +79,7 @@ impl ApiClient {
             ))
             .pool_max_idle_per_host(global_config.api_client.pool_max_idle_per_host);
 
-        #[cfg(feature = "external_key_manager_mtls")]
-        {
+        if key_manager_mode.is_mtls_enabled() {
             let client_identity =
                 reqwest::Identity::from_pem(global_config.api_client.identity.peek().as_ref())
                     .change_error(error::ApiClientError::IdentityParseFailed)?;

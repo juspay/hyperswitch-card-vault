@@ -6,10 +6,7 @@ use axum::{routing::post, Json};
 use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 
 use crate::{
-    crypto::{
-        hash_manager::managers::sha::Sha512,
-        keymanager::{self, KeyProvider},
-    },
+    crypto::{hash_manager::managers::sha::Sha512, keymanager},
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     logger,
@@ -82,9 +79,9 @@ pub async fn add_card(
 
     let optional_hash_table = tenant_app_state.db.find_by_data_hash(&hash_data).await?;
 
-    let crypto_manager = keymanager::get_dek_manager()
-        .find_or_create_entity(&tenant_app_state, request.merchant_id.clone())
-        .await?;
+    let crypto_manager = keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
+            .find_or_create_entity(&tenant_app_state, request.merchant_id.clone())
+            .await?;
 
     let (duplication_check, output) = match optional_hash_table {
         Some(hash_table) => {
@@ -151,7 +148,7 @@ pub async fn delete_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::DeleteCardRequest>,
 ) -> Result<Json<types::DeleteCardResponse>, ContainerError<error::ApiError>> {
-    let _entity = keymanager::get_dek_manager()
+    let _entity = keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
         .find_by_entity_id(&tenant_app_state, request.merchant_id.clone())
         .await?;
 
@@ -177,9 +174,10 @@ pub async fn retrieve_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::RetrieveCardRequest>,
 ) -> Result<Json<types::RetrieveCardResponse>, ContainerError<error::ApiError>> {
-    let crypto_manager = keymanager::get_dek_manager()
-        .find_by_entity_id(&tenant_app_state, request.merchant_id.clone())
-        .await?;
+    let crypto_manager =
+        keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
+            .find_by_entity_id(&tenant_app_state, request.merchant_id.clone())
+            .await?;
 
     let locker = tenant_app_state
         .db

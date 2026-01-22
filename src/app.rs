@@ -14,6 +14,7 @@ use std::sync::Arc;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
+    crypto::keymanager::KeyManagerMode,
     error, logger,
     routes::{self, routes_v2},
     storage,
@@ -41,6 +42,7 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
+    pub key_manager_mode: KeyManagerMode,
 }
 
 #[allow(clippy::expect_used)]
@@ -52,6 +54,7 @@ impl TenantAppState {
         global_config: &GlobalConfig,
         tenant_config: TenantConfig,
         api_client: ApiClient,
+        key_manager_mode: KeyManagerMode,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
@@ -71,6 +74,7 @@ impl TenantAppState {
             db,
             api_client,
             config: tenant_config,
+            key_manager_mode,
         })
     }
 }
@@ -131,8 +135,14 @@ where
         custom_middleware::middleware,
     ));
 
-    #[cfg(feature = "external_key_manager")]
-    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
+    let key_manager_mode = KeyManagerMode::from_config(
+        &global_app_state.global_config.external_key_manager,
+    );
+    let router = if key_manager_mode.is_external() {
+        router.route("/key/transfer", post(routes::key_migration::transfer_keys))
+    } else {
+        router
+    };
 
     #[cfg(feature = "key_custodian")]
     let router = router.nest("/custodian", routes::key_custodian::serve());

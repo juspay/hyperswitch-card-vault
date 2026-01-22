@@ -1,12 +1,8 @@
-use tartarus::{logger, tenant::GlobalAppState};
+use tartarus::{crypto::keymanager::KeyManagerMode, logger, tenant::GlobalAppState};
 
 #[allow(clippy::expect_used)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
-    if cfg!(feature = "dev") {
-        eprintln!("This is a dev build, not for production use");
-    }
 
     let mut global_config =
         tartarus::config::GlobalConfig::new().expect("Failed while parsing config");
@@ -21,8 +17,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     global_config
         .validate()
         .expect("Failed to validate application configuration");
+    
+    let key_manager_mode = KeyManagerMode::from_config(&global_config.external_key_manager);
+
     global_config
-        .fetch_raw_secrets()
+        .fetch_raw_secrets(&key_manager_mode)
         .await
         .expect("Failed to fetch raw application secrets");
 

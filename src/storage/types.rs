@@ -157,7 +157,6 @@ pub struct Fingerprint {
     pub fingerprint_id: Secret<String>,
 }
 
-#[cfg(feature = "external_key_manager")]
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::entity)]
 pub struct Entity {
@@ -201,7 +200,6 @@ pub(super) struct FingerprintTableNew {
     pub fingerprint_id: Secret<String>,
 }
 
-#[cfg(feature = "external_key_manager")]
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::entity)]
 pub(super) struct EntityTableNew {
@@ -299,7 +297,6 @@ pub(super) trait StorageDecryption: Sized {
     ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
 }
 
-#[cfg(not(feature = "external_key_manager"))]
 pub(super) trait StorageEncryption: Sized {
     type Output;
     type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
@@ -326,7 +323,6 @@ impl StorageDecryption for MerchantInner {
     }
 }
 
-#[cfg(not(feature = "external_key_manager"))]
 impl<'a> StorageEncryption for MerchantNew<'a> {
     type Output = MerchantNewInner<'a>;
 

@@ -29,4 +29,12 @@ locker_private_key = ""
 public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
 
 [external_key_manager]
+enabled = false
 url = "http://localhost:5000"
+mtls_enabled = false
+cert = ""
+
+[api_client]
+client_idle_timeout = 90
+pool_max_idle_per_host = 10 
+identity = "" 

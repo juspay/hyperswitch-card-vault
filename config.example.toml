@@ -71,5 +71,7 @@ identity = ""               # identity to be used for client certificate authent
 
 # Configuration for the external Key Manager Service
 [external_key_manager]
-url = "http://localhost:5000" # URL of the encryption service
-cert = ""                     # Represents a server X509 certificate for mtls
+enabled = true           # Enable/disable external key manager 
+mtls_enabled = false     # Enable/disable mTLS (only effective if enabled=true)
+url = "http://localhost:5000"  # External key manager URL (required if enabled=true)
+cert = ""                     # Represents a server X509 certificate for mtls (required if mtls_enabled=true)

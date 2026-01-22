@@ -1,5 +1,4 @@
-#[cfg(feature = "external_key_manager")]
-use crate::crypto::keymanager::external_keymanager::ExternalKeyManagerConfig;
+use crate::crypto::keymanager::{external_keymanager::ExternalKeyManagerConfig, KeyManagerMode};
 use crate::{
     api_client::ApiClientConfig,
     crypto::secrets_manager::{
@@ -32,7 +31,6 @@ pub struct GlobalConfig {
     pub tls: Option<ServerTls>,
     #[serde(default)]
     pub api_client: ApiClientConfig,
-    #[cfg(feature = "external_key_manager")]
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
@@ -41,7 +39,6 @@ pub struct TenantConfig {
     pub tenant_id: String,
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
-    #[cfg(feature = "external_key_manager")]
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
@@ -61,7 +58,6 @@ impl TenantConfig {
                 .get(&tenant_id)
                 .cloned()
                 .unwrap(),
-            #[cfg(feature = "external_key_manager")]
             external_key_manager: global_config.external_key_manager.clone(),
         }
     }
@@ -160,7 +156,6 @@ impl Default for ApiClientConfig {
         Self {
             client_idle_timeout: 90,
             pool_max_idle_per_host: 5,
-            #[cfg(feature = "external_key_manager_mtls")]
             identity: masking::Secret::default(),
         }
     }
@@ -234,6 +229,7 @@ impl GlobalConfig {
     #[allow(clippy::expect_used)]
     pub async fn fetch_raw_secrets(
         &mut self,
+        key_manager_mode: &KeyManagerMode,
     ) -> error_stack::Result<(), error::ConfigurationError> {
         let secret_management_client = self
             .secrets_management
@@ -280,8 +276,8 @@ impl GlobalConfig {
                 ))?;
         }
 
-        #[cfg(feature = "external_key_manager_mtls")]
-        {
+        // Fetch mTLS secrets only if using mTLS
+        if key_manager_mode.is_mtls_enabled() {
             self.external_key_manager.cert = secret_management_client
                 .get_secret(self.external_key_manager.cert.clone())
                 .await
@@ -300,8 +296,17 @@ impl GlobalConfig {
         Ok(())
     }
 
-    pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
+    pub fn validate(&self) -> Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
+        self.external_key_manager.validate()?;
+        if !self.external_key_manager.enabled || !self.external_key_manager.mtls_enabled {
+            return Ok(());
+        }
+        if self.api_client.identity.clone().expose().is_empty() {
+            return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                "api_client.identity is required when mTLS is enabled".into(),
+            ));
+        }
         Ok(())
     }
 }

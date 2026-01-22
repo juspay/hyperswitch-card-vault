@@ -23,10 +23,34 @@ use masking::{Secret, StrongSecret};
 
 #[derive(Debug, serde::Deserialize, Clone)]
 pub struct ExternalKeyManagerConfig {
+    pub enabled: bool,
+    #[serde(default)]
+    pub mtls_enabled: bool,
+    #[serde(default)]
     pub url: String,
     // KMS encrypted
-    #[cfg(feature = "external_key_manager_mtls")]
+    #[serde(default)]
     pub cert: masking::Secret<String>,
+}
+
+impl ExternalKeyManagerConfig {
+    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
+        use masking::ExposeInterface;
+
+        if self.enabled && self.url.trim().is_empty() {
+            return Err(crate::error::ConfigurationError::InvalidConfigurationValueError(
+                "external_key_manager.url is required when external key manager is enabled".into(),
+            ));
+        }
+
+        if self.enabled && self.mtls_enabled && self.cert.clone().expose().trim().is_empty() {
+            return Err(crate::error::ConfigurationError::InvalidConfigurationValueError(
+                "external_key_manager.cert is required when mTLS is enabled".into(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 pub async fn create_key_in_key_manager(

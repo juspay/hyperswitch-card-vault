@@ -7,6 +7,7 @@ use crate::{
     app::TenantAppState,
     config::TenantConfig,
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
+    crypto::keymanager::KeyManagerMode,
     custom_extractors::TenantId,
     error::{self, ResultContainerExt},
     logger,
@@ -114,10 +115,15 @@ pub async fn decrypt(
             );
             aes_decrypt_custodian_key(&mut tenant_config, inner_key1, inner_key2).await?;
 
+            let key_manager_mode = KeyManagerMode::from_config(
+                &global_app_state.global_config.external_key_manager,
+            );
+
             let tenant_app_state = TenantAppState::new(
                 &global_app_state.global_config,
                 tenant_config,
                 global_app_state.api_client.clone(),
+                key_manager_mode,
             )
             .await
             .change_context(error::ApiError::TenantError(

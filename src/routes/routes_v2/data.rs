@@ -4,7 +4,7 @@ use masking::PeekInterface;
 pub mod types;
 
 use crate::{
-    crypto::keymanager::{self, KeyProvider},
+    crypto::keymanager,
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     logger,
@@ -17,7 +17,7 @@ pub async fn delete_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::DeleteDataRequest>,
 ) -> Result<Json<types::DeleteDataResponse>, ContainerError<error::ApiError>> {
-    let _entity = keymanager::get_dek_manager()
+    let _entity = keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
         .find_by_entity_id(&tenant_app_state, request.entity_id.clone())
         .await?;
 
@@ -43,9 +43,10 @@ pub async fn retrieve_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::RetrieveDataRequest>,
 ) -> Result<Json<types::RetrieveDataResponse>, ContainerError<error::ApiError>> {
-    let crypto_manager = keymanager::get_dek_manager()
-        .find_by_entity_id(&tenant_app_state, request.entity_id.clone())
-        .await?;
+    let crypto_manager =
+        keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
+            .find_by_entity_id(&tenant_app_state, request.entity_id.clone())
+            .await?;
 
     let vault_data = tenant_app_state
         .db
@@ -91,9 +92,10 @@ pub async fn add_data(
 ) -> Result<Json<types::StoreDataResponse>, ContainerError<error::ApiError>> {
     request.validate()?;
 
-    let crypto_manager = keymanager::get_dek_manager()
-        .find_or_create_entity(&tenant_app_state, request.entity_id.clone())
-        .await?;
+    let crypto_manager =
+        keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
+            .find_or_create_entity(&tenant_app_state, request.entity_id.clone())
+            .await?;
 
     let insert_data = crypto_operation::encrypt_data_and_insert_into_db_v2(
         &tenant_app_state,
