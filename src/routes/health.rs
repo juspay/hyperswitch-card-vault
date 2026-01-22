@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::tenant::GlobalAppState;
 use crate::app::TenantAppState;
+use crate::tenant::GlobalAppState;
 use crate::{crypto::keymanager, logger};
 
 use axum::{routing::get, Json};
@@ -47,10 +47,10 @@ pub struct DatabaseHealth {
 
 #[derive(Debug, serde::Serialize, Default)]
 pub enum HealthState {
-    Working,   // Feature is enabled and functioning
+    Working, // Feature is enabled and functioning
     #[default]
-    Failing,   // Feature is enabled but not functioning (also used as fail-safe default)
-    Disabled,  // Feature is intentionally disabled
+    Failing, // Feature is enabled but not functioning (also used as fail-safe default)
+    Disabled, // Feature is intentionally disabled
 }
 
 /// '/health/diagnostics` API handler`
@@ -100,9 +100,7 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
     })
 }
 
-async fn get_key_manager_health_status(
-    tenant_state: &TenantAppState,
-) -> HealthState {
+async fn get_key_manager_health_status(tenant_state: &TenantAppState) -> HealthState {
     match tenant_state.key_manager_mode {
         crate::crypto::keymanager::KeyManagerMode::Internal => HealthState::Disabled,
         crate::crypto::keymanager::KeyManagerMode::ExternalPlain

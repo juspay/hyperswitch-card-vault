@@ -7,7 +7,10 @@ use tokio::sync::RwLock;
 use crate::config::TenantConfig;
 #[cfg(feature = "key_custodian")]
 use crate::routes::key_custodian::CustodianKeyState;
-use crate::{api_client::ApiClient, app::TenantAppState, config::GlobalConfig, crypto::keymanager::KeyManagerMode, error::ApiError};
+use crate::{
+    api_client::ApiClient, app::TenantAppState, config::GlobalConfig,
+    crypto::keymanager::KeyManagerMode, error::ApiError,
+};
 
 pub struct GlobalAppState {
     pub tenants_app_state: RwLock<FxHashMap<String, Arc<TenantAppState>>>,
@@ -43,7 +46,8 @@ impl GlobalAppState {
         let key_manager_mode = KeyManagerMode::from_config(&global_config.external_key_manager);
 
         #[allow(clippy::expect_used)]
-        let api_client = ApiClient::new(&global_config, &key_manager_mode).expect("Failed to create api client");
+        let api_client =
+            ApiClient::new(&global_config, &key_manager_mode).expect("Failed to create api client");
 
         let tenants_app_state = {
             #[cfg(feature = "key_custodian")]
@@ -57,10 +61,14 @@ impl GlobalAppState {
                     let tenant_config =
                         TenantConfig::from_global_config(&global_config, tenant_id.clone());
                     #[allow(clippy::expect_used)]
-                    let tenant_app_state =
-                        TenantAppState::new(&global_config, tenant_config, api_client.clone(), key_manager_mode.clone())
-                            .await
-                            .expect("Failed while configuring AppState for tenants");
+                    let tenant_app_state = TenantAppState::new(
+                        &global_config,
+                        tenant_config,
+                        api_client.clone(),
+                        key_manager_mode.clone(),
+                    )
+                    .await
+                    .expect("Failed while configuring AppState for tenants");
                     tenants_app_state.insert(tenant_id.clone(), Arc::new(tenant_app_state));
                 }
                 tenants_app_state

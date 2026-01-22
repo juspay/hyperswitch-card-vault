@@ -79,7 +79,8 @@ pub async fn add_card(
 
     let optional_hash_table = tenant_app_state.db.find_by_data_hash(&hash_data).await?;
 
-    let crypto_manager = keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
+    let crypto_manager =
+        keymanager::get_dek_manager(tenant_app_state.key_manager_mode.is_external())
             .find_or_create_entity(&tenant_app_state, request.merchant_id.clone())
             .await?;
 

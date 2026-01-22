@@ -115,9 +115,8 @@ pub async fn decrypt(
             );
             aes_decrypt_custodian_key(&mut tenant_config, inner_key1, inner_key2).await?;
 
-            let key_manager_mode = KeyManagerMode::from_config(
-                &global_app_state.global_config.external_key_manager,
-            );
+            let key_manager_mode =
+                KeyManagerMode::from_config(&global_app_state.global_config.external_key_manager);
 
             let tenant_app_state = TenantAppState::new(
                 &global_app_state.global_config,

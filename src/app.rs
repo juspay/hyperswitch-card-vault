@@ -135,9 +135,8 @@ where
         custom_middleware::middleware,
     ));
 
-    let key_manager_mode = KeyManagerMode::from_config(
-        &global_app_state.global_config.external_key_manager,
-    );
+    let key_manager_mode =
+        KeyManagerMode::from_config(&global_app_state.global_config.external_key_manager);
     let router = if key_manager_mode.is_external() {
         router.route("/key/transfer", post(routes::key_migration::transfer_keys))
     } else {

@@ -38,15 +38,20 @@ impl ExternalKeyManagerConfig {
         use masking::ExposeInterface;
 
         if self.enabled && self.url.trim().is_empty() {
-            return Err(crate::error::ConfigurationError::InvalidConfigurationValueError(
-                "external_key_manager.url is required when external key manager is enabled".into(),
-            ));
+            return Err(
+                crate::error::ConfigurationError::InvalidConfigurationValueError(
+                    "external_key_manager.url is required when external key manager is enabled"
+                        .into(),
+                ),
+            );
         }
 
         if self.enabled && self.mtls_enabled && self.cert.clone().expose().trim().is_empty() {
-            return Err(crate::error::ConfigurationError::InvalidConfigurationValueError(
-                "external_key_manager.cert is required when mTLS is enabled".into(),
-            ));
+            return Err(
+                crate::error::ConfigurationError::InvalidConfigurationValueError(
+                    "external_key_manager.cert is required when mTLS is enabled".into(),
+                ),
+            );
         }
 
         Ok(())
