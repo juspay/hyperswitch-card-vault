@@ -227,6 +227,13 @@ impl GlobalConfig {
         config_path
     }
 
+    /// # Panics
+    ///
+    /// - If secret management client cannot be constructed
+    /// - If master key cannot be utf8 decoded to String
+    /// - If master key cannot be hex decoded
+    ///
+    #[allow(clippy::expect_used)]
     pub async fn fetch_raw_secrets(
         &mut self,
     ) -> error_stack::Result<(), error::ConfigurationError> {
@@ -234,7 +241,7 @@ impl GlobalConfig {
             .secrets_management
             .get_secret_management_client()
             .await
-            .change_context(error::ConfigurationError::VaultClientError)?;
+            .expect("Failed to create secret management client");
 
         self.database.password = secret_management_client
             .get_secret(self.database.password.clone())
@@ -244,24 +251,18 @@ impl GlobalConfig {
             ))?;
 
         for tenant_secrets in self.tenant_secrets.values_mut() {
-            let master_key_string =
-                String::from_utf8(tenant_secrets.master_key.clone()).map_err(|_| {
-                    error::ConfigurationError::InvalidConfigurationValueError(
-                        "Master key must be valid UTF-8".into(),
+            tenant_secrets.master_key = hex::decode(
+                secret_management_client
+                    .get_secret(
+                        String::from_utf8(tenant_secrets.master_key.clone())
+                            .expect("Failed while converting master key to `String`")
+                            .into(),
                     )
-                })?;
-
-            let decrypted_master_key = secret_management_client
-                .get_secret(master_key_string.into())
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
-                .expose();
-
-            tenant_secrets.master_key = hex::decode(decrypted_master_key).map_err(|_| {
-                error::ConfigurationError::InvalidConfigurationValueError(
-                    "Master key must be valid hexadecimal".into(),
-                )
-            })?;
+                    .await
+                    .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
+                    .expose(),
+            )
+            .expect("Failed to hex decode master key");
         }
 
         #[cfg(feature = "middleware")]
@@ -281,7 +282,6 @@ impl GlobalConfig {
                 ))?;
         }
 
-        // Fetch mTLS secrets only if using mTLS
         #[cfg(feature = "external_key_manager")]
         if self.external_key_manager.is_mtls_enabled() {
             if let Some(ca_cert) = self.external_key_manager.get_ca_cert() {
@@ -290,7 +290,6 @@ impl GlobalConfig {
                     .await
                     .change_context(error::ConfigurationError::KmsDecryptError("ca_cert"))?;
 
-                // Update the external_key_manager config with decrypted ca_cert
                 self.external_key_manager = match &self.external_key_manager {
                     crate::crypto::keymanager::ExternalKeyManagerConfig::EnabledWithMtls {
                         url,
@@ -300,8 +299,6 @@ impl GlobalConfig {
                         ca_cert: decrypted_ca_cert,
                     },
                     _ => {
-                        // This should never happen since we checked is_mtls_enabled() above
-                        // but we return a proper error instead of panicking
                         return Err(error_stack::Report::from(
                             error::ConfigurationError::InvalidConfigurationValueError(
                                 "mTLS is enabled but config is not EnabledWithMtls".into(),
@@ -315,7 +312,7 @@ impl GlobalConfig {
         Ok(())
     }
 
-    pub fn validate(&self) -> Result<(), error::ConfigurationError> {
+    pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
         #[cfg(feature = "external_key_manager")]
         self.external_key_manager.validate()?;
