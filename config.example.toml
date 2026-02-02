@@ -69,9 +69,13 @@ client_idle_timeout = 90    # timeout for idle sockets being kept-alive
 pool_max_idle_per_host = 10 # maximum idle connection per host allowed in the pool.
 identity = ""               # identity to be used for client certificate authentication in mtls.
 
-# Configuration for the external Key Manager Service
+# External key manager configuration
 [external_key_manager]
-enabled = true           # Enable/disable external key manager 
-mtls_enabled = false     # Enable/disable mTLS (only effective if enabled=true)
-url = "http://localhost:5000"  # External key manager URL (required if enabled=true)
-cert = ""                     # Represents a server X509 certificate for mtls (required if mtls_enabled=true)
+mode = "Disabled"  # Options: "Disabled", "Enabled", "EnabledWithMtls"
+
+# Required when mode is "Enabled" or "EnabledWithMtls"
+# url = "https://external-key-manager.example.com"
+
+# Required when mode is "EnabledWithMtls"
+# ca_cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+

@@ -1,38 +1,16 @@
-pub mod external_keymanager;
+pub mod config;
 pub mod internal_keymanager;
+
+#[cfg(feature = "external_key_manager")]
+pub mod external_keymanager;
+
+pub use config::ExternalKeyManagerConfig;
 
 use crate::{
     app::TenantAppState,
-    crypto::keymanager::external_keymanager::ExternalKeyManagerConfig,
     error::{self, ContainerError},
 };
 use masking::{Secret, StrongSecret};
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum KeyManagerMode {
-    #[default]
-    Internal,
-    ExternalPlain,
-    ExternalMtls,
-}
-
-impl KeyManagerMode {
-    pub fn from_config(config: &ExternalKeyManagerConfig) -> Self {
-        match (config.enabled, config.mtls_enabled) {
-            (false, _) => Self::Internal,
-            (true, false) => Self::ExternalPlain,
-            (true, true) => Self::ExternalMtls,
-        }
-    }
-
-    pub fn is_external(&self) -> bool {
-        matches!(self, Self::ExternalPlain | Self::ExternalMtls)
-    }
-
-    pub fn is_mtls_enabled(&self) -> bool {
-        matches!(self, Self::ExternalMtls)
-    }
-}
 
 #[async_trait::async_trait]
 pub trait KeyProvider: Send + Sync {
@@ -63,9 +41,18 @@ pub trait CryptoOperationsManager: Send + Sync {
     ) -> Result<StrongSecret<Vec<u8>>, ContainerError<error::ApiError>>;
 }
 
-pub fn get_dek_manager(is_external: bool) -> Box<dyn KeyProvider> {
-    match is_external {
-        true => Box::new(external_keymanager::ExternalKeyManager),
-        false => Box::new(internal_keymanager::InternalKeyManager),
+#[cfg(feature = "external_key_manager")]
+pub fn get_dek_manager(config: &ExternalKeyManagerConfig) -> Box<dyn KeyProvider> {
+    match config {
+        ExternalKeyManagerConfig::Disabled => Box::new(internal_keymanager::InternalKeyManager),
+        ExternalKeyManagerConfig::Enabled { .. }
+        | ExternalKeyManagerConfig::EnabledWithMtls { .. } => {
+            Box::new(external_keymanager::ExternalKeyManager)
+        }
     }
+}
+
+#[cfg(not(feature = "external_key_manager"))]
+pub fn get_dek_manager() -> Box<dyn KeyProvider> {
+    Box::new(internal_keymanager::InternalKeyManager)
 }

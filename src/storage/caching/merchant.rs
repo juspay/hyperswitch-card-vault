@@ -1,8 +1,9 @@
-use crate::crypto::encryption_manager::managers::aes;
 use crate::{
+    crypto::encryption_manager::managers::aes,
     error::{ContainerError, NotFoundError},
     storage::{self, types},
 };
+
 use futures_util::TryFutureExt;
 
 impl<T> storage::MerchantInterface for super::Caching<T>

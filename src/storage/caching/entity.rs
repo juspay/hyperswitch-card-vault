@@ -1,8 +1,10 @@
+#[cfg(feature = "external_key_manager")]
 use crate::{
     error::{ContainerError, NotFoundError},
     storage::{self, types},
 };
 
+#[cfg(feature = "external_key_manager")]
 impl<T> storage::EntityInterface for super::Caching<T>
 where
     T: storage::EntityInterface

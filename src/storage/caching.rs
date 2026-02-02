@@ -5,9 +5,17 @@ use super::types;
 pub(super) type Cache<T, U> =
     moka::future::Cache<<T as super::Cacheable<U>>::Key, Arc<<T as super::Cacheable<U>>::Value>>;
 
+#[cfg(feature = "external_key_manager")]
 pub trait CacheableWithEntity<T>: super::Cacheable<types::Entity> {}
 
+#[cfg(feature = "external_key_manager")]
 impl<T: super::Cacheable<types::Entity>> CacheableWithEntity<T> for T {}
+
+#[cfg(not(feature = "external_key_manager"))]
+pub trait CacheableWithEntity<T> {}
+
+#[cfg(not(feature = "external_key_manager"))]
+impl<T> CacheableWithEntity<T> for T {}
 
 #[derive(Clone)]
 pub struct Caching<T>
@@ -21,6 +29,7 @@ where
     merchant_cache: Cache<T, types::Merchant>,
     hash_table_cache: Cache<T, types::HashTable>,
     fingerprint_cache: Cache<T, types::Fingerprint>,
+    #[cfg(feature = "external_key_manager")]
     entity_cache: Cache<T, types::Entity>,
 }
 
@@ -94,6 +103,7 @@ where
     }
 }
 
+#[cfg(feature = "external_key_manager")]
 impl<T> GetCache<T, types::Entity> for Caching<T>
 where
     T: super::Cacheable<types::Merchant>
@@ -148,12 +158,16 @@ where
             let merchant_cache = new_cache::<T, types::Merchant>(config, "merchant");
             let hash_table_cache = new_cache::<T, types::HashTable>(config, "hash_table");
             let fingerprint_cache = new_cache::<T, types::Fingerprint>(config, "fingerprint");
+
+            #[cfg(feature = "external_key_manager")]
             let entity_cache = new_cache::<T, types::Entity>(config, "entity");
+
             Self {
                 inner,
                 merchant_cache,
                 hash_table_cache,
                 fingerprint_cache,
+                #[cfg(feature = "external_key_manager")]
                 entity_cache,
             }
         }

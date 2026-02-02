@@ -1,6 +1,10 @@
 pub mod types;
 pub mod utils;
 
+use masking::Secret;
+
+pub use crate::crypto::keymanager::ExternalKeyManagerConfig;
+
 use crate::{
     api_client::{ApiResponse, Method},
     app::TenantAppState,
@@ -19,44 +23,7 @@ use crate::{
     routes::health,
     storage::{types::Entity, EntityInterface},
 };
-use masking::{Secret, StrongSecret};
-
-#[derive(Debug, serde::Deserialize, Clone)]
-pub struct ExternalKeyManagerConfig {
-    pub enabled: bool,
-    #[serde(default)]
-    pub mtls_enabled: bool,
-    #[serde(default)]
-    pub url: String,
-    // KMS encrypted
-    #[serde(default)]
-    pub cert: masking::Secret<String>,
-}
-
-impl ExternalKeyManagerConfig {
-    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
-        use masking::ExposeInterface;
-
-        if self.enabled && self.url.trim().is_empty() {
-            return Err(
-                crate::error::ConfigurationError::InvalidConfigurationValueError(
-                    "external_key_manager.url is required when external key manager is enabled"
-                        .into(),
-                ),
-            );
-        }
-
-        if self.enabled && self.mtls_enabled && self.cert.clone().expose().trim().is_empty() {
-            return Err(
-                crate::error::ConfigurationError::InvalidConfigurationValueError(
-                    "external_key_manager.cert is required when mTLS is enabled".into(),
-                ),
-            );
-        }
-
-        Ok(())
-    }
-}
+use masking::StrongSecret;
 
 pub async fn create_key_in_key_manager(
     tenant_app_state: &TenantAppState,
@@ -64,7 +31,15 @@ pub async fn create_key_in_key_manager(
 ) -> Result<DataKeyCreateResponse, ContainerError<error::KeyManagerError>> {
     let url = format!(
         "{}/key/create",
-        tenant_app_state.config.external_key_manager.url
+        tenant_app_state
+            .config
+            .external_key_manager
+            .get_url()
+            .ok_or_else(|| {
+                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
+                    "External key manager URL not configured".into(),
+                ))
+            })?
     );
 
     let response = call_encryption_service::<_, error::DataKeyCreationError>(
@@ -81,14 +56,22 @@ pub async fn create_key_in_key_manager(
 }
 
 /// Method required to transfer the old dek of merchant to key manager.
-/// Can be removed after migration of all keys.
+/// Can be removed after migration of alpl keys.
 pub async fn transfer_key_to_key_manager(
     tenant_app_state: &TenantAppState,
     request_body: DataKeyTransferRequest,
 ) -> Result<DataKeyCreateResponse, ContainerError<error::KeyManagerError>> {
     let url = format!(
         "{}/key/transfer",
-        tenant_app_state.config.external_key_manager.url
+        tenant_app_state
+            .config
+            .external_key_manager
+            .get_url()
+            .ok_or_else(|| {
+                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
+                    "External key manager URL not configured".into(),
+                ))
+            })?
     );
 
     let response = call_encryption_service::<_, error::DataKeyTransferError>(
@@ -110,7 +93,15 @@ pub async fn encrypt_data_using_key_manager(
 ) -> Result<EncryptedData, ContainerError<error::KeyManagerError>> {
     let url = format!(
         "{}/data/encrypt",
-        tenant_app_state.config.external_key_manager.url
+        tenant_app_state
+            .config
+            .external_key_manager
+            .get_url()
+            .ok_or_else(|| {
+                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
+                    "External key manager URL not configured".into(),
+                ))
+            })?
     );
 
     let response = call_encryption_service::<_, error::DataEncryptionError>(
@@ -132,7 +123,15 @@ pub async fn decrypt_data_using_key_manager(
 ) -> Result<DecryptedData, ContainerError<error::KeyManagerError>> {
     let url = format!(
         "{}/data/decrypt",
-        tenant_app_state.config.external_key_manager.url
+        tenant_app_state
+            .config
+            .external_key_manager
+            .get_url()
+            .ok_or_else(|| {
+                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
+                    "External key manager URL not configured".into(),
+                ))
+            })?
     );
 
     let response = call_encryption_service::<_, error::DataDecryptionError>(
@@ -153,7 +152,17 @@ pub async fn health_check_keymanager(
 ) -> Result<health::HealthState, ContainerError<error::KeyManagerHealthCheckError>> {
     let url = format!(
         "{}/health",
-        tenant_app_state.config.external_key_manager.url
+        tenant_app_state
+            .config
+            .external_key_manager
+            .get_url()
+            .ok_or_else(|| {
+                ContainerError::from(
+                    error::KeyManagerHealthCheckError::MissingConfigurationError(
+                        "External key manager URL not configured".into(),
+                    ),
+                )
+            })?
     );
 
     call_encryption_service::<_, error::KeyManagerHealthCheckError>(

@@ -1,4 +1,4 @@
-use tartarus::{crypto::keymanager::KeyManagerMode, logger, tenant::GlobalAppState};
+use tartarus::{logger, tenant::GlobalAppState};
 
 #[allow(clippy::expect_used)]
 #[tokio::main]
@@ -16,11 +16,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     global_config
         .validate()
         .expect("Failed to validate application configuration");
-
-    let key_manager_mode = KeyManagerMode::from_config(&global_config.external_key_manager);
-
     global_config
-        .fetch_raw_secrets(&key_manager_mode)
+        .fetch_raw_secrets()
         .await
         .expect("Failed to fetch raw application secrets");
 

@@ -157,6 +157,7 @@ pub struct Fingerprint {
     pub fingerprint_id: Secret<String>,
 }
 
+#[cfg(feature = "external_key_manager")]
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::entity)]
 pub struct Entity {
@@ -200,6 +201,7 @@ pub(super) struct FingerprintTableNew {
     pub fingerprint_id: Secret<String>,
 }
 
+#[cfg(feature = "external_key_manager")]
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::entity)]
 pub(super) struct EntityTableNew {

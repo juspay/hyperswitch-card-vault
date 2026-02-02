@@ -380,6 +380,7 @@ impl super::FingerprintInterface for Storage {
     }
 }
 
+#[cfg(feature = "external_key_manager")]
 impl super::EntityInterface for Storage {
     type Error = error::EntityDBError;
 

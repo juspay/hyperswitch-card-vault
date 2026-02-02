@@ -1,11 +1,15 @@
 use std::str::FromStr;
 
+#[cfg(feature = "external_key_manager")]
+use crate::crypto::keymanager::ExternalKeyManagerConfig;
+
 use crate::{
     config::GlobalConfig,
-    crypto::keymanager::KeyManagerMode,
     error::{self, ResultContainerExt},
 };
-use masking::{Maskable, PeekInterface};
+use masking::Maskable;
+#[cfg(feature = "external_key_manager")]
+use masking::PeekInterface;
 use reqwest::StatusCode;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -50,7 +54,31 @@ pub struct ApiClientConfig {
     pub client_idle_timeout: u64,
     pub pool_max_idle_per_host: usize,
     // KMS encrypted
+    #[cfg(feature = "external_key_manager")]
     pub identity: masking::Secret<String>,
+}
+
+impl ApiClientConfig {
+    #[cfg(feature = "external_key_manager")]
+    pub fn validate_for_mtls(
+        &self,
+        external_key_manager_config: &ExternalKeyManagerConfig,
+    ) -> Result<(), crate::error::ConfigurationError> {
+        use masking::ExposeInterface;
+
+        // Only validate if external key manager is enabled with mTLS
+        if external_key_manager_config.is_mtls_enabled()
+            && self.identity.clone().expose().is_empty()
+        {
+            return Err(
+                crate::error::ConfigurationError::InvalidConfigurationValueError(
+                    "api_client.identity is required when mTLS is enabled".into(),
+                ),
+            );
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -70,7 +98,6 @@ impl ApiClient {
     #[allow(unused_mut)]
     pub fn new(
         global_config: &GlobalConfig,
-        key_manager_mode: &KeyManagerMode,
     ) -> Result<Self, error::ContainerError<error::ApiClientError>> {
         let mut client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -79,23 +106,35 @@ impl ApiClient {
             ))
             .pool_max_idle_per_host(global_config.api_client.pool_max_idle_per_host);
 
-        if key_manager_mode.is_mtls_enabled() {
-            let client_identity =
-                reqwest::Identity::from_pem(global_config.api_client.identity.peek().as_ref())
-                    .change_error(error::ApiClientError::IdentityParseFailed)?;
+        #[cfg(feature = "external_key_manager")]
+        {
+            if global_config.external_key_manager.is_mtls_enabled() {
+                let client_identity =
+                    reqwest::Identity::from_pem(global_config.api_client.identity.peek().as_ref())
+                        .change_error(error::ApiClientError::IdentityParseFailed)?;
 
-            let external_key_manager_cert = reqwest::Certificate::from_pem(
-                global_config.external_key_manager.cert.peek().as_ref(),
-            )
-            .change_error(error::ApiClientError::CertificateParseFailed {
-                service: "external_key_manager",
-            })?;
+                let ca_cert = global_config
+                    .external_key_manager
+                    .get_ca_cert()
+                    .ok_or_else(|| {
+                        error::ApiClientError::MissingConfigurationError(
+                            "CA certificate not configured for mTLS",
+                        )
+                    })?;
 
-            client = client
-                .use_rustls_tls()
-                .identity(client_identity)
-                .add_root_certificate(external_key_manager_cert)
-                .https_only(true);
+                let external_key_manager_cert = reqwest::Certificate::from_pem(
+                    ca_cert.peek().as_ref(),
+                )
+                .change_error(error::ApiClientError::CertificateParseFailed {
+                    service: "external_key_manager",
+                })?;
+
+                client = client
+                    .use_rustls_tls()
+                    .identity(client_identity)
+                    .add_root_certificate(external_key_manager_cert)
+                    .https_only(true);
+            }
         }
 
         let client = client

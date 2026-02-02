@@ -104,7 +104,7 @@ impl Cacheable<types::Fingerprint> for Storage {
     type Value = types::Fingerprint;
 }
 
-#[cfg(feature = "caching")]
+#[cfg(all(feature = "caching", feature = "external_key_manager"))]
 impl Cacheable<types::Entity> for Storage {
     type Key = String;
     type Value = types::Entity;
@@ -238,6 +238,7 @@ pub(crate) trait FingerprintInterface {
 /// EntityInterface:
 ///
 /// Interface providing functionality to interface with the entity table in database
+#[cfg(feature = "external_key_manager")]
 pub(crate) trait EntityInterface {
     type Error;
 

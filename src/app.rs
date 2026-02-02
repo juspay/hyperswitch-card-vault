@@ -14,7 +14,6 @@ use std::sync::Arc;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
-    crypto::keymanager::KeyManagerMode,
     error, logger,
     routes::{self, routes_v2},
     storage,
@@ -42,10 +41,8 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
-    pub key_manager_mode: KeyManagerMode,
 }
 
-#[allow(clippy::expect_used)]
 impl TenantAppState {
     ///
     /// Construct new app state with configuration
@@ -54,7 +51,6 @@ impl TenantAppState {
         global_config: &GlobalConfig,
         tenant_config: TenantConfig,
         api_client: ApiClient,
-        key_manager_mode: KeyManagerMode,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
@@ -74,7 +70,6 @@ impl TenantAppState {
             db,
             api_client,
             config: tenant_config,
-            key_manager_mode,
         })
     }
 }
@@ -117,7 +112,8 @@ where
         );
 
     // v2 routes
-    let router = router.nest(
+    #[allow(unused_mut)]
+    let mut router = router.nest(
         "/api/v2/vault",
         axum::Router::new()
             .route("/delete", post(routes_v2::data::delete_data))
@@ -130,21 +126,28 @@ where
     );
 
     #[cfg(feature = "middleware")]
-    let router = router.layer(middleware::from_fn_with_state(
-        global_app_state.clone(),
-        custom_middleware::middleware,
-    ));
+    {
+        router = router.layer(middleware::from_fn_with_state(
+            global_app_state.clone(),
+            custom_middleware::middleware,
+        ));
+    }
 
-    let key_manager_mode =
-        KeyManagerMode::from_config(&global_app_state.global_config.external_key_manager);
-    let router = if key_manager_mode.is_external() {
-        router.route("/key/transfer", post(routes::key_migration::transfer_keys))
-    } else {
-        router
-    };
+    #[cfg(feature = "external_key_manager")]
+    {
+        if global_app_state
+            .global_config
+            .external_key_manager
+            .is_external()
+        {
+            router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
+        }
+    }
 
     #[cfg(feature = "key_custodian")]
-    let router = router.nest("/custodian", routes::key_custodian::serve());
+    {
+        router = router.nest("/custodian", routes::key_custodian::serve());
+    }
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
