@@ -6,7 +6,10 @@ use axum::{routing::post, Json};
 use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 
 use crate::{
-    crypto::{hash_manager::managers::sha::Sha512, keymanager},
+    crypto::{
+        hash_manager::managers::sha::Sha512,
+        keymanager::{self},
+    },
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     logger,
@@ -30,7 +33,7 @@ async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
 
 ///
 /// Function for registering routes that is specifically handling the main locker apis
-///
+///c
 #[allow(clippy::let_and_return)]
 pub fn serve(
     #[cfg(feature = "limit")] global_app_state: Arc<GlobalAppState>,

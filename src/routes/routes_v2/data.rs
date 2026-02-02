@@ -4,7 +4,7 @@ use masking::PeekInterface;
 pub mod types;
 
 use crate::{
-    crypto::keymanager,
+    crypto::keymanager::{self},
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     logger,

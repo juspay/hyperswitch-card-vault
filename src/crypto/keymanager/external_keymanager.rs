@@ -1,8 +1,6 @@
 pub mod types;
 pub mod utils;
 
-use masking::Secret;
-
 pub use crate::crypto::keymanager::ExternalKeyManagerConfig;
 
 use crate::{
@@ -23,7 +21,7 @@ use crate::{
     routes::health,
     storage::{types::Entity, EntityInterface},
 };
-use masking::StrongSecret;
+use masking::{Secret, StrongSecret};
 
 pub async fn create_key_in_key_manager(
     tenant_app_state: &TenantAppState,
@@ -56,7 +54,7 @@ pub async fn create_key_in_key_manager(
 }
 
 /// Method required to transfer the old dek of merchant to key manager.
-/// Can be removed after migration of alpl keys.
+/// Can be removed after migration of all keys.
 pub async fn transfer_key_to_key_manager(
     tenant_app_state: &TenantAppState,
     request_body: DataKeyTransferRequest,

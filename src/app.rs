@@ -43,6 +43,7 @@ pub struct TenantAppState {
     pub api_client: ApiClient,
 }
 
+#[allow(clippy::expect_used)]
 impl TenantAppState {
     ///
     /// Construct new app state with configuration

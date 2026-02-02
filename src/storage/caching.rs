@@ -158,10 +158,8 @@ where
             let merchant_cache = new_cache::<T, types::Merchant>(config, "merchant");
             let hash_table_cache = new_cache::<T, types::HashTable>(config, "hash_table");
             let fingerprint_cache = new_cache::<T, types::Fingerprint>(config, "fingerprint");
-
             #[cfg(feature = "external_key_manager")]
             let entity_cache = new_cache::<T, types::Entity>(config, "entity");
-
             Self {
                 inner,
                 merchant_cache,
@@ -174,6 +172,7 @@ where
     }
 }
 
+#[cfg(feature = "external_key_manager")]
 pub mod entity;
 pub mod fingerprint;
 pub mod hash_table;
