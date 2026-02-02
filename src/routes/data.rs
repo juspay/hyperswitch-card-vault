@@ -33,7 +33,7 @@ async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
 
 ///
 /// Function for registering routes that is specifically handling the main locker apis
-///c
+///
 #[allow(clippy::let_and_return)]
 pub fn serve(
     #[cfg(feature = "limit")] global_app_state: Arc<GlobalAppState>,
