@@ -71,11 +71,11 @@ identity = ""               # identity to be used for client certificate authent
 
 # External key manager configuration
 [external_key_manager]
-mode = "Disabled"  # Options: "Disabled", "Enabled", "EnabledWithMtls"
+mode = "disabled"  # Options: "disabled", "enabled", "enabled_with_mtls"
 
-# Required when mode is "Enabled" or "EnabledWithMtls"
+# Required when mode is "enabled" or "enabled_with_mtls"
 # url = "https://external-key-manager.example.com"
 
-# Required when mode is "EnabledWithMtls"
+# Required when mode is "enabled_with_mtls"
 # ca_cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
 

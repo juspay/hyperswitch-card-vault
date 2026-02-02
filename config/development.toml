@@ -29,7 +29,7 @@ locker_private_key = ""
 public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
 
 [external_key_manager]
-mode = disabled
+mode = "disabled"
 url = "http://localhost:5000"
 ca_cert = ""
 
