@@ -54,6 +54,7 @@ impl GlobalAppState {
                 for tenant_id in known_tenants.clone() {
                     let tenant_config =
                         TenantConfig::from_global_config(&global_config, tenant_id.clone());
+                    #[allow(clippy::expect_used)]
                     let tenant_app_state =
                         TenantAppState::new(&global_config, tenant_config, api_client.clone())
                             .await

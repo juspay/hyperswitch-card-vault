@@ -22,7 +22,7 @@ pub struct HealthRespPayload {
     pub message: String,
 }
 
-/// '/health' API handler`
+/// '/health` API handler`
 pub async fn health() -> Json<HealthRespPayload> {
     crate::logger::debug!("Health was called");
     Json(HealthRespPayload {
@@ -55,7 +55,7 @@ pub enum HealthState {
     Disabled,
 }
 
-/// '/health/diagnostics' API handler`
+/// '/health/diagnostics` API handler`
 pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Json<Diagnostics> {
     crate::logger::info!("Health diagnostics was called");
 
