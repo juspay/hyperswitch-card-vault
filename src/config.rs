@@ -1,7 +1,6 @@
-#[cfg(feature = "external_key_manager")]
-use crate::crypto::keymanager::ExternalKeyManagerConfig;
 use crate::{
     api_client::ApiClientConfig,
+    crypto::keymanager::ExternalKeyManagerConfig,
     crypto::secrets_manager::{
         secrets_interface::SecretManager, secrets_management::SecretsManagementConfig,
     },
@@ -33,7 +32,6 @@ pub struct GlobalConfig {
     #[serde(default)]
     pub api_client: ApiClientConfig,
     #[serde(default)]
-    #[cfg(feature = "external_key_manager")]
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
@@ -43,7 +41,6 @@ pub struct TenantConfig {
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
     #[serde(default)]
-    #[cfg(feature = "external_key_manager")]
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
@@ -63,7 +60,6 @@ impl TenantConfig {
                 .get(&tenant_id)
                 .cloned()
                 .unwrap(),
-            #[cfg(feature = "external_key_manager")]
             external_key_manager: global_config.external_key_manager.clone(),
         }
     }
@@ -262,7 +258,7 @@ impl GlobalConfig {
                     .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
                     .expose(),
             )
-            .expect("Failed to hex decode master key");
+            .expect("Failed to hex decode master key")
         }
 
         #[cfg(feature = "middleware")]
@@ -283,30 +279,32 @@ impl GlobalConfig {
         }
 
         #[cfg(feature = "external_key_manager")]
-        if self.external_key_manager.is_mtls_enabled() {
-            if let Some(ca_cert) = self.external_key_manager.get_ca_cert() {
-                let decrypted_ca_cert = secret_management_client
-                    .get_secret(ca_cert.clone())
-                    .await
-                    .change_context(error::ConfigurationError::KmsDecryptError("ca_cert"))?;
+        {
+            self.external_key_manager = match &self.external_key_manager {
+                ExternalKeyManagerConfig::EnabledWithMtls { url, ca_cert } => {
+                    let decrypted_ca_cert = secret_management_client
+                        .get_secret(ca_cert.clone())
+                        .await
+                        .change_context(error::ConfigurationError::KmsDecryptError("ca_cert"))?;
 
-                self.external_key_manager = match &self.external_key_manager {
-                    crate::crypto::keymanager::ExternalKeyManagerConfig::EnabledWithMtls {
-                        url,
-                        ..
-                    } => crate::crypto::keymanager::ExternalKeyManagerConfig::EnabledWithMtls {
+                    let decrypted_identity = secret_management_client
+                        .get_secret(self.api_client.identity.clone())
+                        .await
+                        .change_context(error::ConfigurationError::KmsDecryptError(
+                            "api_client-identity",
+                        ))?;
+
+                    self.api_client.identity = decrypted_identity;
+
+                    ExternalKeyManagerConfig::EnabledWithMtls {
                         url: url.clone(),
                         ca_cert: decrypted_ca_cert,
-                    },
-                    _ => {
-                        return Err(error_stack::Report::from(
-                            error::ConfigurationError::InvalidConfigurationValueError(
-                                "mTLS is enabled but config is not EnabledWithMtls".into(),
-                            ),
-                        ));
                     }
-                };
-            }
+                }
+                ExternalKeyManagerConfig::Enabled { .. } | ExternalKeyManagerConfig::Disabled => {
+                    self.external_key_manager.clone()
+                }
+            };
         }
 
         Ok(())
@@ -315,9 +313,8 @@ impl GlobalConfig {
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
         #[cfg(feature = "external_key_manager")]
-        self.external_key_manager.validate()?;
-        #[cfg(feature = "external_key_manager")]
         {
+            self.external_key_manager.validate()?;
             self.api_client
                 .validate_for_mtls(&self.external_key_manager)?;
         }

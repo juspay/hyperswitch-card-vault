@@ -12,9 +12,10 @@ use crate::{
     error::{self, ContainerError, ResultContainerExt},
 };
 
-use super::types::StorageDecryption;
-use super::types::StorageEncryption;
-use super::{consts, schema, types, utils, LockerInterface, MerchantInterface, Storage};
+use super::{
+    consts, schema, types, types::StorageDecryption, types::StorageEncryption, utils,
+    LockerInterface, MerchantInterface, Storage,
+};
 
 impl MerchantInterface for Storage {
     type Algorithm = aes::GcmAes256;

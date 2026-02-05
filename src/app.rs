@@ -113,7 +113,14 @@ where
         );
 
     // v2 routes
-    #[allow(unused_mut)]
+    #[cfg_attr(
+        all(
+            not(feature = "middleware"),
+            not(feature = "external_key_manager"),
+            not(feature = "key_custodian")
+        ),
+        allow(unused_mut)
+    )]
     let mut router = router.nest(
         "/api/v2/vault",
         axum::Router::new()

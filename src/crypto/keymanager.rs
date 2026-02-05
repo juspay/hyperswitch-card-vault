@@ -41,18 +41,13 @@ pub trait CryptoOperationsManager: Send + Sync {
     ) -> Result<StrongSecret<Vec<u8>>, ContainerError<error::ApiError>>;
 }
 
-#[cfg(feature = "external_key_manager")]
 pub fn get_dek_manager(config: &ExternalKeyManagerConfig) -> Box<dyn KeyProvider> {
     match config {
         ExternalKeyManagerConfig::Disabled => Box::new(internal_keymanager::InternalKeyManager),
+        #[cfg(feature = "external_key_manager")]
         ExternalKeyManagerConfig::Enabled { .. }
         | ExternalKeyManagerConfig::EnabledWithMtls { .. } => {
             Box::new(external_keymanager::ExternalKeyManager)
         }
     }
-}
-
-#[cfg(not(feature = "external_key_manager"))]
-pub fn get_dek_manager() -> Box<dyn KeyProvider> {
-    Box::new(internal_keymanager::InternalKeyManager)
 }

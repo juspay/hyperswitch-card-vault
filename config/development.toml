@@ -30,10 +30,3 @@ public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9
 
 [external_key_manager]
 mode = "disabled"
-url = "http://localhost:5000"
-ca_cert = ""
-
-[api_client]
-client_idle_timeout = 90
-pool_max_idle_per_host = 10 
-identity = "" 

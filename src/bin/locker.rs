@@ -1,6 +1,6 @@
 use tartarus::{logger, tenant::GlobalAppState};
 
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, clippy::unwrap_in_result)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut global_config =
@@ -12,7 +12,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         [tartarus::service_name!(), "tower_http"],
     );
 
-    #[allow(clippy::expect_used)]
     global_config
         .validate()
         .expect("Failed to validate application configuration");

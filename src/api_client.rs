@@ -64,12 +64,8 @@ impl ApiClientConfig {
         &self,
         external_key_manager_config: &ExternalKeyManagerConfig,
     ) -> Result<(), crate::error::ConfigurationError> {
-        use masking::ExposeInterface;
-
         // Only validate if external key manager is enabled with mTLS
-        if external_key_manager_config.is_mtls_enabled()
-            && self.identity.clone().expose().is_empty()
-        {
+        if external_key_manager_config.is_mtls_enabled() && self.identity.peek().is_empty() {
             return Err(
                 crate::error::ConfigurationError::InvalidConfigurationValueError(
                     "api_client.identity is required when mTLS is enabled".into(),
@@ -108,6 +104,7 @@ impl ApiClient {
 
         #[cfg(feature = "external_key_manager")]
         {
+            // mTLS-specific configuration
             if global_config.external_key_manager.is_mtls_enabled() {
                 let client_identity =
                     reqwest::Identity::from_pem(global_config.api_client.identity.peek().as_ref())
@@ -122,17 +119,17 @@ impl ApiClient {
                         )
                     })?;
 
-                let external_key_manager_cert = reqwest::Certificate::from_pem(
-                    ca_cert.peek().as_ref(),
-                )
-                .change_error(error::ApiClientError::CertificateParseFailed {
-                    service: "external_key_manager",
-                })?;
+                let key_manager_ca_cert = reqwest::Certificate::from_pem(ca_cert.peek().as_ref())
+                    .change_error(
+                    error::ApiClientError::CertificateParseFailed {
+                        service: "external_key_manager",
+                    },
+                )?;
 
                 client = client
                     .use_rustls_tls()
                     .identity(client_identity)
-                    .add_root_certificate(external_key_manager_cert)
+                    .add_root_certificate(key_manager_ca_cert)
                     .https_only(true);
             }
         }

@@ -32,12 +32,7 @@ pub async fn create_key_in_key_manager(
         tenant_app_state
             .config
             .external_key_manager
-            .get_url()
-            .ok_or_else(|| {
-                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
-                    "External key manager URL not configured".into(),
-                ))
-            })?
+            .get_url_required()?
     );
 
     let response = call_encryption_service::<_, error::DataKeyCreationError>(
@@ -64,12 +59,7 @@ pub async fn transfer_key_to_key_manager(
         tenant_app_state
             .config
             .external_key_manager
-            .get_url()
-            .ok_or_else(|| {
-                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
-                    "External key manager URL not configured".into(),
-                ))
-            })?
+            .get_url_required()?
     );
 
     let response = call_encryption_service::<_, error::DataKeyTransferError>(
@@ -94,12 +84,7 @@ pub async fn encrypt_data_using_key_manager(
         tenant_app_state
             .config
             .external_key_manager
-            .get_url()
-            .ok_or_else(|| {
-                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
-                    "External key manager URL not configured".into(),
-                ))
-            })?
+            .get_url_required()?
     );
 
     let response = call_encryption_service::<_, error::DataEncryptionError>(
@@ -124,12 +109,7 @@ pub async fn decrypt_data_using_key_manager(
         tenant_app_state
             .config
             .external_key_manager
-            .get_url()
-            .ok_or_else(|| {
-                ContainerError::from(error::KeyManagerError::MissingConfigurationError(
-                    "External key manager URL not configured".into(),
-                ))
-            })?
+            .get_url_required()?
     );
 
     let response = call_encryption_service::<_, error::DataDecryptionError>(
@@ -155,10 +135,9 @@ pub async fn health_check_keymanager(
             .external_key_manager
             .get_url()
             .ok_or_else(|| {
-                ContainerError::from(
-                    error::KeyManagerHealthCheckError::MissingConfigurationError(
-                        "External key manager URL not configured".into(),
-                    ),
+                error::KeyManagerHealthCheckError::MissingConfigurationError(
+                    "external_key_manager.url is required when external key manager is enabled"
+                        .into(),
                 )
             })?
     );
