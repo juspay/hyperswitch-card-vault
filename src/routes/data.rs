@@ -6,10 +6,7 @@ use axum::{routing::post, Json};
 use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 
 use crate::{
-    crypto::{
-        hash_manager::managers::sha::Sha512,
-        keymanager,
-    },
+    crypto::{hash_manager::managers::sha::Sha512, keymanager},
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     logger,
