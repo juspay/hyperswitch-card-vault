@@ -35,12 +35,11 @@ pub struct GlobalConfig {
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct TenantConfig {
     pub tenant_id: String,
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
-    #[serde(default)]
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
