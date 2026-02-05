@@ -280,21 +280,24 @@ impl GlobalConfig {
 
         #[cfg(feature = "external_key_manager")]
         {
+            // Decrypt api_client.identity only when mTLS is enabled, as it's required for client certificate authentication
+            if self.external_key_manager.is_mtls_enabled() {
+                let decrypted_identity = secret_management_client
+                    .get_secret(self.api_client.identity.clone())
+                    .await
+                    .change_context(error::ConfigurationError::KmsDecryptError(
+                        "api_client-identity",
+                    ))?;
+
+                self.api_client.identity = decrypted_identity;
+            }
+
             self.external_key_manager = match &self.external_key_manager {
                 ExternalKeyManagerConfig::EnabledWithMtls { url, ca_cert } => {
                     let decrypted_ca_cert = secret_management_client
                         .get_secret(ca_cert.clone())
                         .await
                         .change_context(error::ConfigurationError::KmsDecryptError("ca_cert"))?;
-
-                    let decrypted_identity = secret_management_client
-                        .get_secret(self.api_client.identity.clone())
-                        .await
-                        .change_context(error::ConfigurationError::KmsDecryptError(
-                            "api_client-identity",
-                        ))?;
-
-                    self.api_client.identity = decrypted_identity;
 
                     ExternalKeyManagerConfig::EnabledWithMtls {
                         url: url.clone(),

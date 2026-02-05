@@ -8,7 +8,7 @@ use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 use crate::{
     crypto::{
         hash_manager::managers::sha::Sha512,
-        keymanager::{self},
+        keymanager,
     },
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},

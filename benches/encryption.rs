@@ -74,7 +74,6 @@ pub fn criterion_aes(c: &mut Criterion) {
     });
 }
 
-#[allow(clippy::expect_used)]
 pub fn criterion_jwe_jws(c: &mut Criterion) -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = OsRng;
     let bits = 2048;
@@ -82,11 +81,9 @@ pub fn criterion_jwe_jws(c: &mut Criterion) -> Result<(), Box<dyn std::error::Er
     let public_key = RsaPublicKey::from(&private_key);
 
     // Convert to PEM format
-    #[allow(clippy::expect_used)]
     let private_key_pem = private_key
         .to_pkcs8_pem(Default::default())
         .expect("Failed to convert private key to PEM");
-    #[allow(clippy::expect_used)]
     let public_key_pem = public_key
         .to_public_key_pem(Default::default())
         .expect("Failed to convert public key to PEM");

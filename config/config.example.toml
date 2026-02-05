@@ -77,5 +77,5 @@ mode = "disabled"  # Options: "disabled", "enabled", "enabled_with_mtls"
 # url = "https://external-key-manager.example.com"
 
 # Required when mode is "enabled_with_mtls"
-# ca_cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+# ca_cert = """-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"""
 

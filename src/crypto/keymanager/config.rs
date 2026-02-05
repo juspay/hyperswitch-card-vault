@@ -30,9 +30,7 @@ impl ExternalKeyManagerConfig {
         match self {
             Self::Disabled => None,
             #[cfg(feature = "external_key_manager")]
-            Self::Enabled { url } => Some(url),
-            #[cfg(feature = "external_key_manager")]
-            Self::EnabledWithMtls { url, .. } => Some(url),
+            Self::Enabled { url } | Self::EnabledWithMtls { url, .. } => Some(url),
         }
     }
 
