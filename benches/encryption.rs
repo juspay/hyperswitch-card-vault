@@ -1,5 +1,9 @@
-#![allow(clippy::expect_used)]
-#![allow(clippy::missing_panics_doc)]
+#![allow(
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    unused_must_use,
+    clippy::unwrap_in_result
+)]
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use josekit::jwe;
@@ -70,7 +74,7 @@ pub fn criterion_aes(c: &mut Criterion) {
     });
 }
 
-pub fn criterion_jwe_jws(c: &mut Criterion) {
+pub fn criterion_jwe_jws(c: &mut Criterion) -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = OsRng;
     let bits = 2048;
     let private_key = RsaPrivateKey::new(&mut rng, bits)?;
@@ -85,8 +89,8 @@ pub fn criterion_jwe_jws(c: &mut Criterion) {
         .expect("Failed to convert public key to PEM");
 
     let algo = jw::JWEncryption::new(
-        JWE_PRIVATE_KEY.to_string(),
-        JWE_PUBLIC_KEY.to_string(),
+        private_key_pem.to_string(),
+        public_key_pem.to_string(),
         jwe::RSA_OAEP,
         jwe::RSA_OAEP,
     );
@@ -142,4 +146,6 @@ pub fn criterion_jwe_jws(c: &mut Criterion) {
             },
         );
     });
+
+    Ok(())
 }

@@ -96,6 +96,7 @@ jobs:
         uses: baptiste0928/cargo-install@v2.2.0
         with:
           crate: cargo-hack
+          version: "0.6.42"
 
       - name: Run `cargo hack`
         shell: bash
