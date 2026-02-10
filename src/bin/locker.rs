@@ -1,14 +1,8 @@
 use tartarus::{logger, tenant::GlobalAppState};
 
-#[allow(clippy::expect_used, clippy::unwrap_in_result)]
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if cfg!(feature = "dev") {
-        eprintln!("This is a dev build, not for production use");
-    }
-
-    let mut global_config =
-        tartarus::config::GlobalConfig::new().expect("Failed while parsing config");
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let mut global_config = tartarus::config::GlobalConfig::new()
+        .map_err(|e| format!("Failed to parse config: {e}"))?;
 
     let _guard = logger::setup(
         &global_config.log,
@@ -16,20 +10,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         [tartarus::service_name!(), "tower_http"],
     );
 
-    #[allow(clippy::expect_used)]
-    global_config
-        .validate()
-        .expect("Failed to validate application configuration");
+    global_config.validate()
+        .map_err(|e| format!("Failed to validate application configuration: {e}"))?;
+
     global_config
         .fetch_raw_secrets()
         .await
-        .expect("Failed to fetch raw application secrets");
+        .map_err(|e| format!("Failed to fetch raw application secrets: {e}"))?;
 
     let global_app_state = GlobalAppState::new(global_config).await;
 
     tartarus::app::server_builder(global_app_state)
         .await
-        .expect("Failed while building the server");
+        .map_err(|e| format!("Failed to build server: {e}"))?;
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    if cfg!(feature = "dev") {
+        eprintln!("This is a dev build, not for production use");
+    }
+
+    if let Err(e) = run().await {
+        eprintln!("Application startup error: {e}");
+        std::process::exit(1);
+    }
 }
