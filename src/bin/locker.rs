@@ -10,7 +10,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         [tartarus::service_name!(), "tower_http"],
     );
 
-    global_config.validate()
+    global_config
+        .validate()
         .map_err(|e| format!("Failed to validate application configuration: {e}"))?;
 
     global_config
