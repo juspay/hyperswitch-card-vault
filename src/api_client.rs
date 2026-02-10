@@ -1,8 +1,7 @@
 use std::str::FromStr;
 
 #[cfg(feature = "external_key_manager")]
-use crate::crypto::keymanager::ExternalKeyManagerConfig;
-
+use crate::config::ExternalKeyManagerConfig;
 use crate::{
     config::GlobalConfig,
     error::{self, ResultContainerExt},

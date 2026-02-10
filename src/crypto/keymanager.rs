@@ -1,10 +1,9 @@
-pub mod config;
 pub mod internal_keymanager;
 
 #[cfg(feature = "external_key_manager")]
 pub mod external_keymanager;
 
-pub use config::ExternalKeyManagerConfig;
+pub use crate::config::ExternalKeyManagerConfig;
 
 use crate::{
     app::TenantAppState,

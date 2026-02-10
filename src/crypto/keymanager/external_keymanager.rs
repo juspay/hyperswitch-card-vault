@@ -1,7 +1,7 @@
 pub mod types;
 pub mod utils;
 
-pub use crate::crypto::keymanager::ExternalKeyManagerConfig;
+pub use crate::config::ExternalKeyManagerConfig;
 
 use crate::{
     api_client::{ApiResponse, Method},

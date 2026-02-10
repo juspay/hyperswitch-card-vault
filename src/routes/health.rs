@@ -95,7 +95,7 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
 
     #[cfg(feature = "external_key_manager")]
     let keymanager_status = {
-        use crate::crypto::keymanager::ExternalKeyManagerConfig;
+        use crate::config::ExternalKeyManagerConfig;
 
         match &state.config.external_key_manager {
             ExternalKeyManagerConfig::Disabled => HealthState::Disabled,
