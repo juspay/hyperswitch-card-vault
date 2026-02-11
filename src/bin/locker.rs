@@ -16,7 +16,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         [tartarus::service_name!(), "tower_http"],
     );
 
-    #[allow(clippy::expect_used)]
     global_config
         .validate()
         .expect("Failed to validate application configuration");
