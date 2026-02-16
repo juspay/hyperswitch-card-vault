@@ -177,29 +177,42 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::*;
+    use rand::rngs::OsRng;
+    use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey};
 
-    // Keys used for tests
-    // Can be generated using the following commands:
-    // `openssl genrsa -out private_self.pem 2048`
-    // `openssl rsa -in private_key.pem -pubout -out public_self.pem`
-    const ENCRYPTION_KEY: &str = "";
-    const DECRYPTION_KEY: &str = "";
+    fn generate_rsa_key_pair() -> (String, String) {
+        let mut rng = OsRng;
+        let bits = 2048;
+        let private_key =
+            RsaPrivateKey::new(&mut rng, bits).expect("Failed to generate RSA private key");
+        let public_key = RsaPublicKey::from(&private_key);
 
-    const SIGNATURE_VERIFICATION_KEY: &str = "";
-    const SIGNING_KEY: &str = "";
+        let private_key_pem = private_key
+            .to_pkcs8_pem(Default::default())
+            .expect("Failed to convert private key to PEM")
+            .to_string();
+        let public_key_pem = public_key
+            .to_public_key_pem(Default::default())
+            .expect("Failed to convert public key to PEM")
+            .to_string();
+
+        (private_key_pem, public_key_pem)
+    }
 
     #[test]
     fn test_jwe() {
-        let jwt = encrypt_jwe("request_payload".as_bytes(), ENCRYPTION_KEY, jwe::RSA_OAEP).unwrap();
+        let (private_key, public_key) = generate_rsa_key_pair();
+        let jwt = encrypt_jwe("request_payload".as_bytes(), public_key, jwe::RSA_OAEP).unwrap();
         let alg = jwe::RSA_OAEP;
-        let payload = decrypt_jwe(&jwt, DECRYPTION_KEY, alg).unwrap();
+        let payload = decrypt_jwe(&jwt, private_key, alg).unwrap();
         assert_eq!("request_payload".to_string(), payload)
     }
 
     #[test]
     fn test_jws() {
-        let jwt = jws_sign_payload("jws payload".as_bytes(), SIGNING_KEY).unwrap();
-        let payload = verify_sign(jwt, SIGNATURE_VERIFICATION_KEY).unwrap();
+        let (private_key, public_key) = generate_rsa_key_pair();
+        let jwt = jws_sign_payload("jws payload".as_bytes(), private_key).unwrap();
+        let payload = verify_sign(jwt, public_key).unwrap();
         assert_eq!("jws payload".to_string(), payload)
     }
 }

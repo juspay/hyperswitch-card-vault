@@ -14,7 +14,7 @@ Thus, if the locker is building normally using the `Dockerfile` included, all of
 
 - Master Key:
 
-  To generate the master key a utiliy is bundled in the repository, you can use the following command to generate the master key.
+  To generate the master key a utility is bundled in the repository, you can use the following command to generate the master key.
 
   ```bash
   cargo run --bin utils -- master-key

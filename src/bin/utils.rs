@@ -126,8 +126,8 @@ fn master_key_generator(master_key_conf: MasterKey) -> Result<(), Box<dyn std::e
         let encryption_key = generate_aes256_key();
         let key_custodian_key = hex::encode(encryption_key);
         let algo = GcmAes256::new(encryption_key.to_vec());
-        let encryted_master_key = algo.encrypt(master_key.to_vec())?;
-        let hexed_master_key = hex::encode(encryted_master_key);
+        let encrypted_master_key = algo.encrypt(master_key.to_vec())?;
+        let hexed_master_key = hex::encode(encrypted_master_key);
         println!("master key: {}", hexed_master_key);
         let (key1, key2) = key_custodian_key.split_at(key_custodian_key.len() / 2);
         println!("key 1: {}", key1);
