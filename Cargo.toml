@@ -3,7 +3,7 @@ name = "tartarus"
 version = "0.1.3"
 edition = "2021"
 default-run = "locker"
-rust-version = "1.78"
+rust-version = "1.85"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -32,7 +32,7 @@ once_cell = "1.19.0"
 vaultrs = { version = "0.7.2", optional = true }
 
 # Tokio Dependencies
-tokio = { version = "1.39.3", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
 axum = "0.7.5"
 axum-server = { version = "0.7.1", features = ["tls-rustls"] }
 hyper = "1.4.1"
