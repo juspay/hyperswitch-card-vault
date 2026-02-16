@@ -1,6 +1,6 @@
 use tartarus::{logger, tenant::GlobalAppState};
 
-#[allow(clippy::expect_used, clippy::unwrap_in_result)]
+#[allow(clippy::expect_used)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut global_config =
