@@ -1,4 +1,4 @@
-FROM rust:slim-bookworm AS builder
+FROM rust:slim-trixie AS builder
 
 WORKDIR /locker
 
@@ -23,7 +23,7 @@ RUN if [ "$DEV" = "true" ]; then \
     fi
 
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 ARG CONFIG_DIR=/local/config
 ARG BIN_DIR=/local
