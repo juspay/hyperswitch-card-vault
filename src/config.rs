@@ -8,6 +8,8 @@ use crate::{
 };
 use error_stack::ResultExt;
 use masking::ExposeInterface;
+#[cfg(feature = "external_key_manager")]
+use masking::Secret;
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
@@ -354,9 +356,6 @@ impl std::fmt::Display for Env {
         }
     }
 }
-
-#[cfg(feature = "external_key_manager")]
-use masking::Secret;
 
 #[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, PartialEq)]
 #[serde(tag = "mode")]
