@@ -1,7 +1,9 @@
+pub mod internal_keymanager;
+
 #[cfg(feature = "external_key_manager")]
 pub mod external_keymanager;
-#[cfg(not(feature = "external_key_manager"))]
-pub mod internal_keymanager;
+
+pub use crate::config::ExternalKeyManagerConfig;
 
 use crate::{
     app::TenantAppState,
@@ -38,14 +40,13 @@ pub trait CryptoOperationsManager: Send + Sync {
     ) -> Result<StrongSecret<Vec<u8>>, ContainerError<error::ApiError>>;
 }
 
-pub const fn get_dek_manager() -> impl KeyProvider {
-    #[cfg(feature = "external_key_manager")]
-    {
-        external_keymanager::ExternalKeyManager
-    }
-
-    #[cfg(not(feature = "external_key_manager"))]
-    {
-        internal_keymanager::InternalKeyManager
+pub fn get_dek_manager(config: &ExternalKeyManagerConfig) -> Box<dyn KeyProvider> {
+    match config {
+        ExternalKeyManagerConfig::Disabled => Box::new(internal_keymanager::InternalKeyManager),
+        #[cfg(feature = "external_key_manager")]
+        ExternalKeyManagerConfig::Enabled { .. }
+        | ExternalKeyManagerConfig::EnabledWithMtls { .. } => {
+            Box::new(external_keymanager::ExternalKeyManager)
+        }
     }
 }

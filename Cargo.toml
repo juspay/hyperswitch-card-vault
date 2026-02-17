@@ -9,8 +9,7 @@ rust-version = "1.85"
 
 [features]
 default = ["caching"]
-release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager_mtls"]
-dev = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
 limit = []
@@ -18,8 +17,7 @@ middleware = []
 key_custodian = []
 caching = ["dep:moka"]
 console = ["tokio/tracing", "dep:console-subscriber"]
-external_key_manager = []
-external_key_manager_mtls = ["external_key_manager", "reqwest/rustls-tls"]
+external_key_manager = ["reqwest/rustls-tls"]
 
 [dependencies]
 async-trait = "0.1.81"

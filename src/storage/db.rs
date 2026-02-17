@@ -12,16 +12,15 @@ use crate::{
     error::{self, ContainerError, ResultContainerExt},
 };
 
-use super::types::StorageDecryption;
-#[cfg(not(feature = "external_key_manager"))]
-use super::types::StorageEncryption;
-use super::{consts, schema, types, utils, LockerInterface, MerchantInterface, Storage};
+use super::{
+    consts, schema, types, types::StorageDecryption, types::StorageEncryption, utils,
+    LockerInterface, MerchantInterface, Storage,
+};
 
 impl MerchantInterface for Storage {
     type Algorithm = aes::GcmAes256;
     type Error = error::MerchantDBError;
 
-    #[cfg(not(feature = "external_key_manager"))]
     async fn find_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -49,7 +48,6 @@ impl MerchantInterface for Storage {
             .and_then(|inner| Ok(inner.decrypt(key)?))
     }
 
-    #[cfg(not(feature = "external_key_manager"))]
     async fn find_or_create_by_merchant_id(
         &self,
         merchant_id: &str,
@@ -80,7 +78,6 @@ impl MerchantInterface for Storage {
         }
     }
 
-    #[cfg(not(feature = "external_key_manager"))]
     async fn insert_merchant(
         &self,
         new: types::MerchantNew<'_>,

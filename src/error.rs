@@ -193,6 +193,8 @@ pub enum ApiClientError {
     },
     #[error("Received internal server error {0:?}")]
     InternalServerError(bytes::Bytes),
+    #[error("Missing configuration: {0}")]
+    MissingConfigurationError(&'static str),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -211,6 +213,8 @@ pub enum KeyManagerError {
     ResponseDecodingFailed,
     #[error("Authentication failed")]
     Unauthorized,
+    #[error("Missing configuration: {0}")]
+    MissingConfigurationError(String),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -297,6 +301,8 @@ pub enum DataDecryptionError {
 pub enum KeyManagerHealthCheckError {
     #[error("Failed to establish Key manager connection")]
     FailedToConnect,
+    #[error("Missing configuration: {0}")]
+    MissingConfigurationError(String),
 }
 
 /// Error code constants.

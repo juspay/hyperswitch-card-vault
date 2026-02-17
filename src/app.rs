@@ -113,7 +113,15 @@ where
         );
 
     // v2 routes
-    let router = router.nest(
+    #[cfg_attr(
+        all(
+            not(feature = "middleware"),
+            not(feature = "external_key_manager"),
+            not(feature = "key_custodian")
+        ),
+        allow(unused_mut)
+    )]
+    let mut router = router.nest(
         "/api/v2/vault",
         axum::Router::new()
             .route("/delete", post(routes_v2::data::delete_data))
@@ -126,16 +134,28 @@ where
     );
 
     #[cfg(feature = "middleware")]
-    let router = router.layer(middleware::from_fn_with_state(
-        global_app_state.clone(),
-        custom_middleware::middleware,
-    ));
+    {
+        router = router.layer(middleware::from_fn_with_state(
+            global_app_state.clone(),
+            custom_middleware::middleware,
+        ));
+    }
 
     #[cfg(feature = "external_key_manager")]
-    let router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
+    {
+        if global_app_state
+            .global_config
+            .external_key_manager
+            .is_external()
+        {
+            router = router.route("/key/transfer", post(routes::key_migration::transfer_keys));
+        }
+    }
 
     #[cfg(feature = "key_custodian")]
-    let router = router.nest("/custodian", routes::key_custodian::serve());
+    {
+        router = router.nest("/custodian", routes::key_custodian::serve());
+    }
 
     let router = router.layer(
         tower_trace::TraceLayer::new_for_http()
