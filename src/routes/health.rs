@@ -51,6 +51,8 @@ pub enum HealthState {
     Working,
     #[default]
     Failing,
+    #[cfg(feature = "external_key_manager")]
+    Disabled,
 }
 
 /// '/health/diagnostics` API handler`
@@ -92,10 +94,20 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
     };
 
     #[cfg(feature = "external_key_manager")]
-    let keymanager_status = keymanager::external_keymanager::health_check_keymanager(&state)
-        .await
-        .map_err(|err| logger::error!(keymanager_err=?err))
-        .unwrap_or_default();
+    let keymanager_status = {
+        use crate::config::ExternalKeyManagerConfig;
+
+        match &state.config.external_key_manager {
+            ExternalKeyManagerConfig::Disabled => HealthState::Disabled,
+            ExternalKeyManagerConfig::Enabled { .. }
+            | ExternalKeyManagerConfig::EnabledWithMtls { .. } => {
+                keymanager::external_keymanager::health_check_keymanager(&state)
+                    .await
+                    .map_err(|err| logger::error!(keymanager_err=?err))
+                    .unwrap_or_default()
+            }
+        }
+    };
 
     axum::Json(Diagnostics {
         key_custodian_locked: false,

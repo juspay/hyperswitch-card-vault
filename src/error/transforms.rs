@@ -302,6 +302,9 @@ impl<'a> From<&'a super::KeyManagerError> for super::ApiError {
                 Self::KeyManagerError("Failed to deserialize from bytes")
             }
             super::KeyManagerError::Unauthorized => Self::TenantError("Invalid master key"),
+            super::KeyManagerError::MissingConfigurationError(_) => {
+                Self::TenantError("Missing configuration")
+            }
         }
     }
 }
@@ -334,6 +337,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyCreationError {
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
             super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
+            super::ApiClientError::MissingConfigurationError(_) => Self::Unexpected,
         }
     }
 }
@@ -369,6 +373,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataKeyTransferError {
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
             super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
+            super::ApiClientError::MissingConfigurationError(_) => Self::Unexpected,
         }
     }
 }
@@ -420,6 +425,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataEncryptionError {
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
             super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
+            super::ApiClientError::MissingConfigurationError(_) => Self::Unexpected,
         }
     }
 }
@@ -455,6 +461,7 @@ impl<'a> From<&'a super::ApiClientError> for super::DataDecryptionError {
             super::ApiClientError::BadRequest(_) => Self::BadRequest,
             super::ApiClientError::InternalServerError(_) => Self::InternalServerError,
             super::ApiClientError::Unauthorized(_) => Self::Unauthorized,
+            super::ApiClientError::MissingConfigurationError(_) => Self::Unexpected,
         }
     }
 }
@@ -473,7 +480,8 @@ impl<'a> From<&'a super::ApiClientError> for super::KeyManagerHealthCheckError {
             | super::ApiClientError::BadRequest(_)
             | super::ApiClientError::Unexpected { .. }
             | super::ApiClientError::InternalServerError(_)
-            | super::ApiClientError::Unauthorized(_) => Self::FailedToConnect,
+            | super::ApiClientError::Unauthorized(_)
+            | super::ApiClientError::MissingConfigurationError(_) => Self::FailedToConnect,
         }
     }
 }

@@ -122,7 +122,6 @@ pub(crate) trait MerchantInterface {
     type Algorithm: Encryption<Vec<u8>, Vec<u8>> + Sync;
     type Error;
 
-    #[cfg(not(feature = "external_key_manager"))]
     /// find merchant from merchant table with `merchant_id` with key as master key
     async fn find_by_merchant_id(
         &self,
@@ -130,7 +129,6 @@ pub(crate) trait MerchantInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
-    #[cfg(not(feature = "external_key_manager"))]
     /// find merchant from merchant table with `merchant_id` with key as master key
     /// and if not found create a new merchant
     async fn find_or_create_by_merchant_id(
@@ -139,7 +137,6 @@ pub(crate) trait MerchantInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
-    #[cfg(not(feature = "external_key_manager"))]
     /// Insert a new merchant in the database by encrypting the dek with `master_key`
     async fn insert_merchant(
         &self,
