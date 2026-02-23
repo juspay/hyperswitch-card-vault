@@ -1,5 +1,3 @@
-#[cfg(feature = "external_key_manager")]
-use crate::crypto::keymanager::external_keymanager::ExternalKeyManagerConfig;
 use crate::{
     api_client::ApiClientConfig,
     crypto::secrets_manager::{
@@ -10,6 +8,8 @@ use crate::{
 };
 use error_stack::ResultExt;
 use masking::ExposeInterface;
+#[cfg(feature = "external_key_manager")]
+use masking::Secret;
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
@@ -32,7 +32,7 @@ pub struct GlobalConfig {
     pub tls: Option<ServerTls>,
     #[serde(default)]
     pub api_client: ApiClientConfig,
-    #[cfg(feature = "external_key_manager")]
+    #[serde(default)]
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
@@ -41,7 +41,6 @@ pub struct TenantConfig {
     pub tenant_id: String,
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
-    #[cfg(feature = "external_key_manager")]
     pub external_key_manager: ExternalKeyManagerConfig,
 }
 
@@ -61,7 +60,6 @@ impl TenantConfig {
                 .get(&tenant_id)
                 .cloned()
                 .unwrap(),
-            #[cfg(feature = "external_key_manager")]
             external_key_manager: global_config.external_key_manager.clone(),
         }
     }
@@ -160,7 +158,7 @@ impl Default for ApiClientConfig {
         Self {
             client_idle_timeout: 90,
             pool_max_idle_per_host: 5,
-            #[cfg(feature = "external_key_manager_mtls")]
+            #[cfg(feature = "external_key_manager")]
             identity: masking::Secret::default(),
         }
     }
@@ -280,21 +278,36 @@ impl GlobalConfig {
                 ))?;
         }
 
-        #[cfg(feature = "external_key_manager_mtls")]
+        #[cfg(feature = "external_key_manager")]
         {
-            self.external_key_manager.cert = secret_management_client
-                .get_secret(self.external_key_manager.cert.clone())
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "external_key_manager-cert",
-                ))?;
+            // Decrypt api_client.identity only when mTLS is enabled, as it's required for client certificate authentication
+            if self.external_key_manager.is_mtls_enabled() {
+                let decrypted_identity = secret_management_client
+                    .get_secret(self.api_client.identity.clone())
+                    .await
+                    .change_context(error::ConfigurationError::KmsDecryptError(
+                        "api_client-identity",
+                    ))?;
 
-            self.api_client.identity = secret_management_client
-                .get_secret(self.api_client.identity.clone())
-                .await
-                .change_context(error::ConfigurationError::KmsDecryptError(
-                    "api_client-identity",
-                ))?;
+                self.api_client.identity = decrypted_identity;
+            }
+
+            self.external_key_manager = match &self.external_key_manager {
+                ExternalKeyManagerConfig::EnabledWithMtls { url, ca_cert } => {
+                    let decrypted_ca_cert = secret_management_client
+                        .get_secret(ca_cert.clone())
+                        .await
+                        .change_context(error::ConfigurationError::KmsDecryptError("ca_cert"))?;
+
+                    ExternalKeyManagerConfig::EnabledWithMtls {
+                        url: url.clone(),
+                        ca_cert: decrypted_ca_cert,
+                    }
+                }
+                ExternalKeyManagerConfig::Enabled { .. } | ExternalKeyManagerConfig::Disabled => {
+                    self.external_key_manager.clone()
+                }
+            };
         }
 
         Ok(())
@@ -302,6 +315,12 @@ impl GlobalConfig {
 
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
+        #[cfg(feature = "external_key_manager")]
+        {
+            self.external_key_manager.validate()?;
+            self.api_client
+                .validate_for_mtls(&self.external_key_manager)?;
+        }
         Ok(())
     }
 }
@@ -334,6 +353,88 @@ impl std::fmt::Display for Env {
         match self {
             Self::Development => write!(f, "development"),
             Self::Release => write!(f, "release"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, PartialEq)]
+#[serde(tag = "mode")]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalKeyManagerConfig {
+    #[default]
+    Disabled,
+    #[cfg(feature = "external_key_manager")]
+    Enabled { url: String },
+    #[cfg(feature = "external_key_manager")]
+    EnabledWithMtls {
+        url: String,
+        ca_cert: Secret<String>,
+    },
+}
+
+impl ExternalKeyManagerConfig {
+    pub fn is_external(&self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    #[cfg(feature = "external_key_manager")]
+    pub fn is_mtls_enabled(&self) -> bool {
+        matches!(self, Self::EnabledWithMtls { .. })
+    }
+
+    pub fn get_url(&self) -> Option<&str> {
+        match self {
+            Self::Disabled => None,
+            #[cfg(feature = "external_key_manager")]
+            Self::Enabled { url } | Self::EnabledWithMtls { url, .. } => Some(url),
+        }
+    }
+
+    #[cfg(feature = "external_key_manager")]
+    pub fn get_url_required(&self) -> Result<&str, crate::error::KeyManagerError> {
+        self.get_url().ok_or_else(|| {
+            crate::error::KeyManagerError::MissingConfigurationError(
+                "external_key_manager.url is required when external key manager is enabled".into(),
+            )
+        })
+    }
+
+    #[cfg(feature = "external_key_manager")]
+    pub fn get_ca_cert(&self) -> Option<&Secret<String>> {
+        match self {
+            Self::EnabledWithMtls { ca_cert, .. } => Some(ca_cert),
+            Self::Disabled | Self::Enabled { .. } => None,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
+        match self {
+            Self::Disabled => Ok(()),
+            #[cfg(feature = "external_key_manager")]
+            Self::Enabled { url } => {
+                if url.trim().is_empty() {
+                    return Err(crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        "external_key_manager.url is required when external key manager is enabled".into(),
+                    ));
+                }
+                Ok(())
+            }
+            #[cfg(feature = "external_key_manager")]
+            Self::EnabledWithMtls { url, ca_cert } => {
+                if url.trim().is_empty() {
+                    return Err(crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        "external_key_manager.url is required when external key manager is enabled".into(),
+                    ));
+                }
+                if ca_cert.clone().expose().trim().is_empty() {
+                    return Err(
+                        crate::error::ConfigurationError::InvalidConfigurationValueError(
+                            "external_key_manager.ca_cert is required when mTLS is enabled".into(),
+                        ),
+                    );
+                }
+                Ok(())
+            }
         }
     }
 }

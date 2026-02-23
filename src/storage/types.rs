@@ -299,7 +299,6 @@ pub(super) trait StorageDecryption: Sized {
     ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output>;
 }
 
-#[cfg(not(feature = "external_key_manager"))]
 pub(super) trait StorageEncryption: Sized {
     type Output;
     type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
@@ -326,7 +325,6 @@ impl StorageDecryption for MerchantInner {
     }
 }
 
-#[cfg(not(feature = "external_key_manager"))]
 impl<'a> StorageEncryption for MerchantNew<'a> {
     type Output = MerchantNewInner<'a>;
 
