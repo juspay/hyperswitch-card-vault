@@ -4,6 +4,25 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.7.0 (2026-02-24)
+
+### Features
+
+- Convert external key manager feature flag to runtime config with enum-based validation pattern ([#155](https://github.com/juspay/hyperswitch-card-vault/pull/155)) ([`0b07ee4`](https://github.com/juspay/hyperswitch-card-vault/commit/0b07ee40484055af86aee458416f896105267583))
+
+### Bug Fixes
+
+- Resolve all failing CI checks ([#156](https://github.com/juspay/hyperswitch-card-vault/pull/156)) ([`560eca3`](https://github.com/juspay/hyperswitch-card-vault/commit/560eca3a6d34b0b57d6657fe61f283f67ca4031f))
+
+### Build System / Dependencies
+
+- **docker:** Update Debian base images from bookworm to trixie ([#157](https://github.com/juspay/hyperswitch-card-vault/pull/157)) ([`7309812`](https://github.com/juspay/hyperswitch-card-vault/commit/7309812f95b7c4cf681eeaf4886f0c9f065262e8))
+
+**Full Changelog:** [`v0.6.5...v0.7.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.5...v0.7.0)
+
+- - -
+
+
 ## 0.6.5 (2025-04-23)
 
 ### Bug Fixes
