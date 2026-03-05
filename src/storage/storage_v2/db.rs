@@ -118,12 +118,7 @@ impl VaultInterface for Storage {
                 .await;
 
         let output = match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
-                }
-                _ => Err(err).change_error(error::StorageError::UpdateError),
-            },
+            Err(err) => Err(err).change_error(error::StorageError::UpdateError),
             Ok(vault) => Ok(vault),
         };
 
