@@ -64,6 +64,8 @@ pub enum StorageError {
     EncryptionError,
     #[error("Element not found in storage")]
     NotFoundError,
+    #[error("Error while updating element in database")]
+    UpdateError,
 }
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]

@@ -4,7 +4,7 @@ use crate::{
     app::TenantAppState,
     crypto::keymanager::CryptoOperationsManager,
     error::{self, ContainerError, ResultContainerExt},
-    routes::data::types,
+    routes::{data::types, routes_v2::data::types as types_v2},
     storage::{
         storage_v2::{types::VaultNew, VaultInterface},
         types::{Locker, LockerNew},
@@ -56,10 +56,11 @@ where
     Ok(data)
 }
 
-pub async fn encrypt_data_and_insert_into_db_v2(
+pub async fn encrypt_data_and_upsert_into_db_v2(
     tenant_app_state: &TenantAppState,
     crypto_operator: Box<dyn CryptoOperationsManager>,
-    request: crate::routes::routes_v2::data::types::StoreDataRequest,
+    request: types_v2::StoreDataRequest,
+    mode: Option<types_v2::WriteMode>,
 ) -> Result<crate::storage::storage_v2::types::Vault, ContainerError<error::ApiError>> {
     let data_to_be_encrypted = serde_json::to_vec(&request.data.clone().expose())
         .change_error(error::ApiError::EncodingError)?;
@@ -70,9 +71,16 @@ pub async fn encrypt_data_and_insert_into_db_v2(
 
     let vault_new = VaultNew::new(request, encrypted_data.into());
 
+    let mode = mode
+        .and_then(|m| match m {
+            types_v2::WriteMode::Insert => Some(false),
+            types_v2::WriteMode::Upsert => Some(true),
+        })
+        .unwrap_or(false);
+
     let vault = tenant_app_state
         .db
-        .insert_or_get_from_vault(vault_new)
+        .upsert_or_get_from_vault(vault_new, mode)
         .await?;
 
     Ok(vault)

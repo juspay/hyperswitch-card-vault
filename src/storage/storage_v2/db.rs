@@ -45,9 +45,10 @@ impl VaultInterface for Storage {
         output.map_err(From::from).map(From::from)
     }
 
-    async fn insert_or_get_from_vault(
+    async fn upsert_or_get_from_vault(
         &self,
         new: types::VaultNew,
+        mode: bool,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
@@ -65,8 +66,12 @@ impl VaultInterface for Storage {
                     diesel::result::DatabaseErrorKind::UniqueViolation,
                     _,
                 ) => {
-                    self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id)
-                        .await
+                    if mode {
+                        self.update_vault_data(cloned_new).await
+                    } else {
+                        self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id)
+                            .await
+                    }
                 }
                 error => Err(error).change_error(error::StorageError::InsertError)?,
             },
@@ -90,5 +95,38 @@ impl VaultInterface for Storage {
             .execute(&mut conn)
             .await
             .change_error(error::StorageError::DeleteError)?)
+    }
+
+    async fn update_vault_data(
+        &self,
+        new: types::VaultNew,
+    ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        let output: Result<types::VaultInner, diesel::result::Error> =
+            diesel::update(types::VaultInner::table())
+                .filter(
+                    schema::vault::vault_id
+                        .eq(new.vault_id.expose())
+                        .and(schema::vault::entity_id.eq(&new.entity_id)),
+                )
+                .set((
+                    schema::vault::encrypted_data.eq(new.encrypted_data),
+                    schema::vault::expires_at.eq(new.expires_at),
+                ))
+                .get_result(&mut conn)
+                .await;
+
+        let output = match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::UpdateError),
+            },
+            Ok(vault) => Ok(vault),
+        };
+
+        output.map_err(From::from).map(From::from)
     }
 }

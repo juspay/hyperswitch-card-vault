@@ -37,6 +37,18 @@ pub struct StoreDataRequest {
     pub ttl: Ttl,
 }
 
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum WriteMode {
+    Insert,
+    Upsert,
+}
+
+#[derive(serde::Deserialize)]
+pub struct UpsertQueryParams {
+    #[serde(default)]
+    pub mode: Option<WriteMode>,
+}
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct StoreDataResponse {
     pub entity_id: String,

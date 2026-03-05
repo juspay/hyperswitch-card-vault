@@ -21,10 +21,11 @@ pub(crate) trait VaultInterface {
         entity_id: &str,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
-    /// Insert data into vault table
-    async fn insert_or_get_from_vault(
+    /// Upsert data into vault table or get if exists
+    async fn upsert_or_get_from_vault(
         &self,
         new: types::VaultNew,
+        mode: bool,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
     /// Delete data from the vault
@@ -33,4 +34,10 @@ pub(crate) trait VaultInterface {
         vault_id: Secret<String>,
         entity_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>>;
+
+    /// Update data in the vault
+    async fn update_vault_data(
+        &self,
+        new: types::VaultNew,
+    ) -> Result<types::Vault, ContainerError<Self::Error>>;
 }
