@@ -45,8 +45,7 @@ pub enum WriteMode {
 }
 
 #[derive(serde::Deserialize)]
-pub struct UpsertQueryParams {
-    #[serde(default)]
+pub struct StoreDataRequestQueryParams {
     pub mode: Option<WriteMode>,
 }
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

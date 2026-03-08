@@ -88,7 +88,7 @@ pub async fn retrieve_data(
 
 pub async fn add_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    Query(params): Query<types::UpsertQueryParams>,
+    Query(params): Query<types::StoreDataRequestQueryParams>,
     Json(request): Json<types::StoreDataRequest>,
 ) -> Result<Json<types::StoreDataResponse>, ContainerError<error::ApiError>> {
     request.validate()?;

@@ -9,6 +9,8 @@ use crate::{
     },
 };
 
+pub use crate::routes::routes_v2::data::types::WriteMode;
+
 #[derive(Debug)]
 pub struct Vault {
     pub vault_id: Secret<String>,

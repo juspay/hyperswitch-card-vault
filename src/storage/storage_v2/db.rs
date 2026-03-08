@@ -48,7 +48,7 @@ impl VaultInterface for Storage {
     async fn upsert_or_get_from_vault(
         &self,
         new: types::VaultNew,
-        mode: bool,
+        mode: Option<types::WriteMode>,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
@@ -66,7 +66,7 @@ impl VaultInterface for Storage {
                     diesel::result::DatabaseErrorKind::UniqueViolation,
                     _,
                 ) => {
-                    if mode {
+                    if let Some(types::WriteMode::Upsert) = mode {
                         self.update_vault_data(cloned_new).await
                     } else {
                         self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id)

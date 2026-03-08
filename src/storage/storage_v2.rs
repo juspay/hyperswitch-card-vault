@@ -25,7 +25,7 @@ pub(crate) trait VaultInterface {
     async fn upsert_or_get_from_vault(
         &self,
         new: types::VaultNew,
-        mode: bool,
+        mode: Option<types::WriteMode>,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
     /// Delete data from the vault
