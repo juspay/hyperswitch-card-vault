@@ -54,15 +54,14 @@ impl VaultInterface for Storage {
         output.map_err(From::from).map(From::from)
     }
 
-    async fn upsert_or_get_from_vault(
+    async fn insert_or_get_from_vault(
         &self,
         new: types::VaultNew,
-        mode: Option<types::WriteMode>,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
-        logger::info!("performing add operation on vault data");
+        logger::info!("performing insert operation on vault data");
 
         let query: Result<_, diesel::result::Error> =
             diesel::insert_into(types::VaultInner::table())
@@ -72,7 +71,7 @@ impl VaultInterface for Storage {
 
         match query {
             Ok(inner) => {
-                logger::info!("add operation completed successfully");
+                logger::info!("insert operation completed successfully");
                 Ok(inner.into())
             }
             Err(error) => match error {
@@ -80,15 +79,44 @@ impl VaultInterface for Storage {
                     diesel::result::DatabaseErrorKind::UniqueViolation,
                     _,
                 ) => {
-                    if let Some(types::WriteMode::Upsert) = mode {
-                        self.update_vault_data(cloned_new).await
-                    } else {
-                        self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id)
-                            .await
-                    }
+                    self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id)
+                        .await
                 }
                 error => {
-                    logger::error!(error = %error, "add operation failed");
+                    logger::error!(error = %error, "insert operation failed");
+                    Err(error).change_error(error::StorageError::InsertError)?
+                }
+            },
+        }
+    }
+
+    async fn upsert_or_get_from_vault(
+        &self,
+        new: types::VaultNew,
+    ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+        let cloned_new = new.clone();
+
+        logger::info!("performing upsert operation on vault data");
+
+        let query: Result<_, diesel::result::Error> =
+            diesel::insert_into(types::VaultInner::table())
+                .values(new)
+                .get_result::<types::VaultInner>(&mut conn)
+                .await;
+
+        match query {
+            Ok(inner) => {
+                logger::info!("upsert operation completed successfully");
+                Ok(inner.into())
+            }
+            Err(error) => match error {
+                diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::UniqueViolation,
+                    _,
+                ) => self.update_vault_data(cloned_new).await,
+                error => {
+                    logger::error!(error = %error, "upsert operation failed");
                     Err(error).change_error(error::StorageError::InsertError)?
                 }
             },

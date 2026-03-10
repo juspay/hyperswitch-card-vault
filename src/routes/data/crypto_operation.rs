@@ -71,10 +71,20 @@ pub async fn encrypt_data_and_upsert_into_db_v2(
 
     let vault_new = VaultNew::new(request, encrypted_data.into());
 
-    let vault = tenant_app_state
-        .db
-        .upsert_or_get_from_vault(vault_new, mode)
-        .await?;
+    let vault = match mode {
+        Some(types_v2::WriteMode::Upsert) => {
+            tenant_app_state
+                .db
+                .upsert_or_get_from_vault(vault_new)
+                .await?
+        }
+        None | Some(types_v2::WriteMode::Insert) => {
+            tenant_app_state
+                .db
+                .insert_or_get_from_vault(vault_new)
+                .await?
+        }
+    };
 
     Ok(vault)
 }
