@@ -107,7 +107,7 @@ impl VaultInterface for Storage {
 
         match query {
             Ok(inner) => {
-                logger::info!("upsert operation completed successfully");
+                logger::info!("Insert operation completed successfully");
                 Ok(inner.into())
             }
             Err(error) => match error {
