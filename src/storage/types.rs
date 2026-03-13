@@ -6,13 +6,12 @@ use diesel::{
 };
 use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
+use super::schema;
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
     routes::data::types::{StoreCardRequest, Validation},
 };
-
-use super::schema;
 
 #[derive(Debug, Identifiable, Queryable)]
 #[diesel(table_name = schema::merchant)]

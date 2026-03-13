@@ -1,18 +1,18 @@
 use std::str::FromStr;
 
+use masking::Maskable;
+#[cfg(feature = "external_key_manager")]
+use masking::PeekInterface;
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Response, StatusCode,
+};
+
 #[cfg(feature = "external_key_manager")]
 use crate::config::ExternalKeyManagerConfig;
 use crate::{
     config::GlobalConfig,
     error::{self, ResultContainerExt},
-};
-use masking::Maskable;
-#[cfg(feature = "external_key_manager")]
-use masking::PeekInterface;
-use reqwest::StatusCode;
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Response,
 };
 
 pub type Headers = std::collections::HashSet<(String, Maskable<String>)>;

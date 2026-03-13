@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use crate::tenant::GlobalAppState;
-#[cfg(feature = "external_key_manager")]
-use crate::{crypto::keymanager, logger};
-
 use axum::{routing::get, Json};
 
-use crate::{custom_extractors::TenantStateResolver, error, storage::TestInterface};
+#[cfg(feature = "external_key_manager")]
+use crate::{crypto::keymanager, logger};
+use crate::{
+    custom_extractors::TenantStateResolver, error, storage::TestInterface, tenant::GlobalAppState,
+};
 
 ///
 /// Function for registering routes that is specifically handling the health apis

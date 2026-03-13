@@ -1,15 +1,17 @@
-use crate::{
-    crypto::{self, consts::BASE64_ENGINE},
-    error::{self, ResultContainerExt},
-    storage::{consts, types::Encrypted, utils},
-};
+use std::fmt;
+
 use base64::Engine;
 use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 use serde::{
     de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::fmt;
+
+use crate::{
+    crypto::{self, consts::BASE64_ENGINE},
+    error::{self, ResultContainerExt},
+    storage::{consts, types::Encrypted, utils},
+};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct DataKeyCreateRequest {

@@ -8,7 +8,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use josekit::jwe;
 use rand::rngs::OsRng;
-use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey};
+use rsa::{
+    pkcs8::{EncodePrivateKey, EncodePublicKey},
+    RsaPrivateKey, RsaPublicKey,
+};
 use tartarus::crypto::encryption_manager::{
     encryption_interface::Encryption,
     managers::{aes, jw},

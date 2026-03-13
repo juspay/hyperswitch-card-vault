@@ -4,14 +4,13 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use masking::{ExposeInterface, Secret};
 
+use super::{types, VaultInterface};
 use crate::{
     crypto::encryption_manager::managers::aes::GcmAes256,
     error::{self, ContainerError, ResultContainerExt},
     logger,
     storage::{schema, Storage},
 };
-
-use super::{types, VaultInterface};
 
 impl VaultInterface for Storage {
     type Algorithm = GcmAes256;

@@ -1,12 +1,11 @@
 use masking::{ExposeInterface, PeekInterface};
 
+use super::types::{self, DataDuplicationCheck};
 use crate::{
     crypto::hash_manager::hash_interface::Encode,
     error::{self, ContainerError, ResultContainerExt},
     storage,
 };
-
-use super::types::{self, DataDuplicationCheck};
 
 impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
     for super::types::StoreCardResponse

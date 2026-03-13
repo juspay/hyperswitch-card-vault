@@ -1,8 +1,9 @@
 pub mod types;
 pub mod utils;
 
-pub use crate::config::ExternalKeyManagerConfig;
+use masking::{Secret, StrongSecret};
 
+pub use crate::config::ExternalKeyManagerConfig;
 use crate::{
     api_client::{ApiResponse, Method},
     app::TenantAppState,
@@ -21,7 +22,6 @@ use crate::{
     routes::health,
     storage::{types::Entity, EntityInterface},
 };
-use masking::{Secret, StrongSecret};
 
 pub async fn create_key_in_key_manager(
     tenant_app_state: &TenantAppState,
