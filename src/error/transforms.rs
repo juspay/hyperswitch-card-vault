@@ -39,7 +39,9 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
             super::StorageError::NotFoundError => Self::NotFoundError,
         }
     }
@@ -56,7 +58,9 @@ impl<'a> From<&'a super::StorageError> for super::VaultDBError {
             super::StorageError::DecryptionError | super::StorageError::EncryptionError => {
                 Self::UnknownError
             }
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
             super::StorageError::DeleteError => Self::DBDeleteError,
             super::StorageError::NotFoundError => Self::NotFoundError,
         }
@@ -74,7 +78,9 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
             super::StorageError::NotFoundError => Self::DBFilterError,
         }
     }
@@ -88,7 +94,9 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
                 Self::DBError
             }
             super::StorageError::FindError => Self::DBReadError,
-            super::StorageError::InsertError => Self::DBWriteError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBWriteError
+            }
             super::StorageError::DeleteError => Self::DBDeleteError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
@@ -110,7 +118,9 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
         }
     }
 }
@@ -248,7 +258,9 @@ impl<'a> From<&'a super::StorageError> for super::EntityDBError {
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
         }
     }
 }
