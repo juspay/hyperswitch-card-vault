@@ -179,8 +179,8 @@ mod tests {
 
     use rand::rngs::OsRng;
     use rsa::{
-        pkcs8::{EncodePrivateKey, EncodePublicKey},
         RsaPrivateKey, RsaPublicKey,
+        pkcs8::{EncodePrivateKey, EncodePublicKey},
     };
 
     use super::*;

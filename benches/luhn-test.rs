@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use tartarus::validations::{luhn, MAX_CARD_NUMBER_LENGTH};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use tartarus::validations::{MAX_CARD_NUMBER_LENGTH, luhn};
 
 #[allow(clippy::expect_used)]
 fn card_number_generator() -> Vec<u8> {

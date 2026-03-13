@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use diesel_async::{
+    AsyncPgConnection,
     pooled_connection::{
         self,
         deadpool::{Object, Pool},
     },
-    AsyncPgConnection,
 };
 use error_stack::ResultExt;
 use masking::{PeekInterface, Secret};

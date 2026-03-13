@@ -4,8 +4,8 @@ use masking::Maskable;
 #[cfg(feature = "external_key_manager")]
 use masking::PeekInterface;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
     Response, StatusCode,
+    header::{HeaderMap, HeaderName, HeaderValue},
 };
 
 #[cfg(feature = "external_key_manager")]

@@ -3,8 +3,8 @@ use std::fmt;
 use base64::Engine;
 use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 use serde::{
-    de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
+    de::{self, Unexpected, Visitor},
 };
 
 use crate::{

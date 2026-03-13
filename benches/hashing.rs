@@ -1,7 +1,7 @@
 #![allow(clippy::expect_used)]
 #![allow(clippy::missing_panics_doc)]
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use tartarus::crypto::hash_manager::{hash_interface::Encode, managers::sha::HmacSha512};
 
 const ITERATION: u32 = 14;

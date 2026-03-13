@@ -1,4 +1,4 @@
-use axum::{extract::Query, Json};
+use axum::{Json, extract::Query};
 use error_stack::ResultExt;
 use masking::PeekInterface;
 pub mod types;

@@ -86,10 +86,10 @@ pub fn get_hash<T>(
 ) -> Result<Vec<u8>, ContainerError<error::ApiError>>
 where
     T: Encode<
-        Vec<u8>,
-        Vec<u8>,
-        ReturnType<Vec<u8>> = Result<Vec<u8>, error::ContainerError<error::CryptoError>>,
-    >,
+            Vec<u8>,
+            Vec<u8>,
+            ReturnType<Vec<u8>> = Result<Vec<u8>, error::ContainerError<error::CryptoError>>,
+        >,
 {
     let data = match request {
         types::Data::EncData { enc_card_data } => enc_card_data,

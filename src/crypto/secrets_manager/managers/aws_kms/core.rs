@@ -1,9 +1,9 @@
 //! Interactions with the AWS KMS SDK
 
 use aws_config::meta::region::RegionProviderChain;
-use aws_sdk_kms::{config::Region, primitives::Blob, Client};
+use aws_sdk_kms::{Client, config::Region, primitives::Blob};
 use base64::Engine;
-use error_stack::{report, ResultExt};
+use error_stack::{ResultExt, report};
 
 use crate::{crypto::consts::BASE64_ENGINE, error::ConfigurationError, logger};
 

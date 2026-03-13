@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::State, routing::post, Json};
+use axum::{Json, extract::State, routing::post};
 use error_stack::ResultExt;
 
 use crate::{

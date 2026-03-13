@@ -1,15 +1,15 @@
 use diesel::{
-    associations::HasTable, query_dsl::methods::FilterDsl, BoolExpressionMethods, ExpressionMethods,
+    BoolExpressionMethods, ExpressionMethods, associations::HasTable, query_dsl::methods::FilterDsl,
 };
 use diesel_async::RunQueryDsl;
 use masking::{ExposeInterface, Secret};
 
-use super::{types, VaultInterface};
+use super::{VaultInterface, types};
 use crate::{
     crypto::encryption_manager::managers::aes::GcmAes256,
     error::{self, ContainerError, ResultContainerExt},
     logger,
-    storage::{schema, Storage},
+    storage::{Storage, schema},
 };
 
 impl VaultInterface for Storage {

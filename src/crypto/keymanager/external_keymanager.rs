@@ -8,6 +8,7 @@ use crate::{
     api_client::{ApiResponse, Method},
     app::TenantAppState,
     crypto::keymanager::{
+        CryptoOperationsManager,
         external_keymanager::{
             self,
             types::{
@@ -16,11 +17,10 @@ use crate::{
                 DateEncryptionResponse, DecryptedData, EncryptedData,
             },
         },
-        CryptoOperationsManager,
     },
     error::{self, ContainerError, NotFoundError},
     routes::health,
-    storage::{types::Entity, EntityInterface},
+    storage::{EntityInterface, types::Entity},
 };
 
 pub async fn create_key_in_key_manager(

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{routing::get, Json};
+use axum::{Json, routing::get};
 
 #[cfg(feature = "external_key_manager")]
 use crate::{crypto::keymanager, logger};

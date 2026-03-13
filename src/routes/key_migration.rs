@@ -17,9 +17,9 @@ use crate::{
     error::{self, ContainerError, ResultContainerExt},
     logger,
     storage::{
-        consts,
+        EntityInterface, MerchantInterface, consts,
         types::{Entity, Merchant},
-        utils, EntityInterface, MerchantInterface,
+        utils,
     },
 };
 

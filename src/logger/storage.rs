@@ -5,11 +5,11 @@
 use std::{collections::HashMap, fmt, time::Instant};
 
 use tracing::{
+    Id, Subscriber,
     field::{Field, Visit},
     span::{Attributes, Record},
-    Id, Subscriber,
 };
-use tracing_subscriber::{layer::Context, Layer};
+use tracing_subscriber::{Layer, layer::Context};
 
 /// Storage to store key value pairs of spans.
 #[derive(Clone, Debug)]

@@ -1,11 +1,11 @@
-use diesel::{associations::HasTable, BoolExpressionMethods, ExpressionMethods, QueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use masking::{ExposeInterface, Secret};
 
 use super::{
-    consts, schema, types,
+    LockerInterface, MerchantInterface, Storage, consts, schema, types,
     types::{StorageDecryption, StorageEncryption},
-    utils, LockerInterface, MerchantInterface, Storage,
+    utils,
 };
 use crate::{
     crypto::{

@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{request, response, Request},
+    http::{Request, request, response},
     middleware::Next,
 };
 use http_body_util::BodyExt;

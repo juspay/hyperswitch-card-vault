@@ -14,10 +14,10 @@ use serde_json::Value;
 use time::format_description::well_known::Iso8601;
 use tracing::{Event, Metadata, Subscriber};
 use tracing_subscriber::{
+    Layer,
     fmt::MakeWriter,
     layer::Context,
     registry::{LookupSpan, SpanRef},
-    Layer,
 };
 
 use super::storage::Storage;

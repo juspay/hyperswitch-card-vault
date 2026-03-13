@@ -1,8 +1,9 @@
 use diesel::{
+    AsExpression, Identifiable, Insertable, Queryable,
     backend::Backend,
     deserialize::{self, FromSql},
     serialize::ToSql,
-    sql_types, AsExpression, Identifiable, Insertable, Queryable,
+    sql_types,
 };
 use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
