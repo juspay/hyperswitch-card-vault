@@ -2,7 +2,7 @@ use diesel::{
     associations::HasTable, query_dsl::methods::FilterDsl, BoolExpressionMethods, ExpressionMethods,
 };
 use diesel_async::RunQueryDsl;
-use masking::{ExposeInterface, Secret};
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use crate::{
     crypto::encryption_manager::managers::aes::GcmAes256,

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use base64::Engine;
 use hyper::header::{AUTHORIZATION, CONTENT_TYPE};
-use masking::{Mask, Maskable};
+use hyperswitch_masking::{Mask, Maskable};
 
 use crate::storage::consts::X_TENANT_ID;
 use crate::{app::TenantAppState, crypto::consts::BASE64_ENGINE};

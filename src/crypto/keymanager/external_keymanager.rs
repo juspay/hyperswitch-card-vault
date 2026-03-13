@@ -21,7 +21,7 @@ use crate::{
     routes::health,
     storage::{types::Entity, EntityInterface},
 };
-use masking::{Secret, StrongSecret};
+use hyperswitch_masking::{Secret, StrongSecret};
 
 pub async fn create_key_in_key_manager(
     tenant_app_state: &TenantAppState,
