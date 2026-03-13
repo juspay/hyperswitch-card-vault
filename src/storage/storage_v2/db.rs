@@ -7,6 +7,7 @@ use masking::{ExposeInterface, Secret};
 use crate::{
     crypto::encryption_manager::managers::aes::GcmAes256,
     error::{self, ContainerError, ResultContainerExt},
+    logger,
     storage::{schema, Storage},
 };
 
@@ -23,6 +24,8 @@ impl VaultInterface for Storage {
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
+        logger::info!("performing retrieve operation on vault data");
+
         let output: Result<types::VaultInner, diesel::result::Error> = types::VaultInner::table()
             .filter(
                 schema::vault::vault_id
@@ -33,13 +36,19 @@ impl VaultInterface for Storage {
             .await;
 
         let output = match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
+            Err(err) => {
+                logger::error!(error = %err, "retrieve operation failed");
+                match err {
+                    diesel::result::Error::NotFound => {
+                        Err(err).change_error(error::StorageError::NotFoundError)
+                    }
+                    _ => Err(err).change_error(error::StorageError::FindError),
                 }
-                _ => Err(err).change_error(error::StorageError::FindError),
-            },
-            Ok(vault) => Ok(vault),
+            }
+            Ok(vault) => {
+                logger::info!("retrieve operation completed successfully");
+                Ok(vault)
+            }
         };
 
         output.map_err(From::from).map(From::from)
@@ -52,6 +61,8 @@ impl VaultInterface for Storage {
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
+        logger::info!("performing insert operation on vault data");
+
         let query: Result<_, diesel::result::Error> =
             diesel::insert_into(types::VaultInner::table())
                 .values(new)
@@ -59,7 +70,10 @@ impl VaultInterface for Storage {
                 .await;
 
         match query {
-            Ok(inner) => Ok(inner.into()),
+            Ok(inner) => {
+                logger::info!("insert operation completed successfully");
+                Ok(inner.into())
+            }
             Err(error) => match error {
                 diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -68,7 +82,43 @@ impl VaultInterface for Storage {
                     self.find_by_vault_id_entity_id(cloned_new.vault_id, &cloned_new.entity_id)
                         .await
                 }
-                error => Err(error).change_error(error::StorageError::InsertError)?,
+                error => {
+                    logger::error!(error = %error, "insert operation failed");
+                    Err(error).change_error(error::StorageError::InsertError)?
+                }
+            },
+        }
+    }
+
+    async fn upsert_or_get_from_vault(
+        &self,
+        new: types::VaultNew,
+    ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+        let cloned_new = new.clone();
+
+        logger::info!("performing upsert operation on vault data");
+
+        let query: Result<_, diesel::result::Error> =
+            diesel::insert_into(types::VaultInner::table())
+                .values(new)
+                .get_result::<types::VaultInner>(&mut conn)
+                .await;
+
+        match query {
+            Ok(inner) => {
+                logger::info!("Insert operation completed successfully");
+                Ok(inner.into())
+            }
+            Err(error) => match error {
+                diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::UniqueViolation,
+                    _,
+                ) => self.update_vault_data(cloned_new).await,
+                error => {
+                    logger::error!(error = %error, "upsert operation failed");
+                    Err(error).change_error(error::StorageError::InsertError)?
+                }
             },
         }
     }
@@ -80,15 +130,63 @@ impl VaultInterface for Storage {
     ) -> Result<usize, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
+        logger::info!("performing delete operation on vault data");
+
         let query = diesel::delete(types::VaultInner::table()).filter(
             schema::vault::vault_id
                 .eq(vault_id.expose())
                 .and(schema::vault::entity_id.eq(entity_id)),
         );
 
-        Ok(query
-            .execute(&mut conn)
-            .await
-            .change_error(error::StorageError::DeleteError)?)
+        let output = query.execute(&mut conn).await;
+
+        let output = match output {
+            Ok(count) => {
+                logger::info!("delete operation completed successfully");
+                Ok(count)
+            }
+            Err(err) => {
+                logger::error!(error = %err, "delete operation failed");
+                Err(err).change_error(error::StorageError::DeleteError)
+            }
+        };
+
+        output.map_err(From::from)
+    }
+
+    async fn update_vault_data(
+        &self,
+        new: types::VaultNew,
+    ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        logger::info!("performing update operation on vault data");
+
+        let output: Result<types::VaultInner, diesel::result::Error> =
+            diesel::update(types::VaultInner::table())
+                .filter(
+                    schema::vault::vault_id
+                        .eq(new.vault_id.expose())
+                        .and(schema::vault::entity_id.eq(&new.entity_id)),
+                )
+                .set((
+                    schema::vault::encrypted_data.eq(new.encrypted_data),
+                    schema::vault::expires_at.eq(new.expires_at),
+                ))
+                .get_result(&mut conn)
+                .await;
+
+        let output = match output {
+            Err(err) => {
+                logger::error!(error = %err, "update operation failed");
+                Err(err).change_error(error::StorageError::UpdateError)
+            }
+            Ok(vault) => {
+                logger::info!("update operation completed successfully");
+                Ok(vault)
+            }
+        };
+
+        output.map_err(From::from).map(From::from)
     }
 }

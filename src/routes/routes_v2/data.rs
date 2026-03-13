@@ -1,3 +1,4 @@
+use axum::extract::Query;
 use axum::Json;
 use error_stack::ResultExt;
 use masking::PeekInterface;
@@ -87,6 +88,7 @@ pub async fn retrieve_data(
 
 pub async fn add_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
+    Query(params): Query<types::StoreDataRequestQueryParams>,
     Json(request): Json<types::StoreDataRequest>,
 ) -> Result<Json<types::StoreDataResponse>, ContainerError<error::ApiError>> {
     request.validate()?;
@@ -95,10 +97,11 @@ pub async fn add_data(
         .find_or_create_entity(&tenant_app_state, request.entity_id.clone())
         .await?;
 
-    let insert_data = crypto_operation::encrypt_data_and_insert_into_db_v2(
+    let insert_data = crypto_operation::encrypt_data_and_upsert_into_db_v2(
         &tenant_app_state,
         crypto_manager,
         request,
+        params.mode,
     )
     .await?;
 
