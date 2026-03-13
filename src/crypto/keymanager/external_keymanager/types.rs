@@ -4,7 +4,7 @@ use crate::{
     storage::{consts, types::Encrypted, utils},
 };
 use base64::Engine;
-use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
+use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 use serde::{
     de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -169,7 +169,7 @@ impl DecryptedData {
         data: &StrongSecret<T>,
     ) -> Result<Self, error::ContainerError<error::ApiError>>
     where
-        T: Serialize + masking::DefaultIsZeroes,
+        T: Serialize + hyperswitch_masking::DefaultIsZeroes,
     {
         Ok(Self(
             serde_json::to_vec(data.peek())

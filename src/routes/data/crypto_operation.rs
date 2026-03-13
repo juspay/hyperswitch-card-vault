@@ -1,4 +1,4 @@
-use masking::ExposeInterface;
+use hyperswitch_masking::ExposeInterface;
 
 use crate::{
     app::TenantAppState,
