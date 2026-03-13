@@ -2,8 +2,8 @@ use crate::{
     crypto::encryption_manager::encryption_interface::Encryption,
     error::{self, ContainerError},
 };
-use josekit::{jwe, jws};
 use hyperswitch_masking::PeekInterface;
+use josekit::{jwe, jws};
 
 pub struct JWEncryption {
     pub(crate) private_key: hyperswitch_masking::Secret<String>,
