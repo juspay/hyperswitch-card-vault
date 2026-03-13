@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+#[cfg(feature = "middleware")]
+use axum::middleware;
 use axum::{extract::Request, routing::post};
 use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
@@ -5,12 +9,8 @@ use tower_http::trace as tower_trace;
 
 #[cfg(feature = "middleware")]
 use crate::middleware as custom_middleware;
-
-#[cfg(feature = "middleware")]
-use axum::middleware;
-
-use std::sync::Arc;
-
+#[cfg(feature = "caching")]
+use crate::storage::caching::Caching;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
@@ -20,9 +20,6 @@ use crate::{
     tenant::GlobalAppState,
     utils,
 };
-
-#[cfg(feature = "caching")]
-use crate::storage::caching::Caching;
 
 #[cfg(feature = "caching")]
 type Storage = Caching<storage::Storage>;

@@ -1,18 +1,19 @@
+use axum::{
+    body::Body,
+    http::{Request, request, response},
+    middleware::Next,
+};
+use http_body_util::BodyExt;
+use josekit::jwe;
+
 use crate::{
     crypto::encryption_manager::{
         encryption_interface::Encryption,
         managers::jw::{self, JWEncryption},
     },
+    custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
 };
-
-use crate::custom_extractors::TenantStateResolver;
-use axum::body::Body;
-use axum::http::{request, response};
-use axum::{http::Request, middleware::Next};
-
-use http_body_util::BodyExt;
-use josekit::jwe;
 
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs

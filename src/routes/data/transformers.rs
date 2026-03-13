@@ -1,12 +1,11 @@
 use masking::{ExposeInterface, PeekInterface};
 
+use super::types::{self, DataDuplicationCheck};
 use crate::{
     crypto::hash_manager::hash_interface::Encode,
     error::{self, ContainerError, ResultContainerExt},
     storage,
 };
-
-use super::types::{self, DataDuplicationCheck};
 
 impl From<(Option<DataDuplicationCheck>, storage::types::Locker)>
     for super::types::StoreCardResponse
@@ -87,10 +86,10 @@ pub fn get_hash<T>(
 ) -> Result<Vec<u8>, ContainerError<error::ApiError>>
 where
     T: Encode<
-        Vec<u8>,
-        Vec<u8>,
-        ReturnType<Vec<u8>> = Result<Vec<u8>, error::ContainerError<error::CryptoError>>,
-    >,
+            Vec<u8>,
+            Vec<u8>,
+            ReturnType<Vec<u8>> = Result<Vec<u8>, error::ContainerError<error::CryptoError>>,
+        >,
 {
     let data = match request {
         types::Data::EncData { enc_card_data } => enc_card_data,

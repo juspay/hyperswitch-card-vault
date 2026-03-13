@@ -5,10 +5,13 @@
     clippy::unwrap_in_result
 )]
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use josekit::jwe;
 use rand::rngs::OsRng;
-use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey};
+use rsa::{
+    RsaPrivateKey, RsaPublicKey,
+    pkcs8::{EncodePrivateKey, EncodePublicKey},
+};
 use tartarus::crypto::encryption_manager::{
     encryption_interface::Encryption,
     managers::{aes, jw},

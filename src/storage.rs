@@ -1,20 +1,20 @@
+use std::sync::Arc;
+
+use diesel_async::{
+    AsyncPgConnection,
+    pooled_connection::{
+        self,
+        deadpool::{Object, Pool},
+    },
+};
+use error_stack::ResultExt;
+use masking::{PeekInterface, Secret};
+
 use crate::{
     config::Database,
     crypto::encryption_manager::encryption_interface::Encryption,
     error::{self, ContainerError},
 };
-
-use std::sync::Arc;
-
-use diesel_async::{
-    pooled_connection::{
-        self,
-        deadpool::{Object, Pool},
-    },
-    AsyncPgConnection,
-};
-use error_stack::ResultExt;
-use masking::{PeekInterface, Secret};
 
 #[cfg(feature = "caching")]
 pub mod caching;
