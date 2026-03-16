@@ -1,8 +1,8 @@
 use diesel::BoolExpressionMethods;
 use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use masking::ExposeInterface;
-use masking::Secret;
+use hyperswitch_masking::ExposeInterface;
+use hyperswitch_masking::Secret;
 
 use crate::{
     crypto::{

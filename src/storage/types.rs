@@ -4,7 +4,7 @@ use diesel::{
     serialize::ToSql,
     sql_types, AsExpression, Identifiable, Insertable, Queryable,
 };
-use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
+use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},

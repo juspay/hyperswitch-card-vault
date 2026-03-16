@@ -9,7 +9,7 @@ use crate::{
     app::TenantAppState,
     error::{self, ContainerError},
 };
-use masking::{Secret, StrongSecret};
+use hyperswitch_masking::{Secret, StrongSecret};
 
 #[async_trait::async_trait]
 pub trait KeyProvider: Send + Sync {

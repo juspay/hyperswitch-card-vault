@@ -1,5 +1,5 @@
 use diesel::{Identifiable, Insertable, Queryable};
-use masking::Secret;
+use hyperswitch_masking::Secret;
 
 use crate::{
     routes::routes_v2::data::types::StoreDataRequest,

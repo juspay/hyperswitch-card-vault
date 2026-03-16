@@ -1,4 +1,4 @@
-use masking::Secret;
+use hyperswitch_masking::Secret;
 
 use crate::{crypto::encryption_manager::encryption_interface::Encryption, error::ContainerError};
 

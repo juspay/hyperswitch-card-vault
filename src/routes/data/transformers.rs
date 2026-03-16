@@ -1,4 +1,4 @@
-use masking::{ExposeInterface, PeekInterface};
+use hyperswitch_masking::{ExposeInterface, PeekInterface};
 
 use crate::{
     crypto::hash_manager::hash_interface::Encode,
