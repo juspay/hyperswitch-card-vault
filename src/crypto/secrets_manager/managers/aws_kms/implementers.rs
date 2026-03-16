@@ -1,5 +1,5 @@
 use error_stack::ResultExt;
-use masking::{PeekInterface, Secret};
+use hyperswitch_masking::{PeekInterface, Secret};
 
 use crate::crypto::secrets_manager::{
     managers::aws_kms::core::AwsKmsClient,

@@ -19,7 +19,7 @@ macro_rules! const_iter {
 }
 
 pub fn criterion_hmac_sha512(c: &mut Criterion) {
-    let key: masking::Secret<_> = (0..1000)
+    let key: hyperswitch_masking::Secret<_> = (0..1000)
         .map(|_| rand::random::<u8>())
         .collect::<Vec<_>>()
         .into();

@@ -14,7 +14,7 @@ use diesel_async::{
     AsyncPgConnection,
 };
 use error_stack::ResultExt;
-use masking::{PeekInterface, Secret};
+use hyperswitch_masking::{PeekInterface, Secret};
 
 #[cfg(feature = "caching")]
 pub mod caching;

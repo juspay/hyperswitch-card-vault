@@ -1,4 +1,4 @@
-use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
+use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use crate::{
     app::TenantAppState,

@@ -1,5 +1,5 @@
 use error_stack::ResultExt;
-use masking::{ExposeInterface, Secret};
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use crate::crypto::secrets_manager::{
     managers::hollow::core::NoEncryption,

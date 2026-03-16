@@ -1,6 +1,6 @@
 #[cfg(feature = "kms-hashicorp-vault")]
 use error_stack::ResultExt;
-use masking::Secret;
+use hyperswitch_masking::Secret;
 
 #[cfg(feature = "kms-aws")]
 use crate::crypto::secrets_manager::managers::aws_kms::core::{AwsKmsClient, AwsKmsConfig};
