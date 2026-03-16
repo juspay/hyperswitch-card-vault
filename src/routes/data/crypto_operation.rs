@@ -6,9 +6,9 @@ use crate::{
     error::{self, ContainerError, ResultContainerExt},
     routes::{data::types, routes_v2::data::types as types_v2},
     storage::{
-        storage_v2::{types::VaultNew, VaultInterface},
-        types::{Locker, LockerNew},
         LockerInterface,
+        storage_v2::{VaultInterface, types::VaultNew},
+        types::{Locker, LockerNew},
     },
 };
 

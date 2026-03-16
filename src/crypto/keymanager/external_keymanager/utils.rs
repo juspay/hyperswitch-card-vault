@@ -4,8 +4,7 @@ use base64::Engine;
 use hyper::header::{AUTHORIZATION, CONTENT_TYPE};
 use hyperswitch_masking::{Mask, Maskable};
 
-use crate::storage::consts::X_TENANT_ID;
-use crate::{app::TenantAppState, crypto::consts::BASE64_ENGINE};
+use crate::{app::TenantAppState, crypto::consts::BASE64_ENGINE, storage::consts::X_TENANT_ID};
 
 pub fn get_key_manager_header(
     tenant_app_state: &TenantAppState,

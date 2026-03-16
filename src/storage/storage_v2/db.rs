@@ -1,17 +1,16 @@
 use diesel::{
-    associations::HasTable, query_dsl::methods::FilterDsl, BoolExpressionMethods, ExpressionMethods,
+    BoolExpressionMethods, ExpressionMethods, associations::HasTable, query_dsl::methods::FilterDsl,
 };
 use diesel_async::RunQueryDsl;
 use hyperswitch_masking::{ExposeInterface, Secret};
 
+use super::{VaultInterface, types};
 use crate::{
     crypto::encryption_manager::managers::aes::GcmAes256,
     error::{self, ContainerError, ResultContainerExt},
     logger,
-    storage::{schema, Storage},
+    storage::{Storage, schema},
 };
-
-use super::{types, VaultInterface};
 
 impl VaultInterface for Storage {
     type Algorithm = GcmAes256;

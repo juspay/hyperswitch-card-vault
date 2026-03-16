@@ -11,16 +11,16 @@ use std::{
 use once_cell::sync::Lazy;
 use serde::ser::{SerializeMap, Serializer};
 use serde_json::Value;
-
-use super::storage::Storage;
 use time::format_description::well_known::Iso8601;
 use tracing::{Event, Metadata, Subscriber};
 use tracing_subscriber::{
+    Layer,
     fmt::MakeWriter,
     layer::Context,
     registry::{LookupSpan, SpanRef},
-    Layer,
 };
+
+use super::storage::Storage;
 
 // TODO: Documentation coverage for this crate
 
