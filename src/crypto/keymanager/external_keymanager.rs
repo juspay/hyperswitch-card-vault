@@ -1,7 +1,7 @@
 pub mod types;
 pub mod utils;
 
-use masking::{Secret, StrongSecret};
+use hyperswitch_masking::{Secret, StrongSecret};
 
 pub use crate::config::ExternalKeyManagerConfig;
 use crate::{

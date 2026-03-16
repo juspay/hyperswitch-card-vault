@@ -1,6 +1,6 @@
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use masking::{ExposeInterface, Secret};
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use super::{
     LockerInterface, MerchantInterface, Storage, consts, schema, types,

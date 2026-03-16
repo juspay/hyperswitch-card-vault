@@ -8,7 +8,7 @@ use diesel_async::{
     },
 };
 use error_stack::ResultExt;
-use masking::{PeekInterface, Secret};
+use hyperswitch_masking::{PeekInterface, Secret};
 
 use crate::{
     config::Database,
@@ -18,7 +18,6 @@ use crate::{
 
 #[cfg(feature = "caching")]
 pub mod caching;
-
 pub mod consts;
 pub mod db;
 pub mod schema;

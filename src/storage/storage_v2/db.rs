@@ -2,7 +2,7 @@ use diesel::{
     BoolExpressionMethods, ExpressionMethods, associations::HasTable, query_dsl::methods::FilterDsl,
 };
 use diesel_async::RunQueryDsl;
-use masking::{ExposeInterface, Secret};
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use super::{VaultInterface, types};
 use crate::{

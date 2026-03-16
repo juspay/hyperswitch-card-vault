@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
-use masking::Maskable;
+use hyperswitch_masking::Maskable;
 #[cfg(feature = "external_key_manager")]
-use masking::PeekInterface;
+use hyperswitch_masking::PeekInterface;
 use reqwest::{
     Response, StatusCode,
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -54,7 +54,7 @@ pub struct ApiClientConfig {
     pub pool_max_idle_per_host: usize,
     // KMS encrypted
     #[cfg(feature = "external_key_manager")]
-    pub identity: masking::Secret<String>,
+    pub identity: hyperswitch_masking::Secret<String>,
 }
 
 impl ApiClientConfig {

@@ -1,5 +1,5 @@
+use hyperswitch_masking::PeekInterface;
 use josekit::{jwe, jws};
-use masking::PeekInterface;
 
 use crate::{
     crypto::encryption_manager::encryption_interface::Encryption,
@@ -7,8 +7,8 @@ use crate::{
 };
 
 pub struct JWEncryption {
-    pub(crate) private_key: masking::Secret<String>,
-    pub(crate) public_key: masking::Secret<String>,
+    pub(crate) private_key: hyperswitch_masking::Secret<String>,
+    pub(crate) public_key: hyperswitch_masking::Secret<String>,
     pub(crate) encryption_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
     pub(crate) decryption_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
 }

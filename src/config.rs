@@ -5,9 +5,9 @@ use std::{
 };
 
 use error_stack::ResultExt;
-use masking::ExposeInterface;
+use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "external_key_manager")]
-use masking::Secret;
+use hyperswitch_masking::Secret;
 
 use crate::{
     api_client::ApiClientConfig,
@@ -85,7 +85,7 @@ pub struct Server {
 pub struct Database {
     pub username: String,
     // KMS encrypted
-    pub password: masking::Secret<String>,
+    pub password: hyperswitch_masking::Secret<String>,
     pub host: String,
     pub port: u16,
     pub dbname: String,
@@ -105,7 +105,7 @@ pub struct Cache {
 pub struct Secrets {
     // KMS encrypted
     #[cfg(feature = "middleware")]
-    pub locker_private_key: masking::Secret<String>,
+    pub locker_private_key: hyperswitch_masking::Secret<String>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -113,7 +113,7 @@ pub struct TenantSecrets {
     #[serde(deserialize_with = "deserialize_hex")]
     pub master_key: Vec<u8>,
     #[cfg(feature = "middleware")]
-    pub public_key: masking::Secret<String>,
+    pub public_key: hyperswitch_masking::Secret<String>,
 
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
@@ -161,7 +161,7 @@ impl Default for ApiClientConfig {
             client_idle_timeout: 90,
             pool_max_idle_per_host: 5,
             #[cfg(feature = "external_key_manager")]
-            identity: masking::Secret::default(),
+            identity: hyperswitch_masking::Secret::default(),
         }
     }
 }

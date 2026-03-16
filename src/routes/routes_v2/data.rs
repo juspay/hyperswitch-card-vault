@@ -1,6 +1,6 @@
 use axum::{Json, extract::Query};
 use error_stack::ResultExt;
-use masking::PeekInterface;
+use hyperswitch_masking::PeekInterface;
 pub mod types;
 
 use crate::{

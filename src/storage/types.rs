@@ -5,7 +5,7 @@ use diesel::{
     serialize::ToSql,
     sql_types,
 };
-use masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
+use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use super::schema;
 use crate::{

@@ -3,7 +3,7 @@ pub mod internal_keymanager;
 #[cfg(feature = "external_key_manager")]
 pub mod external_keymanager;
 
-use masking::{Secret, StrongSecret};
+use hyperswitch_masking::{Secret, StrongSecret};
 
 pub use crate::config::ExternalKeyManagerConfig;
 use crate::{

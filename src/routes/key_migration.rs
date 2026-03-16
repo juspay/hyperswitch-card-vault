@@ -1,6 +1,6 @@
 use axum::Json;
 use base64::Engine;
-use masking::ExposeInterface;
+use hyperswitch_masking::ExposeInterface;
 use serde::{Deserialize, Serialize};
 
 use crate::{

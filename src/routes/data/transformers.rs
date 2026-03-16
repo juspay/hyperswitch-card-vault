@@ -1,4 +1,4 @@
-use masking::{ExposeInterface, PeekInterface};
+use hyperswitch_masking::{ExposeInterface, PeekInterface};
 
 use super::types::{self, DataDuplicationCheck};
 use crate::{
