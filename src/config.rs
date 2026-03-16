@@ -1,3 +1,14 @@
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
+
+use error_stack::ResultExt;
+use hyperswitch_masking::ExposeInterface;
+#[cfg(feature = "external_key_manager")]
+use hyperswitch_masking::Secret;
+
 use crate::{
     api_client::ApiClientConfig,
     crypto::secrets_manager::{
@@ -5,15 +16,6 @@ use crate::{
     },
     error,
     logger::config::Log,
-};
-use error_stack::ResultExt;
-use hyperswitch_masking::ExposeInterface;
-#[cfg(feature = "external_key_manager")]
-use hyperswitch_masking::Secret;
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    path::PathBuf,
 };
 
 #[derive(Clone, serde::Deserialize, Debug)]

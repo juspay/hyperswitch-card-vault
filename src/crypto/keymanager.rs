@@ -3,13 +3,13 @@ pub mod internal_keymanager;
 #[cfg(feature = "external_key_manager")]
 pub mod external_keymanager;
 
-pub use crate::config::ExternalKeyManagerConfig;
+use hyperswitch_masking::{Secret, StrongSecret};
 
+pub use crate::config::ExternalKeyManagerConfig;
 use crate::{
     app::TenantAppState,
     error::{self, ContainerError},
 };
-use hyperswitch_masking::{Secret, StrongSecret};
 
 #[async_trait::async_trait]
 pub trait KeyProvider: Send + Sync {

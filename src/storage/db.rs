@@ -1,20 +1,18 @@
-use diesel::BoolExpressionMethods;
-use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use hyperswitch_masking::ExposeInterface;
-use hyperswitch_masking::Secret;
+use hyperswitch_masking::{ExposeInterface, Secret};
 
+use super::{
+    LockerInterface, MerchantInterface, Storage, consts, schema, types,
+    types::{StorageDecryption, StorageEncryption},
+    utils,
+};
 use crate::{
     crypto::{
         encryption_manager::managers::aes,
         hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
     },
     error::{self, ContainerError, ResultContainerExt},
-};
-
-use super::{
-    consts, schema, types, types::StorageDecryption, types::StorageEncryption, utils,
-    LockerInterface, MerchantInterface, Storage,
 };
 
 impl MerchantInterface for Storage {

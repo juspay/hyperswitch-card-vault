@@ -8,7 +8,6 @@ use crate::crypto::secrets_manager::managers::aws_kms::core::{AwsKmsClient, AwsK
 use crate::crypto::secrets_manager::managers::hcvault::core::{
     HashiCorpVault, HashiCorpVaultConfig,
 };
-
 use crate::{
     crypto::secrets_manager::{
         managers::hollow::core::NoEncryption,

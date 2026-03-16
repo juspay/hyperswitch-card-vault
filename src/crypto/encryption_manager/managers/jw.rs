@@ -1,9 +1,10 @@
+use hyperswitch_masking::PeekInterface;
+use josekit::{jwe, jws};
+
 use crate::{
     crypto::encryption_manager::encryption_interface::Encryption,
     error::{self, ContainerError},
 };
-use hyperswitch_masking::PeekInterface;
-use josekit::{jwe, jws};
 
 pub struct JWEncryption {
     pub(crate) private_key: hyperswitch_masking::Secret<String>,
@@ -176,9 +177,13 @@ pub fn verify_sign(jws_body: String, key: impl AsRef<[u8]>) -> Result<String, er
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-    use super::*;
     use rand::rngs::OsRng;
-    use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey};
+    use rsa::{
+        RsaPrivateKey, RsaPublicKey,
+        pkcs8::{EncodePrivateKey, EncodePublicKey},
+    };
+
+    use super::*;
 
     fn generate_rsa_key_pair() -> (String, String) {
         let mut rng = OsRng;
