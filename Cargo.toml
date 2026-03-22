@@ -38,7 +38,7 @@ axum = "0.7.5"
 axum-server = { version = "0.7.1", features = ["tls-rustls"] }
 hyper = "1.4.1"
 tower = { version = "0.5.0", features = ["limit", "buffer", "load-shed"] }
-tower-http = { version = "0.5.2", features = ["trace"] }
+tower-http = { version = "0.5.2", features = ["trace", "set-header"] }
 tracing = { version = "0.1.40" }
 tracing-appender = { version = "0.2.3" }
 tracing-attributes = "0.1.27"

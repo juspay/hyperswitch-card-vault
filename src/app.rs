@@ -80,6 +80,14 @@ pub struct CustodianKeys {
     pub key2: Option<String>,
 }
 
+#[cfg(feature = "vergen")]
+fn default_headers() -> tower_http::set_header::SetResponseHeaderLayer<axum::http::HeaderValue> {
+    tower_http::set_header::SetResponseHeaderLayer::overriding(
+        axum::http::HeaderName::from_static("x-version"),
+        axum::http::HeaderValue::from_static(build_info::git_describe!()),
+    )
+}
+
 ///
 /// The server responsible for the custodian APIs and main locker APIs this will perform all storage, retrieval and
 /// deletion operation
@@ -154,7 +162,9 @@ where
         router = router.nest("/custodian", routes::key_custodian::serve());
     }
 
-    let router = router.layer(
+    router = router.nest("/health", routes::health::serve());
+
+    router = router.layer(
         tower_trace::TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| utils::record_fields_from_header(request))
             .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
@@ -170,9 +180,13 @@ where
             ),
     );
 
-    let router = router
-        .nest("/health", routes::health::serve())
-        .with_state(global_app_state.clone());
+    // Register default headers layer last so it wraps all routes, ensuring x-version is present on all responses.
+    #[cfg(feature = "vergen")]
+    {
+        router = router.layer(default_headers());
+    }
+
+    let router = router.with_state(global_app_state.clone());
 
     logger::info!(
         "Locker started [{:?}] [{:?}]",
