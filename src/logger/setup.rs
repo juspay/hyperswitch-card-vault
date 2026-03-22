@@ -91,7 +91,7 @@ fn get_envfilter(
         })
         .unwrap_or_else(|| {
             // Construct a default target filter otherwise
-            let mut workspace_members = crate::cargo_workspace_members!();
+            let mut workspace_members = build_info::cargo_workspace_members!();
             workspace_members.extend(crates_to_filter.as_ref());
 
             workspace_members
