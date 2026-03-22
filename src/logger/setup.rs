@@ -1,9 +1,88 @@
 //! Setup logging subsystem.
 
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{EnvFilter, Layer, fmt, prelude::*, util::SubscriberInitExt};
+use std::collections::{HashMap, HashSet};
 
-use super::{config, formatter::FormattingLayer, storage::StorageSubscription};
+use log_utils::{
+    AdditionalFieldsPlacement, ConsoleLogFormat, ConsoleLoggingConfig, DirectivePrintTarget,
+    LoggerConfig, LoggerError,
+};
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{Layer, prelude::*};
+
+use super::config;
+
+fn get_envfilter_directive(
+    default_log_level: tracing::Level,
+    filter_log_level: tracing::Level,
+    crates_to_filter: &[&'static str],
+) -> String {
+    let mut workspace_members = build_info::cargo_workspace_members!();
+    workspace_members.extend(build_info::framework_libs_workspace_members());
+    workspace_members.extend(crates_to_filter.iter().copied());
+
+    workspace_members
+        .into_iter()
+        .zip(std::iter::repeat(filter_log_level))
+        .fold(
+            vec![default_log_level.to_string()],
+            |mut directives, (target, level)| {
+                directives.push(format!("{}={}", target, level));
+                directives
+            },
+        )
+        .join(",")
+}
+
+fn get_logger_config(
+    config: &config::Log,
+    service_name: &str,
+    crates_to_filter: &[&'static str],
+) -> LoggerConfig {
+    let console_config = if config.console.enabled {
+        let console_filter_directive =
+            config
+                .console
+                .filtering_directive
+                .clone()
+                .unwrap_or_else(|| {
+                    get_envfilter_directive(
+                        tracing::Level::WARN,
+                        config.console.level.into_level(),
+                        crates_to_filter,
+                    )
+                });
+
+        let log_format = match config.console.log_format {
+            config::LogFormat::Default => ConsoleLogFormat::HumanReadable,
+            config::LogFormat::Json => {
+                error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
+                ConsoleLogFormat::CompactJson
+            }
+        };
+
+        Some(ConsoleLoggingConfig {
+            level: config.console.level.into_level(),
+            log_format,
+            filtering_directive: Some(console_filter_directive),
+            print_filtering_directive: DirectivePrintTarget::Stdout,
+        })
+    } else {
+        None
+    };
+
+    LoggerConfig {
+        static_top_level_fields: HashMap::from([
+            ("service".to_string(), serde_json::json!(service_name)),
+        ]),
+        top_level_keys: HashSet::new(),
+        persistent_keys: HashSet::new(),
+        log_span_lifecycles: true,
+        additional_fields_placement: AdditionalFieldsPlacement::TopLevel,
+        file_config: None,
+        console_config,
+        global_filtering_directive: None,
+    }
+}
 
 /// Contains guards necessary for logging
 #[derive(Debug)]
@@ -18,97 +97,26 @@ pub fn setup(
     config: &config::Log,
     service_name: &str,
     crates_to_filter: impl AsRef<[&'static str]>,
-) -> TelemetryGuard {
-    let mut guards = Vec::new();
+) -> Result<TelemetryGuard, LoggerError> {
+    let logger_config = get_logger_config(config, service_name, crates_to_filter.as_ref());
 
-    #[cfg(feature = "console")]
-    let console_layer = console_subscriber::spawn();
+    let components = log_utils::build_logging_components(logger_config)?;
 
-    let subscriber = tracing_subscriber::registry().with(StorageSubscription);
+    let mut layers: Vec<Box<dyn Layer<_> + Send + Sync>> = Vec::new();
+    layers.push(components.storage_layer.boxed());
 
-    #[cfg(feature = "console")]
-    let subscriber = subscriber.with(console_layer);
-
-    // Setup console logging
-    if config.console.enabled {
-        let (console_writer, guard) = tracing_appender::non_blocking(std::io::stdout());
-        guards.push(guard);
-
-        let console_filter = get_envfilter(
-            config.console.filtering_directive.as_ref(),
-            config::Level(tracing::Level::WARN),
-            config.console.level,
-            &crates_to_filter,
-        );
-
-        println!("Using console logging filter: {console_filter}");
-
-        match config.console.log_format {
-            config::LogFormat::Default => {
-                let logging_layer = fmt::layer()
-                    .with_timer(fmt::time::time())
-                    .pretty()
-                    .with_writer(console_writer)
-                    .with_filter(console_filter);
-
-                subscriber.with(logging_layer).init();
-            }
-            config::LogFormat::Json => {
-                error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
-                let logging_layer =
-                    FormattingLayer::new(service_name, console_writer).with_filter(console_filter);
-                subscriber.with(logging_layer).init();
-            }
-        }
-    } else {
-        subscriber.init();
-    };
-
-    // Returning the TelemetryGuard for logs to be printed and metrics to be collected until it is
-    // dropped
-    TelemetryGuard {
-        _log_guards: guards,
+    if let Some(console_layer) = components.console_log_layer {
+        layers.push(console_layer);
     }
-}
 
-fn get_envfilter(
-    filtering_directive: Option<&String>,
-    default_log_level: config::Level,
-    filter_log_level: config::Level,
-    crates_to_filter: impl AsRef<[&'static str]>,
-) -> EnvFilter {
-    filtering_directive
-        .map(|filter| {
-            // Try to create target filter from specified filtering directive, if set
+    let subscriber = tracing_subscriber::registry().with(layers);
 
-            // Safety: If user is overriding the default filtering directive, then we need to panic
-            // for invalid directives.
-            #[allow(clippy::expect_used)]
-            EnvFilter::builder()
-                .with_default_directive(default_log_level.into_level().into())
-                .parse(filter)
-                .expect("Invalid EnvFilter filtering directive")
-        })
-        .unwrap_or_else(|| {
-            // Construct a default target filter otherwise
-            let mut workspace_members = build_info::cargo_workspace_members!();
-            workspace_members.extend(crates_to_filter.as_ref());
+    #[cfg(feature = "console")]
+    let subscriber = subscriber.with(console_subscriber::spawn());
 
-            workspace_members
-                .drain()
-                .zip(std::iter::repeat(filter_log_level.into_level()))
-                .fold(
-                    EnvFilter::default().add_directive(default_log_level.into_level().into()),
-                    |env_filter, (target, level)| {
-                        // Safety: This is a hardcoded basic filtering directive. If even the basic
-                        // filter is wrong, it's better to panic.
-                        #[allow(clippy::expect_used)]
-                        env_filter.add_directive(
-                            format!("{target}={level}")
-                                .parse()
-                                .expect("Invalid EnvFilter directive format"),
-                        )
-                    },
-                )
-        })
+    subscriber.init();
+
+    Ok(TelemetryGuard {
+        _log_guards: components.guards,
+    })
 }
