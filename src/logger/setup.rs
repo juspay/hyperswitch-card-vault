@@ -73,6 +73,11 @@ fn get_logger_config(
     LoggerConfig {
         static_top_level_fields: HashMap::from([
             ("service".to_string(), serde_json::json!(service_name)),
+            #[cfg(feature = "vergen")]
+            (
+                "build_version".to_string(),
+                serde_json::json!(crate::version!()),
+            ),
         ]),
         top_level_keys: HashSet::new(),
         persistent_keys: HashSet::new(),
