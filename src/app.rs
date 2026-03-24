@@ -5,7 +5,12 @@ use axum::middleware;
 use axum::{extract::Request, routing::post};
 use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
-use tower_http::trace as tower_trace;
+use tower::ServiceBuilder;
+use tower_http::{
+    ServiceBuilderExt,
+    request_id::{MakeRequestId, RequestId},
+    trace as tower_trace,
+};
 
 #[cfg(feature = "middleware")]
 use crate::middleware as custom_middleware;
@@ -78,6 +83,26 @@ impl TenantAppState {
 pub struct CustodianKeys {
     pub key1: Option<String>,
     pub key2: Option<String>,
+}
+
+#[cfg(feature = "vergen")]
+fn default_headers() -> tower_http::set_header::SetResponseHeaderLayer<axum::http::HeaderValue> {
+    tower_http::set_header::SetResponseHeaderLayer::overriding(
+        axum::http::HeaderName::from_static("x-version"),
+        axum::http::HeaderValue::from_static(build_info::git_describe!()),
+    )
+}
+
+#[derive(Clone, Copy)]
+struct MakeUuidV7;
+
+impl MakeRequestId for MakeUuidV7 {
+    fn make_request_id<B>(&mut self, _request: &axum::http::Request<B>) -> Option<RequestId> {
+        let uuid = uuid::Uuid::now_v7();
+        axum::http::HeaderValue::from_str(&uuid.to_string())
+            .ok()
+            .map(RequestId::new)
+    }
 }
 
 ///
@@ -154,7 +179,9 @@ where
         router = router.nest("/custodian", routes::key_custodian::serve());
     }
 
-    let router = router.layer(
+    router = router.nest("/health", routes::health::serve());
+
+    router = router.layer(
         tower_trace::TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| utils::record_fields_from_header(request))
             .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
@@ -170,9 +197,19 @@ where
             ),
     );
 
-    let router = router
-        .nest("/health", routes::health::serve())
-        .with_state(global_app_state.clone());
+    router = router.layer(
+        ServiceBuilder::new()
+            .set_x_request_id(MakeUuidV7)
+            .propagate_x_request_id(),
+    );
+
+    // Register default headers layer last so it wraps all routes, ensuring x-version is present on all responses.
+    #[cfg(feature = "vergen")]
+    {
+        router = router.layer(default_headers());
+    }
+
+    let router = router.with_state(global_app_state.clone());
 
     logger::info!(
         "Locker started [{:?}] [{:?}]",
