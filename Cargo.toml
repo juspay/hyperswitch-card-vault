@@ -71,8 +71,8 @@ argh = "0.1.12"
 
 nanoid = "0.4.0"
 
-build_info = { git = "https://github.com/juspay/framework-libs-rs", rev = "6029d65e5bdd3ae66ad374e7787f966d9f374000", features = ["cargo-workspace", "framework-libs-members-env"] }
-log_utils = { git = "https://github.com/juspay/framework-libs-rs", rev = "6029d65e5bdd3ae66ad374e7787f966d9f374000", features = ["tracing"] }
+build_info = { git = "https://github.com/juspay/framework-libs-rs", rev = "9bcf79420c0782dee01674cd1ac296696cd4f1af", features = ["cargo-workspace", "framework-libs-members-env"] }
+log_utils = { git = "https://github.com/juspay/framework-libs-rs", rev = "9bcf79420c0782dee01674cd1ac296696cd4f1af", features = ["tracing"] }
 
 [dev-dependencies]
 rand = "0.8.5"
@@ -81,7 +81,7 @@ axum-test = "15.6.0"
 rsa = "0.9.2"
 
 [build-dependencies]
-build_info = { git = "https://github.com/juspay/framework-libs-rs", rev = "6029d65e5bdd3ae66ad374e7787f966d9f374000", features = ["cargo-workspace-build", "vergen-gix-build"] }
+build_info = { git = "https://github.com/juspay/framework-libs-rs", rev = "9bcf79420c0782dee01674cd1ac296696cd4f1af", features = ["cargo-workspace-build", "vergen-gix-build"] }
 
 
 [[bin]]

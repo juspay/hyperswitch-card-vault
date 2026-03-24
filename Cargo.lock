@@ -696,7 +696,7 @@ dependencies = [
 [[package]]
 name = "build_info"
 version = "0.1.0"
-source = "git+https://github.com/juspay/framework-libs-rs?rev=6029d65e5bdd3ae66ad374e7787f966d9f374000#6029d65e5bdd3ae66ad374e7787f966d9f374000"
+source = "git+https://github.com/juspay/framework-libs-rs?rev=9bcf79420c0782dee01674cd1ac296696cd4f1af#9bcf79420c0782dee01674cd1ac296696cd4f1af"
 dependencies = [
  "cargo_metadata 0.20.0",
  "vergen-gix",
@@ -1469,7 +1469,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3050,7 +3050,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3169,7 +3169,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3227,7 +3227,7 @@ checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 [[package]]
 name = "log_utils"
 version = "0.1.0"
-source = "git+https://github.com/juspay/framework-libs-rs?rev=6029d65e5bdd3ae66ad374e7787f966d9f374000#6029d65e5bdd3ae66ad374e7787f966d9f374000"
+source = "git+https://github.com/juspay/framework-libs-rs?rev=9bcf79420c0782dee01674cd1ac296696cd4f1af#9bcf79420c0782dee01674cd1ac296696cd4f1af"
 dependencies = [
  "gethostname 1.1.0",
  "rustc-hash 2.1.1",
@@ -4385,7 +4385,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5006,7 +5006,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5877,7 +5877,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
