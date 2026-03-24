@@ -10,7 +10,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &global_config.log,
         tartarus::service_name!(),
         [tartarus::service_name!(), "tower_http"],
-    );
+    )
+    .expect("Failed to initialize logging");
 
     global_config
         .validate()
