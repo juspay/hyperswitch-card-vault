@@ -1,11 +1,12 @@
 //! Interactions with the AWS KMS SDK
 
+use std::collections::HashMap;
+
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_kms::{Client, config::Region, primitives::Blob};
-use base64::Engine;
 use error_stack::{ResultExt, report};
 
-use crate::{crypto::consts::BASE64_ENGINE, error::ConfigurationError, logger};
+use crate::{error::ConfigurationError, logger};
 
 /// Configuration parameters required for constructing a [`AwsKmsClient`].
 #[derive(Clone, Debug, Default, serde::Deserialize, Eq, PartialEq)]
@@ -40,42 +41,75 @@ impl AwsKmsClient {
         }
     }
 
-    /// Decrypts the provided base64-encoded encrypted data using the AWS KMS SDK. We assume that
-    /// the SDK has the values required to interact with the AWS KMS APIs (`AWS_ACCESS_KEY_ID` and
-    /// `AWS_SECRET_ACCESS_KEY`) either set in environment variables, or that the SDK is running in
-    /// a machine that is able to assume an IAM role.
-    pub async fn decrypt(
+    /// Encrypts the provided plaintext using the AWS KMS SDK. Optionally accepts an encryption
+    /// context that cryptographically binds the ciphertext to additional authenticated data.
+    pub async fn encrypt(
         &self,
-        data: impl AsRef<[u8]>,
-    ) -> error_stack::Result<String, AwsKmsError> {
-        let data = BASE64_ENGINE
-            .decode(data)
-            .change_context(AwsKmsError::Base64DecodingFailed)?;
-        let ciphertext_blob = Blob::new(data);
-
-        let decrypt_output = self
+        plaintext: &[u8],
+        encryption_context: Option<HashMap<String, String>>,
+    ) -> error_stack::Result<Vec<u8>, AwsKmsError> {
+        let mut req = self
             .inner_client
-            .decrypt()
+            .encrypt()
             .key_id(&self.key_id)
-            .ciphertext_blob(ciphertext_blob)
+            .plaintext(Blob::new(plaintext));
+
+        if let Some(ctx) = encryption_context {
+            for (k, v) in ctx {
+                req = req.encryption_context(k, v);
+            }
+        }
+
+        let output = req
             .send()
             .await
             .map_err(|error| {
-                // Logging using `Debug` representation of the error as the `Display`
-                // representation does not hold sufficient information.
+                logger::error!(aws_kms_sdk_error=?error, "Failed to AWS KMS encrypt data");
+                error
+            })
+            .change_context(AwsKmsError::EncryptionFailed)?;
+
+        output
+            .ciphertext_blob
+            .ok_or(report!(AwsKmsError::MissingCiphertextEncryptionOutput))
+            .map(|blob| blob.into_inner())
+    }
+
+    /// Decrypts the provided ciphertext using the AWS KMS SDK. The encryption context, if
+    /// provided, must match the context used during encryption. We assume that the SDK has
+    /// the values required to interact with the AWS KMS APIs (`AWS_ACCESS_KEY_ID` and
+    /// `AWS_SECRET_ACCESS_KEY`) either set in environment variables, or that the SDK is
+    /// running in a machine that is able to assume an IAM role.
+    pub async fn decrypt(
+        &self,
+        ciphertext: &[u8],
+        encryption_context: Option<HashMap<String, String>>,
+    ) -> error_stack::Result<Vec<u8>, AwsKmsError> {
+        let mut req = self
+            .inner_client
+            .decrypt()
+            .key_id(&self.key_id)
+            .ciphertext_blob(Blob::new(ciphertext));
+
+        if let Some(ctx) = encryption_context {
+            for (k, v) in ctx {
+                req = req.encryption_context(k, v);
+            }
+        }
+
+        let output = req
+            .send()
+            .await
+            .map_err(|error| {
                 logger::error!(aws_kms_sdk_error=?error, "Failed to AWS KMS decrypt data");
                 error
             })
             .change_context(AwsKmsError::DecryptionFailed)?;
 
-        let output = decrypt_output
+        output
             .plaintext
             .ok_or(report!(AwsKmsError::MissingPlaintextDecryptionOutput))
-            .and_then(|blob| {
-                String::from_utf8(blob.into_inner()).change_context(AwsKmsError::Utf8DecodingFailed)
-            })?;
-
-        Ok(output)
+            .map(|blob| blob.into_inner())
     }
 }
 

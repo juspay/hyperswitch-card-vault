@@ -117,6 +117,17 @@ pub struct TenantSecrets {
 
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
+
+    #[cfg(feature = "kms-aws")]
+    #[serde(default)]
+    pub kms_data_key: Option<KmsDataKeyConfig>,
+}
+
+#[cfg(feature = "kms-aws")]
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct KmsDataKeyConfig {
+    pub key_id: String,
+    pub region: String,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -309,6 +320,8 @@ impl GlobalConfig {
                 ExternalKeyManagerConfig::Enabled { .. } | ExternalKeyManagerConfig::Disabled => {
                     self.external_key_manager.clone()
                 }
+                #[cfg(feature = "kms-aws")]
+                ExternalKeyManagerConfig::AwsKms => self.external_key_manager.clone(),
             };
         }
 
@@ -372,11 +385,18 @@ pub enum ExternalKeyManagerConfig {
         url: String,
         ca_cert: Secret<String>,
     },
+    #[cfg(feature = "kms-aws")]
+    AwsKms,
 }
 
 impl ExternalKeyManagerConfig {
     pub fn is_external(&self) -> bool {
         !matches!(self, Self::Disabled)
+    }
+
+    #[cfg(feature = "kms-aws")]
+    pub fn is_aws_kms(&self) -> bool {
+        matches!(self, Self::AwsKms)
     }
 
     #[cfg(feature = "external_key_manager")]
@@ -389,6 +409,8 @@ impl ExternalKeyManagerConfig {
             Self::Disabled => None,
             #[cfg(feature = "external_key_manager")]
             Self::Enabled { url } | Self::EnabledWithMtls { url, .. } => Some(url),
+            #[cfg(feature = "kms-aws")]
+            Self::AwsKms => None,
         }
     }
 
@@ -406,6 +428,8 @@ impl ExternalKeyManagerConfig {
         match self {
             Self::EnabledWithMtls { ca_cert, .. } => Some(ca_cert),
             Self::Disabled | Self::Enabled { .. } => None,
+            #[cfg(feature = "kms-aws")]
+            Self::AwsKms => None,
         }
     }
 
@@ -437,6 +461,8 @@ impl ExternalKeyManagerConfig {
                 }
                 Ok(())
             }
+            #[cfg(feature = "kms-aws")]
+            Self::AwsKms => Ok(()),
         }
     }
 }

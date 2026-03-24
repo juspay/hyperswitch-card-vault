@@ -7,6 +7,8 @@ use axum_server::tls_rustls::RustlsConfig;
 use error_stack::ResultExt;
 use tower_http::trace as tower_trace;
 
+#[cfg(feature = "kms-aws")]
+use crate::crypto::secrets_manager::managers::aws_kms::core::{AwsKmsClient, AwsKmsConfig};
 #[cfg(feature = "middleware")]
 use crate::middleware as custom_middleware;
 #[cfg(feature = "caching")]
@@ -38,12 +40,19 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
+    #[cfg(feature = "kms-aws")]
+    pub kms_client: Option<Arc<AwsKmsClient>>,
 }
 
 #[allow(clippy::expect_used)]
 impl TenantAppState {
     ///
     /// Construct new app state with configuration
+    ///
+    /// # Panics
+    ///
+    /// Panics if `kms-aws` feature is enabled, the external key manager mode is `aws_kms`,
+    /// but `kms_data_key` is not configured in the tenant secrets.
     ///
     pub async fn new(
         global_config: &GlobalConfig,
@@ -64,10 +73,33 @@ impl TenantAppState {
         )
         .change_context(error::ConfigurationError::DatabaseError)?;
 
+        #[cfg(feature = "kms-aws")]
+        let kms_client = if matches!(
+            tenant_config.external_key_manager,
+            config::ExternalKeyManagerConfig::AwsKms
+        ) {
+            let kms_config = tenant_config
+                    .tenant_secrets
+                    .kms_data_key
+                    .as_ref()
+                    .expect("kms_data_key must be configured in tenant_secrets when using aws_kms key manager mode");
+            Some(Arc::new(
+                AwsKmsClient::new(&AwsKmsConfig {
+                    key_id: kms_config.key_id.clone(),
+                    region: kms_config.region.clone(),
+                })
+                .await,
+            ))
+        } else {
+            None
+        };
+
         Ok(Self {
             db,
             api_client,
             config: tenant_config,
+            #[cfg(feature = "kms-aws")]
+            kms_client,
         })
     }
 }
