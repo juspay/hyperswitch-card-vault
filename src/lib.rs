@@ -7,6 +7,8 @@ pub mod error;
 pub mod logger;
 #[cfg(feature = "middleware")]
 pub mod middleware;
+#[cfg(feature = "kms-aws")]
+pub mod migration;
 pub mod routes;
 pub mod storage;
 pub mod tenant;
