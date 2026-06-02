@@ -230,6 +230,7 @@ pub(crate) trait FingerprintInterface {
         &self,
         data: Secret<String>,
         key: Secret<String>,
+        fingerprint_id: Option<Secret<String>>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
 }
 

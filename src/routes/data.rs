@@ -7,7 +7,7 @@ use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
 use self::types::Validation;
 use crate::{
     crypto::{hash_manager::managers::sha::Sha512, keymanager},
-    custom_extractors::TenantStateResolver,
+    custom_extractors::{OptionalFingerprintId, TenantStateResolver},
     error::{self, ContainerError, ResultContainerExt},
     logger,
     storage::{FingerprintInterface, HashInterface, LockerInterface},
@@ -219,11 +219,12 @@ pub async fn retrieve_card(
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
+    OptionalFingerprintId(fingerprint_id): OptionalFingerprintId,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
     let fingerprint = tenant_app_state
         .db
-        .get_or_insert_fingerprint(request.data, request.key)
+        .get_or_insert_fingerprint(request.data, request.key, fingerprint_id)
         .await?;
 
     let response = Json(fingerprint.into());
