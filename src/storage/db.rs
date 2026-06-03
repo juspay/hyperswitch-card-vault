@@ -351,6 +351,7 @@ impl super::FingerprintInterface for Storage {
         &self,
         data: Secret<String>,
         key: Secret<String>,
+        fingerprint_id: Option<Secret<String>>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         let algo = HmacSha512::<1>::new(key.map(|inner| inner.into_bytes()));
 
@@ -360,20 +361,39 @@ impl super::FingerprintInterface for Storage {
             .find_by_fingerprint_hash(fingerprint_hash.clone())
             .await?;
         match output {
+            // Hash already exists: return the stored fingerprint regardless of any
+            // caller-supplied id — the hash is the canonical deduplication key.
             Some(inner) => Ok(inner),
             None => {
+                let id = fingerprint_id
+                    .unwrap_or_else(|| utils::generate_nano_id(consts::ID_LENGTH).into());
+                let cloned_hash = fingerprint_hash.clone();
                 let mut conn = self.get_conn().await?;
-                let query = diesel::insert_into(types::Fingerprint::table()).values(
-                    types::FingerprintTableNew {
-                        fingerprint_hash,
-                        fingerprint_id: utils::generate_nano_id(consts::ID_LENGTH).into(),
-                    },
-                );
 
-                Ok(query
-                    .get_result(&mut conn)
-                    .await
-                    .change_error(error::StorageError::InsertError)?)
+                let insert_result: Result<types::Fingerprint, diesel::result::Error> =
+                    diesel::insert_into(types::Fingerprint::table())
+                        .values(types::FingerprintTableNew {
+                            fingerprint_hash,
+                            fingerprint_id: id,
+                        })
+                        .get_result(&mut conn)
+                        .await;
+
+                match insert_result {
+                    Ok(inner) => Ok(inner),
+                    // Race condition: a concurrent request inserted the same hash first.
+                    // Re-read by hash and return the winner row.
+                    Err(diesel::result::Error::DatabaseError(
+                        diesel::result::DatabaseErrorKind::UniqueViolation,
+                        _,
+                    )) => self
+                        .find_by_fingerprint_hash(cloned_hash)
+                        .await?
+                        .ok_or_else(|| {
+                            ContainerError::from(error::FingerprintDBError::DBInsertError)
+                        }),
+                    Err(error) => Err(error).change_error(error::StorageError::InsertError)?,
+                }
             }
         }
     }

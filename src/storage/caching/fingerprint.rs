@@ -43,8 +43,12 @@ where
         &self,
         data: Secret<String>,
         key: Secret<String>,
+        fingerprint_id: Option<Secret<String>>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let output = self.inner.get_or_insert_fingerprint(data, key).await?;
+        let output = self
+            .inner
+            .get_or_insert_fingerprint(data, key, fingerprint_id)
+            .await?;
         self.cache_data::<types::Fingerprint>(
             output.fingerprint_hash.clone().expose(),
             output.clone(),
