@@ -13,6 +13,8 @@ pub const ID_LENGTH: usize = 20;
 pub const X_TENANT_ID: &str = "x-tenant-id";
 /// Header key for request ID
 pub const X_REQUEST_ID: &str = "x-request-id";
+/// Header key for caller-supplied fingerprint ID (optional)
+pub const X_FINGERPRINT_ID: &str = "x-fingerprint-id";
 /// Header Constants
 pub mod headers {
     pub const CONTENT_TYPE: &str = "Content-Type";
