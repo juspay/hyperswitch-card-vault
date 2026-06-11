@@ -1,6 +1,6 @@
 openapi: "3.0.2"
 info:
-  title: Tartarus - OpenAPI 3.0
+  title: Hyperswitch Card Vault - OpenAPI 3.0
   description: |-
     This the the open API 3.0 specification for the card locker.
     This is used by the [hyperswitch](https://github.com/juspay/hyperswitch) for storing card information securely.
@@ -283,7 +283,7 @@ components:
         nick_name:
           type: string
     FingerprintCardData:
-      type: object 
+      type: object
       properties:
         card_number:
           type: string
