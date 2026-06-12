@@ -1,5 +1,5 @@
 [package]
-name = "hyperswitch-card-vault"
+name = "hyperswitch_card_vault"
 version = "0.1.3"
 edition = "2024"
 default-run = "locker"
