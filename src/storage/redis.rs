@@ -1,12 +1,12 @@
 use std::sync::{Arc, atomic};
 
 use hyperswitch_redis_interface::{RedisConnectionPool, RedisSettings, errors::RedisError};
+
 use crate::storage::consts;
 
 // error_stack 0.4 (redis_interface) vs 0.5 (tartarus): rebuild, `?` can't bridge them.
 fn into_report(err: impl std::fmt::Debug) -> error_stack::Report<RedisError> {
-    error_stack::Report::new(RedisError::RedisConnectionError)
-        .attach_printable(format!("{err:?}"))
+    error_stack::Report::new(RedisError::RedisConnectionError).attach_printable(format!("{err:?}"))
 }
 
 /// A shared `redis_interface` connection pool with an availability-gated accessor.
