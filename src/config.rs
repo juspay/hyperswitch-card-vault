@@ -27,6 +27,7 @@ pub struct GlobalConfig {
     pub secrets_management: SecretsManagementConfig,
     pub log: Log,
     #[cfg(feature = "limit")]
+    #[serde(default)]
     pub limit: Limit,
     #[cfg(feature = "caching")]
     pub cache: Cache,
@@ -73,6 +74,17 @@ pub struct Limit {
     pub request_count: u64,
     pub duration: u64, // in sec
     pub buffer_size: Option<usize>,
+}
+
+#[cfg(feature = "limit")]
+impl Default for Limit {
+    fn default() -> Self {
+        Self {
+            request_count: 100,
+            duration: 60,
+            buffer_size: None,
+        }
+    }
 }
 
 #[derive(Clone, serde::Deserialize, Debug)]
