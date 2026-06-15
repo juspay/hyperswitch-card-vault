@@ -21,6 +21,9 @@ pub const REDIS_HEALTH_CHECK_KEY: &str = "health_check_redis";
 /// Value written by the Redis health-check probe
 #[cfg(feature = "redis")]
 pub const REDIS_HEALTH_CHECK_VALUE: &str = "1";
+/// TTL (seconds) for the Redis health-check probe key, so it self-expires
+#[cfg(feature = "redis")]
+pub const REDIS_HEALTH_CHECK_EXPIRY: i64 = 5;
 
 /// Header Constants
 pub mod headers {
