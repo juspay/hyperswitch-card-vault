@@ -23,8 +23,8 @@ impl Encode<Vec<u8>, Vec<u8>> for Sha512 {
 /// # Example
 ///
 ///```
-/// use tartarus::crypto::hash_manager::managers::sha::HmacSha512;
-/// use tartarus::crypto::hash_manager::hash_interface::Encode;
+/// use hyperswitch_card_vault::crypto::hash_manager::managers::sha::HmacSha512;
+/// use hyperswitch_card_vault::crypto::hash_manager::hash_interface::Encode;
 ///
 /// let data = "Hello, World!";
 /// let key = "key";
@@ -37,8 +37,8 @@ impl Encode<Vec<u8>, Vec<u8>> for Sha512 {
 ///
 /// ```compile_fail
 ///
-/// use tartarus::crypto::hash_manager::managers::sha::HmacSha512;
-/// use tartarus::crypto::hash_manager::hash_interface::Encode;
+/// use hyperswitch_card_vault::crypto::hash_manager::managers::sha::HmacSha512;
+/// use hyperswitch_card_vault::crypto::hash_manager::hash_interface::Encode;
 ///
 /// let key = "key";
 /// let algo = HmacSha512::<0>::new(key.as_bytes().to_vec().into());
