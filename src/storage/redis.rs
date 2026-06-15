@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic};
+use std::sync::Arc;
 
 use hyperswitch_redis_interface::{RedisConnectionPool, RedisSettings, errors::RedisError};
 use crate::storage::consts;
@@ -9,7 +9,7 @@ fn into_report(err: impl std::fmt::Debug) -> error_stack::Report<RedisError> {
         .attach_printable(format!("{err:?}"))
 }
 
-/// A shared `redis_interface` connection pool with an availability-gated accessor.
+/// A shared `redis_interface` connection pool handle.
 #[derive(Clone)]
 pub struct RedisStore {
     redis_conn: Arc<RedisConnectionPool>,
@@ -39,35 +39,33 @@ impl RedisStore {
         }
     }
 
+    /// Logs disconnects via `on_error`. `rx` stays bound (not `_`) so its `tx.send` succeeds.
     pub fn spawn_error_watcher(&self) {
         let redis_conn = self.redis_conn.clone();
         tokio::spawn(async move {
-            // Keep `rx` bound (not `_`) so on_error's tx.send succeeds; outage just flips the flag.
             let (tx, _rx) = tokio::sync::oneshot::channel();
             redis_conn.on_error(tx).await;
         });
     }
 
-    pub fn get_redis_conn(&self) -> error_stack::Result<Arc<RedisConnectionPool>, RedisError> {
-        if self
-            .redis_conn
-            .is_redis_available
-            .load(atomic::Ordering::SeqCst)
-        {
-            Ok(self.redis_conn.clone())
-        } else {
-            Err(RedisError::RedisConnectionError.into())
-        }
+    /// The shared pool. It manages (re)connection internally, so callers run
+    /// commands directly and surface per-command errors themselves.
+    pub fn get_redis_conn(&self) -> Arc<RedisConnectionPool> {
+        self.redis_conn.clone()
     }
 
     pub async fn test(&self) -> error_stack::Result<(), RedisError> {
-        let redis_conn = self.get_redis_conn()?;
+        let redis_conn = self.get_redis_conn();
         let key = consts::REDIS_HEALTH_CHECK_KEY.into();
         redis_conn
             .set_key(&key, consts::REDIS_HEALTH_CHECK_VALUE)
             .await
             .map_err(into_report)?;
-        let _value: String = redis_conn.get_key(&key).await.map_err(into_report)?;
+        let value: String = redis_conn.get_key(&key).await.map_err(into_report)?;
+        if value != consts::REDIS_HEALTH_CHECK_VALUE {
+            return Err(error_stack::Report::new(RedisError::UnknownResult)
+                .attach_printable("Redis health-check value mismatch"));
+        }
         redis_conn.delete_key(&key).await.map_err(into_report)?;
         Ok(())
     }
