@@ -3,12 +3,13 @@ use std::{
     ops::{Deref, DerefMut},
     path::PathBuf,
 };
-#[cfg(feature = "redis")]
-use hyperswitch_redis_interface::RedisSettings;
+
 use error_stack::ResultExt;
 use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "external_key_manager")]
 use hyperswitch_masking::Secret;
+#[cfg(feature = "redis")]
+use hyperswitch_redis_interface::RedisSettings;
 
 use crate::{
     api_client::ApiClientConfig,
