@@ -16,6 +16,8 @@ pub struct GlobalAppState {
     pub api_client: ApiClient,
     pub known_tenants: HashSet<String>,
     pub global_config: GlobalConfig,
+    #[cfg(feature = "redis")]
+    pub redis_store: Option<crate::storage::redis::RedisStore>,
 }
 
 impl GlobalAppState {
@@ -43,6 +45,25 @@ impl GlobalAppState {
         #[allow(clippy::expect_used)]
         let api_client = ApiClient::new(&global_config).expect("Failed to create api client");
 
+        // Shared pool; tenants derive key-prefixed handles. None if unconfigured or unreachable.
+        #[cfg(feature = "redis")]
+        let redis_store = match &global_config.redis {
+            Some(conf) => match crate::storage::redis::RedisStore::new(conf).await {
+                Ok(store) => {
+                    store.spawn_error_watcher();
+                    Some(store)
+                }
+                Err(err) => {
+                    crate::logger::error!(
+                        ?err,
+                        "Failed to initialize Redis; continuing without it"
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
+
         let tenants_app_state = {
             #[cfg(feature = "key_custodian")]
             {
@@ -55,10 +76,15 @@ impl GlobalAppState {
                     let tenant_config =
                         TenantConfig::from_global_config(&global_config, tenant_id.clone());
                     #[allow(clippy::expect_used)]
-                    let tenant_app_state =
-                        TenantAppState::new(&global_config, tenant_config, api_client.clone())
-                            .await
-                            .expect("Failed while configuring AppState for tenants");
+                    let tenant_app_state = TenantAppState::new(
+                        &global_config,
+                        tenant_config,
+                        api_client.clone(),
+                        #[cfg(feature = "redis")]
+                        redis_store.as_ref(),
+                    )
+                    .await
+                    .expect("Failed while configuring AppState for tenants");
                     tenants_app_state.insert(tenant_id.clone(), Arc::new(tenant_app_state));
                 }
                 tenants_app_state
@@ -72,6 +98,8 @@ impl GlobalAppState {
             api_client: api_client.clone(),
             known_tenants: HashSet::<String>::from_iter(known_tenants),
             global_config,
+            #[cfg(feature = "redis")]
+            redis_store,
         })
     }
 

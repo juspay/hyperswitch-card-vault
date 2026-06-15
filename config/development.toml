@@ -23,10 +23,69 @@ tti = 7200 # i.e. 2 hours
 max_capacity = 5000
 
 [secrets]
-locker_private_key = ""
+locker_private_key = """
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCfwpeE1P0mh9Yy
+OB9vbWZyRcFiOTdw87K1DeAePSfsypNE2aZ55DA8ekRQETU0n0m0pyPf8+AffxFv
+dfAgBLuB+7OvUok9ogApNze79i4/KyIQT7JOsxEegDP9WsdKh98Vt8Zq0evNYcNv
+hDwxUlbEKE0WEbubT1spBZ8ZWfkmIHX1weit/34l/GzsccX+xEaF7dg5oYDwK7/j
+MGXTyPS8/jBs47bVbze/svMBhCV1MrLT1+YQ5+c6eUyWFr2NjMf5zTKm8wvAhzIF
+gQfboqqely4JFsyMxlleMhCfH7tWNXoWIL+2Ng9jySw7R3B1AcMrrPy/M0jbtfFH
+rNxGABv7AgMBAAECggEAHdPrDjXl/eemqkGoPNmkIvm7HWepXkFhwEQS8BJi/ebk
+kBpC5scf6mq5jmloEacbz8rU+99AnSDQVIskhhXcHGyuI7G5RfSVKxzQHxvbjpez
+CHCYzfDI5XTyP/9O7i9oC1oAhbkj2XjDUHLT+jFxWbZcjh5JdLngP0x5Y/ZUejWR
+fxy11oQmaLnFOUIeB+5l4XwEht0BvJz2Z99Lvo7iMq+sjbvSiyRL29X1mGYmK714
+Pb/C7l4uNugJiPHQJ1Lyt3TRV/ea4zMGvLunkQPysFctMOI3h60sa1yQfnMmg34u
+D1ogDw8zDOc4ovVY7jq1qbNg89ewaKc4+5TrPR/zwQKBgQDdH8ask0KuVAONuxAc
+yzPVzpGrUvC7sdZ4OjkRXmtREc79iV4K5Rkg8+WOOPzPZMsBjTOhxf/avQQ0zP5N
+eyKAdRSlFn9sbTygaohZHVskxmBivM8laXoxz9+TLRaDKF8j+c/DpvsBUbmF71go
+QIkxsRRnC4W3v7Cgb1ODjLvvAwKBgQC49SaQpR1zlAonhOpWZELoZE1ngXryZp0w
+IFpBrHX6AFbMgm/Syp4UyOs9fAssg/wniu47dftzvNhrtBqByjYu3TA1l6EBQ8Th
+HQ4vGxlVYiz4fOoqUfr5xIf4JuRgdguHdEScdq8V2fFn/M77Iz0nBRO3nJEbmuYQ
+7tI3SiVxqQKBgCk1A7wjUTjVdTgTVSRYhddhQGox8aS4tmP/TaU7+DnKXM2IrNrQ
+6MboTK4dVpd7jA1E+As8r7peoQsJ7JYZzUstBmThdWuKS9MFJ1WcD+EhitK7psqt
+BlWEDIEL1PcqLdixdBNc6cfMKAual84ggLCe9FNjpU6hzVOIi4KnVlprAoGBAKKp
+j6okXJt6Ndf9sC4cbS9+jwiZuiwXDOT3fwlFCFi/FZc0m+3Rnmd/MEvZnOYgiZGp
+QM1wfJ2UFu3Z7nn5AeADTVPEr6eyFyM373KELaqG9i/vg+2GPeiN7FrUsYMYLhmJ
+qpHEW0UncITYtJvvqOd5MpcHjiKt/uojbyOLBRVJAoGAQFe8mCkGwcvgn5PDmR8f
+VDmNgQi8O+/7Wx16KW2JvhLyoEWnoOs/83s0KYfcbXmt7vPbzW+IysuVFyvnKO7F
+UIbMivCMhpX/2zCTur4VRq7tYnAtlKUfpnajT75hohfjpCoiwywDIyFjQZI/N88y
+D9WQI8Prtxnuhjv/FM3zQ0s=
+-----END PRIVATE KEY-----
+"""
 
 [tenant_secrets]
-public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
+public = { master_key = "45e20b7d60b04e845400d441108cb3573dc98dd97385a01be675add5c9a37d2d", public_key = """-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwDM79hnkLzPvY9v/9rzy
+cGQmwpw22xSx4xcB6T8lPjWT4imlOuDA1iCBYztknOVHJ8q6XalB6beuLUVuh9Ja
+YPi+uqRghqkUmHOaDLdZfwKBJGF2be069JxlvBlFRWPj5rCZsy21TXmaye29STkq
+MGTEiiEqt2VMfHXl7l9ILrHf5bnKEM27XFfJnCwuzqXoDOk2tPxAqQ9miAZr/DqV
+ohP7oWpm56AECIYtYOYFldQpZs1wNN94+4xCX5yiNJOxfDvIrvKh1gFrxp2gFF37
+86dc0dJZ3/472wgKsGnNIYiOwpc1/wjq8SRlHZzSEONRKRlxEm8Q0MlgxYyH7gq2
+cQIDAQAB
+-----END PUBLIC KEY-----
+""", schema = "public" }
 
 [external_key_manager]
+url = "http://localhost:5000"
 mode = "disabled"
+
+[redis]
+host = "127.0.0.1"
+port = 6379
+pool_size = 5
+reconnect_max_attempts = 5
+reconnect_delay = 5
+default_ttl = 300
+default_hash_ttl = 900
+use_legacy_version = false
+stream_read_count = 1
+auto_pipeline = true
+broadcast_channel_capacity = 32 
+disable_auto_backpressure = false
+max_in_flight_commands = 5000
+default_command_timeout = 30
+unresponsive_timeout = 10
+unresponsive_check_interval = 2
+max_feed_count = 200
+max_failure_threshold_seconds = 5

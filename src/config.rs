@@ -3,7 +3,8 @@ use std::{
     ops::{Deref, DerefMut},
     path::PathBuf,
 };
-
+#[cfg(feature = "redis")]
+use hyperswitch_redis_interface::RedisSettings;
 use error_stack::ResultExt;
 use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "external_key_manager")]
@@ -36,6 +37,8 @@ pub struct GlobalConfig {
     pub api_client: ApiClientConfig,
     #[serde(default)]
     pub external_key_manager: ExternalKeyManagerConfig,
+    #[cfg(feature = "redis")]
+    pub redis: Option<RedisSettings>,
 }
 
 #[derive(Clone, Debug)]
