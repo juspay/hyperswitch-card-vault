@@ -36,6 +36,8 @@ pub struct Diagnostics {
     database: DatabaseHealth,
     #[cfg(feature = "external_key_manager")]
     keymanager_status: HealthState,
+    #[cfg(feature = "redis")]
+    redis_status: HealthState,
 }
 
 #[derive(Debug, serde::Serialize, Default)]
@@ -51,7 +53,7 @@ pub enum HealthState {
     Working,
     #[default]
     Failing,
-    #[cfg(feature = "external_key_manager")]
+    #[cfg(any(feature = "external_key_manager", feature = "redis"))]
     Disabled,
 }
 
@@ -109,10 +111,24 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
         }
     };
 
+    #[cfg(feature = "redis")]
+    let redis_status = match &state.redis {
+        None => HealthState::Disabled,
+        Some(redis) => match redis.test().await {
+            Ok(()) => HealthState::Working,
+            Err(err) => {
+                crate::logger::error!(redis_err=?err);
+                HealthState::Failing
+            }
+        },
+    };
+
     axum::Json(Diagnostics {
         key_custodian_locked: false,
         database: db_health,
         #[cfg(feature = "external_key_manager")]
         keymanager_status,
+        #[cfg(feature = "redis")]
+        redis_status,
     })
 }

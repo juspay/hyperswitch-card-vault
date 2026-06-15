@@ -83,3 +83,24 @@ mode = "disabled"  # Options: "disabled", "enabled", "enabled_with_mtls"
 # -----END CERTIFICATE-----
 # """
 
+# Redis configuration (only used with the `redis` feature)
+[redis]
+host = "127.0.0.1"                 # Redis server host
+port = 6379                        # Redis server port
+pool_size = 5                      # number of connections in the pool
+reconnect_max_attempts = 5         # max reconnection attempts before giving up
+reconnect_delay = 5                # delay between reconnection attempts (milliseconds)
+default_ttl = 300                  # default key TTL (seconds)
+default_hash_ttl = 900             # default hash-table TTL (seconds)
+use_legacy_version = false         # use RESP2 instead of RESP3
+stream_read_count = 1              # entries read per stream read
+auto_pipeline = true               # automatically pipeline commands
+broadcast_channel_capacity = 32    # pub/sub broadcast channel capacity
+disable_auto_backpressure = false  # disable automatic backpressure
+max_in_flight_commands = 5000      # max in-flight commands before backpressure (0 = disabled)
+default_command_timeout = 30       # command timeout (seconds)
+unresponsive_timeout = 10          # mark a connection unresponsive after (seconds)
+unresponsive_check_interval = 2    # how often to check for unresponsiveness (seconds)
+max_feed_count = 200               # max commands fed to the server at once
+max_failure_threshold_seconds = 5  # max seconds Redis may be unreachable before it's failed
+

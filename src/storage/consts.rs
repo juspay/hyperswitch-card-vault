@@ -15,6 +15,13 @@ pub const X_TENANT_ID: &str = "x-tenant-id";
 pub const X_REQUEST_ID: &str = "x-request-id";
 /// Header key for caller-supplied fingerprint ID (optional)
 pub const X_FINGERPRINT_ID: &str = "x-fingerprint-id";
+/// Key written by the Redis health-check probe
+#[cfg(feature = "redis")]
+pub const REDIS_HEALTH_CHECK_KEY: &str = "health_check_redis";
+/// Value written by the Redis health-check probe
+#[cfg(feature = "redis")]
+pub const REDIS_HEALTH_CHECK_VALUE: &str = "1";
+
 /// Header Constants
 pub mod headers {
     pub const CONTENT_TYPE: &str = "Content-Type";
