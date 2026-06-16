@@ -23,6 +23,15 @@ host = "localhost" # the host where the database is hosted on
 port = 5432        # the port of the database
 dbname = "locker"  # the name of the database where the cards are stored
 
+# Optional read replica
+# [read_replica]
+# username = "sam"   # username for the read replica database
+# password = "damn"  # password of the read replica database
+# host = "localhost" # the host where the read replica is hosted on
+# port = 5432        # the port of the read replica database
+# dbname = "locker"  # the name of the read replica database
+# pool_size = 10     # optional: pool size for the read replica connection pool
+
 [secrets]
 locker_private_key = "" # the locker private key to used used and the private key present with the tenant
 

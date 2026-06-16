@@ -25,6 +25,7 @@ use crate::{
 pub struct GlobalConfig {
     pub server: Server,
     pub database: Database,
+    pub read_replica: Option<Database>,
     pub secrets: Secrets,
     #[serde[default]]
     pub secrets_management: SecretsManagementConfig,
@@ -254,6 +255,15 @@ impl GlobalConfig {
             .change_context(error::ConfigurationError::KmsDecryptError(
                 "database_password",
             ))?;
+
+        if let Some(ref mut read_replica) = self.read_replica {
+            read_replica.password = secret_management_client
+                .get_secret(read_replica.password.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "read_replica_password",
+                ))?;
+        }
 
         for tenant_secrets in self.tenant_secrets.values_mut() {
             tenant_secrets.master_key = hex::decode(

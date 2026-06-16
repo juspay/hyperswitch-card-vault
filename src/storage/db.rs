@@ -323,6 +323,18 @@ impl super::TestInterface for Storage {
 
         Ok(())
     }
+
+    async fn test_replica(&self) -> Result<(), ContainerError<Self::Error>> {
+        let mut conn = self.get_replica_conn().await?;
+
+        let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+        let _x: i32 = query
+            .get_result(&mut conn)
+            .await
+            .change_error(error::StorageError::FindError)?;
+
+        Ok(())
+    }
 }
 
 impl super::FingerprintInterface for Storage {

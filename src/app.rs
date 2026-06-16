@@ -61,6 +61,7 @@ impl TenantAppState {
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
             &global_config.database,
+            global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
         )
         .await
