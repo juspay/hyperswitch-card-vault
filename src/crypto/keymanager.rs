@@ -3,6 +3,9 @@ pub mod internal_keymanager;
 #[cfg(feature = "external_key_manager")]
 pub mod external_keymanager;
 
+#[cfg(feature = "kms-aws")]
+pub mod kms_keymanager;
+
 use hyperswitch_masking::{Secret, StrongSecret};
 
 pub use crate::config::ExternalKeyManagerConfig;
@@ -48,5 +51,7 @@ pub fn get_dek_manager(config: &ExternalKeyManagerConfig) -> Box<dyn KeyProvider
         | ExternalKeyManagerConfig::EnabledWithMtls { .. } => {
             Box::new(external_keymanager::ExternalKeyManager)
         }
+        #[cfg(feature = "kms-aws")]
+        ExternalKeyManagerConfig::AwsKms => Box::new(kms_keymanager::KmsKeyManager),
     }
 }

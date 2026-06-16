@@ -106,6 +106,8 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
                     .map_err(|err| logger::error!(keymanager_err=?err))
                     .unwrap_or_default()
             }
+            #[cfg(feature = "kms-aws")]
+            ExternalKeyManagerConfig::AwsKms => HealthState::Working,
         }
     };
 
