@@ -1,7 +1,7 @@
 {
 	"info": {
 		"_postman_id": "c4ca9eca-2446-4011-bab0-dc0813ff737e",
-		"name": "Tartarus",
+		"name": "Hyperswitch Card Vault",
 		"description": "The is the API collection to test the card vault.\n\nIf you are newly deploying the card vault application, by using the docker images available here [juspaydotin/hyperswitch-card-vault](). You be required to unlock the locker using the key custodian API",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "23503638"
