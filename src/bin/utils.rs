@@ -6,8 +6,7 @@
 
 use std::io::{Read, Write, stdin, stdout};
 
-use josekit::jwe;
-use tartarus::{
+use hyperswitch_card_vault::{
     crypto::encryption_manager::{
         encryption_interface::Encryption,
         managers::{
@@ -17,6 +16,7 @@ use tartarus::{
     },
     error,
 };
+use josekit::jwe;
 
 #[derive(argh::FromArgs, Debug)]
 /// Utilities to generate associated properties used by locker
