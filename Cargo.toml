@@ -8,7 +8,7 @@ rust-version = "1.85"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["caching", "redis"]
+default = ["caching"]
 release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager", "vergen", "redis"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
