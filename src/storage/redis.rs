@@ -43,7 +43,8 @@ impl RedisStore {
     // Logs disconnects via `on_error`. `rx` stays bound (not `_`) so its `tx.send` succeeds.
     pub fn spawn_error_watcher(&self) {
         let redis_conn = self.redis_conn.clone();
-        tokio::spawn(async move {
+        tokio::spawn(
+            async move {
                 let (tx, _rx) = tokio::sync::oneshot::channel();
                 redis_conn.on_error(tx).await;
             }
@@ -61,7 +62,11 @@ impl RedisStore {
         let redis_conn = self.get_redis_conn();
         let key = consts::REDIS_HEALTH_CHECK_KEY.into();
         redis_conn
-            .set_key_with_expiry( &key, consts::REDIS_HEALTH_CHECK_VALUE, consts::REDIS_HEALTH_CHECK_EXPIRY, )
+            .set_key_with_expiry(
+                &key,
+                consts::REDIS_HEALTH_CHECK_VALUE,
+                consts::REDIS_HEALTH_CHECK_EXPIRY,
+            )
             .await
             .map_err(into_report)?;
         let value: String = redis_conn.get_key(&key).await.map_err(into_report)?;
