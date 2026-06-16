@@ -26,9 +26,6 @@ pub enum ConfigurationError {
     VaultClientError,
     #[error("Invalid configuration value provided: {0}")]
     InvalidConfigurationValueError(String),
-    #[cfg(feature = "redis")]
-    #[error("Error while creating/connecting the Redis pool")]
-    RedisError,
 }
 
 #[derive(Debug, thiserror::Error)]
