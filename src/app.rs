@@ -56,8 +56,7 @@ impl TenantAppState {
         global_config: &GlobalConfig,
         tenant_config: TenantConfig,
         api_client: ApiClient,
-        #[cfg(feature = "redis")] 
-        shared_redis: Option<&storage::redis::RedisStore>,
+        #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
