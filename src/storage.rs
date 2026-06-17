@@ -20,6 +20,8 @@ use crate::{
 pub mod caching;
 pub mod consts;
 pub mod db;
+#[cfg(feature = "redis")]
+pub mod redis;
 pub mod schema;
 pub mod storage_v2;
 pub mod types;
