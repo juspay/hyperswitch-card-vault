@@ -2,7 +2,9 @@
 #![allow(clippy::missing_panics_doc)]
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use hyperswitch_card_vault::crypto::hash_manager::{hash_interface::Encode, managers::sha::HmacSha512};
+use hyperswitch_card_vault::crypto::hash_manager::{
+    hash_interface::Encode, managers::sha::HmacSha512,
+};
 
 const ITERATION: u32 = 14;
 
