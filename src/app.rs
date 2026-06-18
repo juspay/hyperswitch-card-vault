@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "middleware")]
 use axum::middleware;
@@ -104,6 +104,33 @@ impl MakeRequestId for MakeUuidV7 {
             .ok()
             .map(RequestId::new)
     }
+}
+
+#[allow(clippy::expect_used)]
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Received shutdown signal, starting graceful shutdown");
 }
 
 ///
@@ -241,13 +268,23 @@ where
         let rusttls_config =
             RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.private_key).await?;
 
+        let handle = axum_server::Handle::new();
+        let shutdown_handle = handle.clone();
+        tokio::spawn(async move {
+            shutdown_signal().await;
+            shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
+        });
+
         axum_server::from_tcp_rustls(tcp_listener, rusttls_config)
+            .handle(handle)
             .serve(router.into_make_service())
             .await?;
     } else {
         let tcp_listener = tokio::net::TcpListener::bind(socket_addr).await?;
 
-        axum::serve(tcp_listener, router.into_make_service()).await?;
+        axum::serve(tcp_listener, router.into_make_service())
+            .with_graceful_shutdown(shutdown_signal())
+            .await?;
     }
 
     Ok(())
