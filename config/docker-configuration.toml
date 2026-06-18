@@ -32,3 +32,9 @@ identity = ""
 [external_key_manager]
 url = "http://localhost:5000"
 cert = ""
+
+[telemetry]
+metrics_enabled = false
+endpoint = "http://localhost:4317"
+endpoint_timeout_secs = 10
+metrics_export_interval_secs = 60

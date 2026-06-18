@@ -30,3 +30,9 @@ public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9
 
 [external_key_manager]
 mode = "disabled"
+
+[telemetry]
+metrics_enabled = false
+endpoint = "http://localhost:4317"
+endpoint_timeout_secs = 10
+metrics_export_interval_secs = 60

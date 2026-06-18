@@ -20,6 +20,7 @@ use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
     error, logger,
+    observability::HttpRequestMetricsLayer,
     routes::{self, routes_v2},
     storage,
     tenant::GlobalAppState,
@@ -180,6 +181,22 @@ where
     }
 
     router = router.nest("/health", routes::health::serve());
+
+    // Initialize and hold metrics provider for the lifetime of the server
+    let _metrics_provider = global_app_state
+        .global_config
+        .telemetry
+        .as_ref()
+        .and_then(|config| {
+            if config.metrics_enabled {
+                crate::observability::init_metrics_provider(config)
+            } else {
+                None
+            }
+        });
+    if _metrics_provider.is_some() {
+        router = router.route_layer(HttpRequestMetricsLayer);
+    }
 
     router = router.layer(
         tower_trace::TraceLayer::new_for_http()

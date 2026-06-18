@@ -83,3 +83,9 @@ mode = "disabled"  # Options: "disabled", "enabled", "enabled_with_mtls"
 # -----END CERTIFICATE-----
 # """
 
+[telemetry]
+metrics_enabled = false
+endpoint = "http://localhost:4317"
+endpoint_timeout_secs = 10
+metrics_export_interval_secs = 60
+

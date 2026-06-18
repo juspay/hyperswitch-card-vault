@@ -16,6 +16,7 @@ use crate::{
     },
     error,
     logger::config::Log,
+    observability::TelemetryConfig,
 };
 
 #[derive(Clone, serde::Deserialize, Debug)]
@@ -26,6 +27,8 @@ pub struct GlobalConfig {
     #[serde[default]]
     pub secrets_management: SecretsManagementConfig,
     pub log: Log,
+    #[serde(default)]
+    pub telemetry: Option<TelemetryConfig>,
     #[cfg(feature = "limit")]
     pub limit: Limit,
     #[cfg(feature = "caching")]
