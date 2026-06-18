@@ -18,24 +18,24 @@ macro_rules! global_meter {
 /// Create a [`Counter<u64>`][::opentelemetry::metrics::Counter] with the given name.
 #[macro_export]
 macro_rules! counter_metric {
-    // Entry with `name:` override
-    ($vis:vis $name:ident, $meter:ident $(,)? name: $metric_name:literal) => {
-        $crate::counter_metric! { @build $vis $name, $meter []
-            $meter.u64_counter($metric_name) }
-    };
-    ($vis:vis $name:ident, $meter:ident $(,)? name: $metric_name:literal, $($rest:tt)*) => {
-        $crate::counter_metric! { @build $vis $name, $meter [$($rest)*]
-            $meter.u64_counter($metric_name) }
-    };
     // Entry without `name:` override
     ($vis:vis $name:ident, $meter:ident $($rest:tt)*) => {
         $crate::counter_metric! { @build $vis $name, $meter [$($rest)*]
             $meter.u64_counter(::std::stringify!($name)) }
     };
 
+    // Entry with `name:` override
+    (@build $vis:vis $name:ident, $meter:ident
+        [name: $metric_name:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::counter_metric! { @build $vis $name, $meter [$($rest)*]
+            $meter.u64_counter($metric_name) }
+    };
+
     // `description:` keyword
     (@build $vis:vis $name:ident, $meter:ident
-        [description: $v:literal $(,)? $($rest:tt)*]
+        [description: $v:literal $($rest:tt)*]
         $($expr:tt)*
     ) => {
         $crate::counter_metric! { @build $vis $name, $meter [$($rest)*]
@@ -44,7 +44,7 @@ macro_rules! counter_metric {
 
     // `unit:` keyword
     (@build $vis:vis $name:ident, $meter:ident
-        [unit: $v:literal $(,)? $($rest:tt)*]
+        [unit: $v:literal $($rest:tt)*]
         $($expr:tt)*
     ) => {
         $crate::counter_metric! { @build $vis $name, $meter [$($rest)*]
@@ -71,24 +71,24 @@ macro_rules! counter_metric {
 /// Create a [`Histogram<f64>`][::opentelemetry::metrics::Histogram] with the given name.
 #[macro_export]
 macro_rules! histogram_metric_f64 {
-    // Entry with `name:` override
-    ($vis:vis $name:ident, $meter:ident $(,)? name: $metric_name:literal) => {
-        $crate::histogram_metric_f64! { @build $vis $name, $meter []
-            $meter.f64_histogram($metric_name) }
-    };
-    ($vis:vis $name:ident, $meter:ident $(,)? name: $metric_name:literal, $($rest:tt)*) => {
-        $crate::histogram_metric_f64! { @build $vis $name, $meter [$($rest)*]
-            $meter.f64_histogram($metric_name) }
-    };
     // Entry without `name:` override
     ($vis:vis $name:ident, $meter:ident $($rest:tt)*) => {
         $crate::histogram_metric_f64! { @build $vis $name, $meter [$($rest)*]
             $meter.f64_histogram(::std::stringify!($name)) }
     };
 
+    // Entry with `name:` override
+    (@build $vis:vis $name:ident, $meter:ident
+        [name: $metric_name:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::histogram_metric_f64! { @build $vis $name, $meter [$($rest)*]
+            $meter.f64_histogram($metric_name) }
+    };
+
     // `description:` keyword
     (@build $vis:vis $name:ident, $meter:ident
-        [description: $v:literal $(,)? $($rest:tt)*]
+        [description: $v:literal $($rest:tt)*]
         $($expr:tt)*
     ) => {
         $crate::histogram_metric_f64! { @build $vis $name, $meter [$($rest)*]
@@ -97,7 +97,7 @@ macro_rules! histogram_metric_f64 {
 
     // `unit:` keyword
     (@build $vis:vis $name:ident, $meter:ident
-        [unit: $v:literal $(,)? $($rest:tt)*]
+        [unit: $v:literal $($rest:tt)*]
         $($expr:tt)*
     ) => {
         $crate::histogram_metric_f64! { @build $vis $name, $meter [$($rest)*]

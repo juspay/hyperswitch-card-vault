@@ -67,9 +67,16 @@ pub(crate) fn f64_histogram_buckets() -> Vec<f64> {
 }
 
 global_meter!(pub(crate) CARD_VAULT_METER, "card_vault");
-counter_metric!(pub(crate) REQUEST_COUNT, CARD_VAULT_METER, name: "http.server.request.count");
+counter_metric!(
+    pub(crate) REQUEST_COUNT, CARD_VAULT_METER,
+    name: "http.server.request.count",
+    description: "Number of HTTP server requests received",
+    unit: "1",
+);
 histogram_metric_f64!(
     pub(crate) REQUEST_DURATION, CARD_VAULT_METER,
     name: "http.server.request.duration",
-    buckets: f64_histogram_buckets()
+    description: "Duration of HTTP server requests",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
 );
