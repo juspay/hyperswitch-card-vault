@@ -15,6 +15,16 @@ pub const X_TENANT_ID: &str = "x-tenant-id";
 pub const X_REQUEST_ID: &str = "x-request-id";
 /// Header key for caller-supplied fingerprint ID (optional)
 pub const X_FINGERPRINT_ID: &str = "x-fingerprint-id";
+/// Key written by the Redis health-check probe
+#[cfg(feature = "redis")]
+pub const REDIS_HEALTH_CHECK_KEY: &str = "health_check_redis";
+/// Value written by the Redis health-check probe
+#[cfg(feature = "redis")]
+pub const REDIS_HEALTH_CHECK_VALUE: &str = "1";
+/// TTL (seconds) on the probe key so Redis drops it even if the delete is skipped
+#[cfg(feature = "redis")]
+pub const REDIS_HEALTH_CHECK_EXPIRY: i64 = 5;
+
 /// Header Constants
 pub mod headers {
     pub const CONTENT_TYPE: &str = "Content-Type";

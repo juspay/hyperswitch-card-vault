@@ -44,6 +44,8 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
+    #[cfg(feature = "redis")]
+    pub redis: Option<storage::redis::RedisStore>,
 }
 
 #[allow(clippy::expect_used)]
@@ -55,6 +57,7 @@ impl TenantAppState {
         global_config: &GlobalConfig,
         tenant_config: TenantConfig,
         api_client: ApiClient,
+        #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
@@ -73,6 +76,8 @@ impl TenantAppState {
         Ok(Self {
             db,
             api_client,
+            #[cfg(feature = "redis")]
+            redis: shared_redis.map(|store| store.clone_with_prefix(&tenant_config.tenant_id)),
             config: tenant_config,
         })
     }
