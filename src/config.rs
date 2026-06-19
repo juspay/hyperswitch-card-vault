@@ -8,6 +8,8 @@ use error_stack::ResultExt;
 use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "external_key_manager")]
 use hyperswitch_masking::Secret;
+#[cfg(feature = "redis")]
+use hyperswitch_redis_interface::RedisSettings;
 
 use crate::{
     api_client::ApiClientConfig,
@@ -36,6 +38,8 @@ pub struct GlobalConfig {
     pub api_client: ApiClientConfig,
     #[serde(default)]
     pub external_key_manager: ExternalKeyManagerConfig,
+    #[cfg(feature = "redis")]
+    pub redis: Option<RedisSettings>,
 }
 
 #[derive(Clone, Debug)]
