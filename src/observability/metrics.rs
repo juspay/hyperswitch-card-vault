@@ -2,12 +2,11 @@ mod middleware;
 
 use std::time::Duration;
 
-use opentelemetry::{KeyValue, global};
+use opentelemetry::global;
 use opentelemetry_otlp::{MetricExporter, WithExportConfig};
 use opentelemetry_sdk::{
     Resource,
     metrics::{PeriodicReader, SdkMeterProvider, Temporality},
-    runtime,
 };
 
 pub use self::middleware::HttpRequestMetricsLayer;
@@ -36,17 +35,17 @@ pub fn init_metrics_provider(config: &TelemetryConfig) -> Option<SdkMeterProvide
         }
     };
 
-    let reader = PeriodicReader::builder(exporter, runtime::Tokio)
+    let reader = PeriodicReader::builder(exporter)
         .with_interval(Duration::from_secs(config.metrics_export_interval_secs))
-        .with_timeout(Duration::from_secs(config.endpoint_timeout_secs))
         .build();
 
     let provider = SdkMeterProvider::builder()
         .with_reader(reader)
-        .with_resource(Resource::new([KeyValue::new(
-            "service.name",
-            "hyperswitch_card_vault",
-        )]))
+        .with_resource(
+            Resource::builder()
+                .with_service_name("hyperswitch_card_vault")
+                .build(),
+        )
         .build();
 
     global::set_meter_provider(provider.clone());
