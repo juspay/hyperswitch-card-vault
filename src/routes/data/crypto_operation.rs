@@ -3,11 +3,11 @@ use hyperswitch_masking::ExposeInterface;
 use crate::{
     app::TenantAppState,
     crypto::keymanager::CryptoOperationsManager,
+    domain::{locker, vault},
     error::{self, ContainerError, ResultContainerExt},
     routes::{data::types, routes_v2::data::types as types_v2},
     storage::{
-        LockerInterface,
-        storage_v2::{VaultInterface, types::VaultNew},
+        storage_v2::types::VaultNew,
         types::{Locker, LockerNew},
     },
 };
@@ -30,10 +30,7 @@ pub async fn encrypt_data_and_insert_into_db<'a>(
 
     let locker_new = LockerNew::new(request, hash_id, encrypted_data.into());
 
-    let locker = tenant_app_state
-        .db
-        .insert_or_get_from_locker(locker_new)
-        .await?;
+    let locker = locker::get_or_insert(tenant_app_state, locker_new).await?;
 
     Ok(locker)
 }
@@ -72,17 +69,9 @@ pub async fn encrypt_data_and_upsert_into_db_v2(
     let vault_new = VaultNew::new(request, encrypted_data.into());
 
     let vault = match mode {
-        Some(types_v2::WriteMode::Upsert) => {
-            tenant_app_state
-                .db
-                .upsert_or_get_from_vault(vault_new)
-                .await?
-        }
+        Some(types_v2::WriteMode::Upsert) => vault::upsert(tenant_app_state, vault_new).await?,
         None | Some(types_v2::WriteMode::Insert) => {
-            tenant_app_state
-                .db
-                .insert_or_get_from_vault(vault_new)
-                .await?
+            vault::get_or_insert(tenant_app_state, vault_new).await?
         }
     };
 

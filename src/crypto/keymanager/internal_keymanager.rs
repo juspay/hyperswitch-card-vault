@@ -6,6 +6,7 @@ use crate::{
         encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
         keymanager::CryptoOperationsManager,
     },
+    domain::merchant,
     error::{self, ContainerError},
     storage::MerchantInterface,
 };
@@ -22,12 +23,14 @@ impl super::KeyProvider for InternalKeyManager {
         let master_encryption =
             GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
 
-        Ok(tenant_app_state
+        let merchant = tenant_app_state
             .db
             .find_by_merchant_id(&entity_id, &master_encryption)
-            .await
-            .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(Box::new)?)
+            .await?;
+
+        Ok(Box::new(InternalCryptoManager::from_secret_key(
+            merchant.enc_key,
+        )))
     }
 
     async fn find_or_create_entity(
@@ -38,10 +41,8 @@ impl super::KeyProvider for InternalKeyManager {
         let master_encryption =
             GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
 
-        let entity = tenant_app_state
-            .db
-            .find_or_create_by_merchant_id(&entity_id, &master_encryption)
-            .await;
+        let entity =
+            merchant::find_or_create(tenant_app_state, &entity_id, &master_encryption).await;
 
         let response = entity
             .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))

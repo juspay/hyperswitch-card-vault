@@ -12,6 +12,8 @@ pub enum MerchantDBError {
     DBInsertError,
     #[error("Merchant record not found in database")]
     NotFoundError,
+    #[error("Merchant record already exists in database")]
+    Duplicate,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
@@ -32,6 +34,8 @@ pub enum VaultDBError {
     DBDeleteError,
     #[error("Vault record not found in database")]
     NotFoundError,
+    #[error("Vault record already exists in database")]
+    Duplicate,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
@@ -44,6 +48,8 @@ pub enum HashDBError {
     DBFilterError,
     #[error("Error while inserting hash record in the database")]
     DBInsertError,
+    #[error("Hash record already exists in database")]
+    Duplicate,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
@@ -70,6 +76,8 @@ pub enum FingerprintDBError {
     DBFilterError,
     #[error("Error while inserting fingerprint record in the database")]
     DBInsertError,
+    #[error("Fingerprint record already exists in database")]
+    Duplicate,
     #[error("Unpredictable error occurred")]
     UnknownError,
     #[error("Error while encoding data")]
@@ -88,6 +96,8 @@ pub enum EntityDBError {
     UnknownError,
     #[error("Entity record not found in database")]
     NotFoundError,
+    #[error("Entity record already exists in database")]
+    Duplicate,
 }
 
 pub trait NotFoundError {
@@ -105,3 +115,81 @@ impl NotFoundError for super::ContainerError<EntityDBError> {
         matches!(self.error.current_context(), EntityDBError::NotFoundError)
     }
 }
+
+impl NotFoundError for super::ContainerError<VaultDBError> {
+    fn is_not_found(&self) -> bool {
+        matches!(self.error.current_context(), VaultDBError::NotFoundError)
+    }
+}
+
+/// Extension implemented by storage error types so the domain composition helpers
+/// (e.g. `insert_or_get`) can detect a duplicate-key conflict without knowing the
+/// concrete backend or table.
+pub trait StorageErrorExt: Sized {
+    /// True if this error represents a duplicate-key / already-exists outcome.
+    fn is_duplicate(&self) -> bool;
+}
+
+/// Implements [`StorageErrorExt`] and the centralised raw-diesel-error classifier
+/// for a table's error type, so its storage-layer query functions stay free of
+/// conflict-detection logic: they simply `?`, and the unique-violation /
+/// not-found cases surface as the named variants.
+///
+/// All referenced variants must be unit (data-less) variants.
+macro_rules! impl_storage_error {
+    ($err:ident, duplicate = $dup:ident, not_found = $nf:ident, other = $other:ident) => {
+        impl StorageErrorExt for $err {
+            fn is_duplicate(&self) -> bool {
+                matches!(self, Self::$dup)
+            }
+        }
+
+        impl From<diesel::result::Error> for super::ContainerError<$err> {
+            #[track_caller]
+            fn from(err: diesel::result::Error) -> Self {
+                let context = match &err {
+                    diesel::result::Error::NotFound => $err::$nf,
+                    diesel::result::Error::DatabaseError(
+                        diesel::result::DatabaseErrorKind::UniqueViolation,
+                        _,
+                    ) => $err::$dup,
+                    _ => $err::$other,
+                };
+                Self {
+                    error: error_stack::Report::from(err).change_context(context),
+                }
+            }
+        }
+    };
+}
+
+impl_storage_error!(
+    VaultDBError,
+    duplicate = Duplicate,
+    not_found = NotFoundError,
+    other = DBError
+);
+impl_storage_error!(
+    MerchantDBError,
+    duplicate = Duplicate,
+    not_found = NotFoundError,
+    other = DBError
+);
+impl_storage_error!(
+    FingerprintDBError,
+    duplicate = Duplicate,
+    not_found = DBFilterError,
+    other = DBError
+);
+impl_storage_error!(
+    HashDBError,
+    duplicate = Duplicate,
+    not_found = DBFilterError,
+    other = DBError
+);
+impl_storage_error!(
+    EntityDBError,
+    duplicate = Duplicate,
+    not_found = NotFoundError,
+    other = DBError
+);
