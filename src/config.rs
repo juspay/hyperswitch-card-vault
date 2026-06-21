@@ -18,7 +18,7 @@ use crate::{
     },
     error,
     logger::config::Log,
-    observability::TelemetryConfig,
+    observability::MetricsConfig,
 };
 
 #[derive(Clone, serde::Deserialize, Debug)]
@@ -30,7 +30,7 @@ pub struct GlobalConfig {
     pub secrets_management: SecretsManagementConfig,
     pub log: Log,
     #[serde(default)]
-    pub telemetry: Option<TelemetryConfig>,
+    pub metrics: MetricsConfig,
     #[cfg(feature = "limit")]
     pub limit: Limit,
     #[cfg(feature = "caching")]
@@ -330,6 +330,8 @@ impl GlobalConfig {
             self.api_client
                 .validate_for_mtls(&self.external_key_manager)?;
         }
+        self.metrics.validate()?;
+
         Ok(())
     }
 }

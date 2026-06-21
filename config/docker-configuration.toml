@@ -53,8 +53,7 @@ unresponsive_check_interval = 2
 max_feed_count = 200
 max_failure_threshold_seconds = 5
 
-[telemetry]
-metrics_enabled = false
-endpoint = "http://localhost:4317"
-endpoint_timeout_secs = 10
-metrics_export_interval_secs = 60
+[metrics]
+mode = "prometheus"
+host = "0.0.0.0"
+port = 9090

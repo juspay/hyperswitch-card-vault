@@ -19,8 +19,7 @@ use crate::storage::caching::Caching;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
-    error, logger,
-    observability::HttpRequestMetricsLayer,
+    error, logger, observability,
     routes::{self, routes_v2},
     storage,
     tenant::GlobalAppState,
@@ -144,9 +143,7 @@ async fn shutdown_signal() {
 ///
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
-) -> Result<(), error::ConfigurationError>
-where
-{
+) -> Result<(), error::ConfigurationError> {
     let socket_addr = std::net::SocketAddr::new(
         global_app_state.global_config.server.host.parse()?,
         global_app_state.global_config.server.port,
@@ -214,20 +211,19 @@ where
 
     router = router.nest("/health", routes::health::serve());
 
-    // Initialize and hold metrics provider for the lifetime of the server
-    let _metrics_provider = global_app_state
-        .global_config
-        .telemetry
-        .as_ref()
-        .and_then(|config| {
-            if config.metrics_enabled {
-                crate::observability::init_metrics_provider(config)
-            } else {
-                None
-            }
-        });
-    if _metrics_provider.is_some() {
-        router = router.route_layer(HttpRequestMetricsLayer);
+    let metrics_handle = observability::init_metrics(&global_app_state.global_config.metrics);
+    if metrics_handle.provider().is_some() {
+        router = router.layer(observability::HttpRequestMetricsLayer);
+    }
+
+    if let observability::MetricsHandle::Prometheus {
+        registry,
+        host,
+        port,
+        ..
+    } = &metrics_handle
+    {
+        observability::start_prometheus_metrics_server(host, *port, registry.clone())?;
     }
 
     router = router.layer(

@@ -10,47 +10,139 @@ use opentelemetry_sdk::{
 };
 
 pub use self::middleware::HttpRequestMetricsLayer;
-use super::TelemetryConfig;
-use crate::{counter_metric, global_meter, histogram_metric_f64};
+use super::{MetricsConfig, MetricsHandle};
+use crate::{counter_metric, error, global_meter, histogram_metric_f64};
 
-pub fn init_metrics_provider(config: &TelemetryConfig) -> Option<SdkMeterProvider> {
-    if !config.metrics_enabled {
-        return None;
+pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
+    match config {
+        MetricsConfig::Disabled => MetricsHandle::Disabled,
+        MetricsConfig::Otlp {
+            endpoint,
+            endpoint_timeout_secs,
+            metrics_export_interval_secs,
+        } => {
+            let exporter = match MetricExporter::builder()
+                .with_tonic()
+                .with_temporality(Temporality::Cumulative)
+                .with_endpoint(endpoint)
+                .with_timeout(Duration::from_secs(*endpoint_timeout_secs))
+                .build()
+            {
+                Ok(exporter) => exporter,
+                Err(error) => {
+                    tracing::warn!(
+                        ?error,
+                        "Failed to build OTLP metric exporter, metrics disabled"
+                    );
+                    return MetricsHandle::Disabled;
+                }
+            };
+
+            let reader = PeriodicReader::builder(exporter)
+                .with_interval(Duration::from_secs(*metrics_export_interval_secs))
+                .build();
+
+            let provider = SdkMeterProvider::builder()
+                .with_reader(reader)
+                .with_resource(
+                    Resource::builder()
+                        .with_service_name(env!("CARGO_PKG_NAME"))
+                        .build(),
+                )
+                .build();
+
+            global::set_meter_provider(provider.clone());
+
+            MetricsHandle::Otlp { provider }
+        }
+        MetricsConfig::Prometheus { host, port } => {
+            let registry = prometheus::Registry::new();
+
+            let exporter = match opentelemetry_prometheus::exporter()
+                .with_registry(registry.clone())
+                .build()
+            {
+                Ok(exporter) => exporter,
+                Err(error) => {
+                    tracing::warn!(
+                        ?error,
+                        "Failed to build Prometheus metric exporter, metrics disabled"
+                    );
+                    return MetricsHandle::Disabled;
+                }
+            };
+
+            let provider = SdkMeterProvider::builder()
+                .with_reader(exporter)
+                .with_resource(
+                    Resource::builder()
+                        .with_service_name(env!("CARGO_PKG_NAME"))
+                        .build(),
+                )
+                .build();
+
+            global::set_meter_provider(provider.clone());
+
+            MetricsHandle::Prometheus {
+                provider,
+                registry,
+                host: host.clone(),
+                port: *port,
+            }
+        }
     }
+}
 
-    let exporter = match MetricExporter::builder()
-        .with_tonic()
-        .with_temporality(Temporality::Cumulative)
-        .with_endpoint(&config.endpoint)
-        .with_timeout(Duration::from_secs(config.endpoint_timeout_secs))
-        .build()
-    {
-        Ok(exporter) => exporter,
-        Err(error) => {
-            tracing::warn!(
-                ?error,
-                "Failed to build OTLP metric exporter, metrics disabled"
-            );
-            return None;
+pub fn start_prometheus_metrics_server(
+    host: &str,
+    port: u16,
+    registry: prometheus::Registry,
+) -> Result<(), error::ConfigurationError> {
+    use prometheus::Encoder;
+
+    let addr = match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => std::net::SocketAddr::new(ip, port),
+        Err(_) => {
+            return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                format!(r#"metrics.host "{host}" is not a valid IP address"#),
+            ));
         }
     };
 
-    let reader = PeriodicReader::builder(exporter)
-        .with_interval(Duration::from_secs(config.metrics_export_interval_secs))
-        .build();
+    let app = axum::Router::new().route(
+        "/metrics",
+        axum::routing::get(move || {
+            let registry = registry.clone();
+            async move {
+                let encoder = prometheus::TextEncoder::new();
+                let mut buffer = Vec::new();
 
-    let provider = SdkMeterProvider::builder()
-        .with_reader(reader)
-        .with_resource(
-            Resource::builder()
-                .with_service_name("hyperswitch_card_vault")
-                .build(),
-        )
-        .build();
+                if let Err(error) = encoder.encode(&registry.gather(), &mut buffer) {
+                    tracing::warn!(?error, "Failed to encode prometheus metrics");
+                }
 
-    global::set_meter_provider(provider.clone());
+                (
+                    axum::http::StatusCode::OK,
+                    String::from_utf8(buffer).unwrap_or_default(),
+                )
+            }
+        }),
+    );
 
-    Some(provider)
+    tokio::spawn(async move {
+        match tokio::net::TcpListener::bind(addr).await {
+            Ok(listener) => {
+                if let Err(error) = axum::serve(listener, app).await {
+                    tracing::warn!(?error, "Prometheus metrics server failed");
+                }
+            }
+            Err(error) => {
+                tracing::error!(?error, "Failed to bind prometheus metrics server");
+            }
+        }
+    });
+
+    Ok(())
 }
 
 pub(crate) fn f64_histogram_buckets() -> Vec<f64> {
