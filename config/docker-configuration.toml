@@ -52,3 +52,8 @@ unresponsive_timeout = 10
 unresponsive_check_interval = 2
 max_feed_count = 200
 max_failure_threshold_seconds = 5
+
+[metrics]
+mode = "prometheus"
+host = "0.0.0.0"
+port = 9090
