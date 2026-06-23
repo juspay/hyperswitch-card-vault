@@ -29,11 +29,23 @@ pub mod utils;
 
 pub trait State {}
 
+/// Runtime config for read replica routing.
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+pub struct ReplicaRouting {
+    #[serde(default)]
+    use_replica: bool,
+}
+
+impl ReplicaRouting {
+    const CONFIG_KEY: &str = "locker.use_read_replica";
+}
+
 /// Storage State that is to be passed though the application
 #[derive(Clone)]
 pub struct Storage {
     primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
+    runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -72,6 +84,7 @@ impl Storage {
         primary_config: &Database,
         replica_config: Option<&Database>,
         schema: &str,
+        runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -88,6 +101,7 @@ impl Storage {
         Ok(Self {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
+            runtime_config_manager,
         })
     }
 
@@ -119,6 +133,34 @@ impl Storage {
     /// Returns `true` if a read replica pool was configured and initialized.
     pub fn has_replica(&self) -> bool {
         self.replica_pg_pool.is_some()
+    }
+
+    /// Returns `true` when both a replica pool exists and runtime config allows replica reads.
+    async fn should_use_replica(&self) -> bool {
+        if !self.has_replica() {
+            crate::logger::debug!("No replica pool configured");
+            return false;
+        }
+
+        self.runtime_config_manager
+            .get_config::<ReplicaRouting>(ReplicaRouting::CONFIG_KEY)
+            .await
+            .map(|config| config.use_replica)
+            .unwrap_or(false)
+    }
+
+    /// Returns a connection from the replica pool when the runtime config enables it,
+    /// otherwise returns a primary pool connection.
+    pub async fn route_conn(
+        &self,
+    ) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
+        if self.should_use_replica().await {
+            crate::logger::debug!("Routing to read replica");
+            self.get_replica_conn().await
+        } else {
+            crate::logger::debug!("Routing to primary pool");
+            self.get_conn().await
+        }
     }
 }
 

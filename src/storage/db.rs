@@ -24,7 +24,7 @@ impl MerchantInterface for Storage {
         merchant_id: &str,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
                 .filter(schema::merchant::merchant_id.eq(merchant_id))
@@ -51,7 +51,7 @@ impl MerchantInterface for Storage {
         merchant_id: &str,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
 
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
@@ -97,7 +97,7 @@ impl MerchantInterface for Storage {
         key: &Self::Algorithm,
         limit: i64,
     ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
 
         let result: Result<Vec<types::MerchantInner>, ContainerError<Self::Error>> =
             schema::merchant::table
@@ -419,7 +419,7 @@ impl super::EntityInterface for Storage {
         &self,
         entity_id: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
         let output: Result<types::Entity, diesel::result::Error> = types::Entity::table()
             .filter(schema::entity::entity_id.eq(entity_id))
             .get_result(&mut conn)

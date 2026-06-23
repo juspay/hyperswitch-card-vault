@@ -5,9 +5,9 @@ use std::{
 };
 
 use error_stack::ResultExt;
-use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "external_key_manager")]
 use hyperswitch_masking::Secret;
+use hyperswitch_masking::{ExposeInterface, PeekInterface};
 #[cfg(feature = "redis")]
 use hyperswitch_redis_interface::RedisSettings;
 
@@ -27,7 +27,7 @@ pub struct GlobalConfig {
     pub database: Database,
     pub read_replica: Option<Database>,
     pub secrets: Secrets,
-    #[serde[default]]
+    #[serde(default)]
     pub secrets_management: SecretsManagementConfig,
     pub log: Log,
     #[serde(default)]
@@ -44,6 +44,8 @@ pub struct GlobalConfig {
     pub external_key_manager: ExternalKeyManagerConfig,
     #[cfg(feature = "redis")]
     pub redis: Option<RedisSettings>,
+    #[serde(default)]
+    pub runtime_config: RuntimeConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -297,6 +299,18 @@ impl GlobalConfig {
                 ))?;
         }
 
+        if let RuntimeConfig::Enabled {
+            ref mut endpoint, ..
+        } = self.runtime_config
+        {
+            endpoint.api_key = secret_management_client
+                .get_secret(endpoint.api_key.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "runtime_config api_key",
+                ))?;
+        }
+
         #[cfg(feature = "external_key_manager")]
         {
             // Decrypt api_client.identity only when mTLS is enabled, as it's required for client certificate authentication
@@ -334,6 +348,7 @@ impl GlobalConfig {
 
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
+        self.runtime_config.validate()?;
         #[cfg(feature = "external_key_manager")]
         {
             self.external_key_manager.validate()?;
@@ -375,6 +390,65 @@ impl std::fmt::Display for Env {
             Self::Development => write!(f, "development"),
             Self::Release => write!(f, "release"),
         }
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RuntimeConfigEndpoint {
+    pub base_url: String,
+    pub api_key: hyperswitch_masking::Secret<String>,
+}
+
+/// Runtime configuration source.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum RuntimeConfig {
+    #[default]
+    Disabled,
+    Enabled {
+        endpoint: RuntimeConfigEndpoint,
+        #[serde(default = "default_runtime_config_ttl_seconds")]
+        ttl_seconds: u64,
+        #[serde(default = "default_runtime_config_cache_max_capacity")]
+        cache_max_capacity: u64,
+    },
+}
+
+fn default_runtime_config_ttl_seconds() -> u64 {
+    30
+}
+
+fn default_runtime_config_cache_max_capacity() -> u64 {
+    32
+}
+
+impl RuntimeConfig {
+    pub fn is_enabled(&self) -> bool {
+        matches!(self, Self::Enabled { .. })
+    }
+
+    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
+        if let Self::Enabled { endpoint, .. } = self {
+            if endpoint.base_url.trim().is_empty() {
+                return Err(
+                    crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        r#"runtime_config.endpoint.base_url is required when mode is "enabled""#
+                            .into(),
+                    ),
+                );
+            }
+
+            if endpoint.api_key.peek().trim().is_empty() {
+                return Err(
+                    crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        r#"runtime_config.endpoint.api_key is required when mode is "enabled""#
+                            .into(),
+                    ),
+                );
+            }
+        }
+
+        Ok(())
     }
 }
 
