@@ -55,10 +55,4 @@ max_failure_threshold_seconds = 5
 mode = "disabled"
 
 [runtime_config]
-mode = "enabled"
-ttl_seconds = 30
-cache_max_capacity = 32
-
-[runtime_config.endpoint]
-base_url = "http://localhost:8080/configs"
-api_key = ""
+mode = "disabled"
