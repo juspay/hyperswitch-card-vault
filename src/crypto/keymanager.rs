@@ -11,6 +11,13 @@ use crate::{
     error::{self, ContainerError},
 };
 
+/// Metadata about a key-holder record (a `merchant` row under the internal key manager,
+/// or an `entity` row under the external key manager) returned by the explicit create flow.
+pub struct CreatedEntity {
+    pub entity_id: String,
+    pub created_at: time::PrimitiveDateTime,
+}
+
 #[async_trait::async_trait]
 pub trait KeyProvider: Send + Sync {
     async fn find_by_entity_id(
@@ -24,6 +31,15 @@ pub trait KeyProvider: Send + Sync {
         tenant_app_state: &TenantAppState,
         entity_id: String,
     ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>>;
+
+    /// Idempotently create the key-holder record for `entity_id` and return its metadata.
+    /// Backs the explicit `POST /entity/create` endpoint. Unlike [`Self::find_or_create_entity`]
+    /// (the deprecated lazy path used by the add flow), this is the blessed provisioning path.
+    async fn create_entity(
+        &self,
+        tenant_app_state: &TenantAppState,
+        entity_id: String,
+    ) -> Result<CreatedEntity, ContainerError<error::ApiError>>;
 }
 
 #[async_trait::async_trait]
