@@ -47,6 +47,7 @@ impl RuntimeConfigManager {
             RuntimeConfig::Disabled => Self {
                 state: RuntimeConfigState::Disabled,
             },
+            #[cfg_attr(not(feature = "caching"), allow(unused_variables))]
             RuntimeConfig::Enabled {
                 endpoint,
                 ttl_seconds,
