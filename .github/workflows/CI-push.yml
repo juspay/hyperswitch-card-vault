@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install mold linker
         uses: rui314/setup-mold@v1
@@ -54,9 +54,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2.9.1
 
       - name: Install cargo-hack
-        uses: baptiste0928/cargo-install@v2.2.0
+        uses: taiki-e/install-action@v2
         with:
-          crate: cargo-hack
+          tool: cargo-hack
+          checksum: true
 
       - name: Run `cargo hack`
         shell: bash
@@ -68,7 +69,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install mold linker
         uses: rui314/setup-mold@v1
@@ -83,14 +84,16 @@ jobs:
           components: clippy
 
       - name: Install cargo-hack
-        uses: baptiste0928/cargo-install@v2.2.0
+        uses: taiki-e/install-action@v2
         with:
-          crate: cargo-hack
+          tool: cargo-hack
+          checksum: true
 
       - name: Install cargo-nextest
-        uses: baptiste0928/cargo-install@v2.2.0
+        uses: taiki-e/install-action@v2
         with:
-          crate: cargo-nextest
+          tool: cargo-nextest
+          checksum: true
 
       - uses: Swatinem/rust-cache@v2.9.1
 
@@ -113,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Spell check
         uses: crate-ci/typos@master
