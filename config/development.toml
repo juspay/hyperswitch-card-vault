@@ -22,11 +22,19 @@ dbname = "locker"
 tti = 7200 # i.e. 2 hours
 max_capacity = 5000
 
-[secrets]
+secrets]
 locker_private_key = ""
 
 [tenant_secrets]
 public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
+
+[tenant_secrets.public.kv.fingerprint]
+storage_scheme = "redis_kv"
+soft_kill = false
+
+[tenant_secrets.public.kv.hash_table]
+storage_scheme = "redis_kv"
+soft_kill = false
 
 [external_key_manager]
 mode = "disabled"
@@ -50,3 +58,8 @@ unresponsive_timeout = 10
 unresponsive_check_interval = 2
 max_feed_count = 200
 max_failure_threshold_seconds = 5
+
+[kv]
+drainer_stream_suffix = "drainer"
+drainer_num_partitions = 16
+ttl_for_kv = 900

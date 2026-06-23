@@ -244,6 +244,20 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings_for(super::kv::KvTable::HashTable);
+            let scheme = super::kv::decide_storage_scheme::<types::HashTable>(
+                self,
+                settings,
+                super::kv::Op::Find,
+            )
+            .await;
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                return self.find_by_data_hash_kv(data_hash).await;
+            }
+        }
+
         let mut conn = self.get_conn().await?;
 
         let output: Result<_, diesel::result::Error> = types::HashTable::table()
@@ -263,6 +277,20 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: Vec<u8>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings_for(super::kv::KvTable::HashTable);
+            let scheme = super::kv::decide_storage_scheme::<types::HashTable>(
+                self,
+                settings,
+                super::kv::Op::Insert,
+            )
+            .await;
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                return self.insert_hash_kv(data_hash).await;
+            }
+        }
+
         let output = self.find_by_data_hash(&data_hash).await?;
         match output {
             Some(inner) => Ok(inner),
@@ -272,6 +300,7 @@ impl super::HashInterface for Storage {
                     diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
                         hash_id: utils::generate_uuid(),
                         data_hash,
+                        updated_by: "postgres_only".to_string(),
                     });
 
                 Ok(query
@@ -303,6 +332,7 @@ impl super::TestInterface for Storage {
                         .values(types::HashTableNew {
                             hash_id: "test".to_string(),
                             data_hash: b"0".to_vec(),
+                            updated_by: "postgres_only".to_string(),
                         })
                         .execute(x)
                         .await
@@ -332,6 +362,20 @@ impl super::FingerprintInterface for Storage {
         &self,
         fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings_for(super::kv::KvTable::Fingerprint);
+            let scheme = super::kv::decide_storage_scheme::<types::Fingerprint>(
+                self,
+                settings,
+                super::kv::Op::Find,
+            )
+            .await;
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                return self.find_by_fingerprint_hash_kv(&fingerprint_hash).await;
+            }
+        }
+
         let mut conn = self.get_conn().await?;
 
         let output: Result<_, diesel::result::Error> = types::Fingerprint::table()
@@ -353,6 +397,20 @@ impl super::FingerprintInterface for Storage {
         key: Secret<String>,
         fingerprint_id: Option<Secret<String>>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings_for(super::kv::KvTable::Fingerprint);
+            let scheme = super::kv::decide_storage_scheme::<types::Fingerprint>(
+                self,
+                settings,
+                super::kv::Op::Insert,
+            )
+            .await;
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                return self.get_or_insert_fingerprint_kv(data, key, fingerprint_id).await;
+            }
+        }
+
         let algo = HmacSha512::<1>::new(key.map(|inner| inner.into_bytes()));
 
         let fingerprint_hash = algo.encode(data.expose().into_bytes().into())?;
@@ -375,6 +433,7 @@ impl super::FingerprintInterface for Storage {
                         .values(types::FingerprintTableNew {
                             fingerprint_hash,
                             fingerprint_id: id,
+                            updated_by: "postgres_only".to_string(),
                         })
                         .get_result(&mut conn)
                         .await;
@@ -442,5 +501,301 @@ impl super::EntityInterface for Storage {
             .await
             .change_error(error::StorageError::InsertError)
             .map_err(From::from)
+    }
+}
+
+// ─── KV helpers (gated by `kv` feature) ─────────────────────────────────────
+
+#[cfg(feature = "kv")]
+mod kv_helpers {
+    use error_stack::ResultExt;
+    use hyperswitch_masking::PeekInterface;
+
+    use super::*;
+    use crate::error::RedisErrorExt;
+    use crate::storage::kv::{
+        KvOperation, KvResult, PartitionKey, StorageScheme, kv_wrapper, serializable_query,
+        try_redis_get_else_try_database_get,
+    };
+
+    impl Storage {
+        // ── fingerprint ──
+
+        pub(crate) async fn find_by_fingerprint_hash_kv(
+            &self,
+            fingerprint_hash: &Secret<Vec<u8>>,
+        ) -> Result<Option<types::Fingerprint>, ContainerError<error::FingerprintDBError>> {
+            let partition_key = PartitionKey::Fingerprint {
+                fingerprint_hash: fingerprint_hash.peek().as_slice(),
+            };
+
+            let result = try_redis_get_else_try_database_get(
+                async {
+                    let kv_result =
+                        kv_wrapper::<types::FingerprintTableNew, types::FingerprintTableNew>(
+                            self,
+                            KvOperation::<types::FingerprintTableNew>::Get,
+                            partition_key,
+                        )
+                        .await?;
+                    match kv_result {
+                        KvResult::Get(v) => Ok(types::Fingerprint {
+                            id: 0,
+                            fingerprint_hash: v.fingerprint_hash,
+                            fingerprint_id: v.fingerprint_id,
+                            updated_by: v.updated_by,
+                        }),
+                        _ => Err(error_stack::Report::new(
+                            hyperswitch_redis_interface::errors::RedisError::UnknownResult,
+                        )),
+                    }
+                },
+                || async {
+                    self.find_by_fingerprint_hash_pg(fingerprint_hash.clone())
+                        .await?
+                        .ok_or_else(|| {
+                            error_stack::Report::new(error::StorageError::ValueNotFound(
+                                "fingerprint".to_string(),
+                            ))
+                        })
+                },
+            )
+            .await;
+
+            match result {
+                Ok(v) => Ok(Some(v)),
+                Err(err) => match err.current_context() {
+                    error::StorageError::ValueNotFound(_) => Ok(None),
+                    _ => Err(err
+                        .change_context(error::FingerprintDBError::DBFilterError)
+                        .into()),
+                },
+            }
+        }
+
+        pub(crate) async fn find_by_fingerprint_hash_pg(
+            &self,
+            fingerprint_hash: Secret<Vec<u8>>,
+        ) -> error_stack::Result<Option<types::Fingerprint>, error::StorageError> {
+            let mut conn = self
+                .get_conn()
+                .await
+                .change_context(error::StorageError::PoolClientFailure)?;
+            let output: Result<_, diesel::result::Error> = types::Fingerprint::table()
+                .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash))
+                .get_result(&mut conn)
+                .await;
+            match output {
+                Ok(inner) => Ok(Some(inner)),
+                Err(diesel::result::Error::NotFound) => Ok(None),
+                Err(err) => Err(error_stack::Report::new(err))
+                    .change_context(error::StorageError::FindError),
+            }
+        }
+
+        pub(crate) async fn get_or_insert_fingerprint_kv(
+            &self,
+            data: Secret<String>,
+            key: Secret<String>,
+            fingerprint_id: Option<Secret<String>>,
+        ) -> Result<types::Fingerprint, ContainerError<error::FingerprintDBError>> {
+            let algo = HmacSha512::<1>::new(key.map(|inner| inner.into_bytes()));
+            let fingerprint_hash = algo.encode(data.expose().into_bytes().into())?;
+
+            // Try find first
+            if let Some(existing) = self.find_by_fingerprint_hash_kv(&fingerprint_hash).await? {
+                return Ok(existing);
+            }
+
+            // Not found — insert via SetNx + drainer
+            let id = fingerprint_id
+                .unwrap_or_else(|| utils::generate_nano_id(consts::ID_LENGTH).into());
+            let new_fingerprint = types::FingerprintTableNew {
+                fingerprint_hash: fingerprint_hash.clone(),
+                fingerprint_id: id,
+                updated_by: StorageScheme::RedisKv.to_string(),
+            };
+
+            let partition_key = PartitionKey::Fingerprint {
+                fingerprint_hash: fingerprint_hash.peek().as_slice(),
+            };
+            let key_str = partition_key.to_string();
+
+            let drainer_query =
+                serializable_query::generate_insert_query::<schema::fingerprint::table, _>(
+                    types::FingerprintTableNew {
+                        fingerprint_hash: fingerprint_hash.clone(),
+                        fingerprint_id: new_fingerprint.fingerprint_id.clone(),
+                        updated_by: new_fingerprint.updated_by.clone(),
+                    },
+                )
+                .change_context(error::FingerprintDBError::DBInsertError)?;
+
+            let result = kv_wrapper::<(), types::FingerprintTableNew>(
+                self,
+                KvOperation::SetNx(&new_fingerprint, drainer_query),
+                partition_key,
+            )
+            .await
+            .map_err(|err| {
+                ContainerError::from(
+                    err.to_redis_failed_response(&key_str)
+                        .change_context(error::FingerprintDBError::DBInsertError),
+                )
+            })?;
+
+            match result.try_into_setnx() {
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeySet) => {
+                    Ok(types::Fingerprint {
+                        id: 0,
+                        fingerprint_hash,
+                        fingerprint_id: new_fingerprint.fingerprint_id,
+                        updated_by: new_fingerprint.updated_by,
+                    })
+                }
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
+                    self.find_by_fingerprint_hash_kv(&fingerprint_hash)
+                        .await?
+                        .ok_or_else(|| {
+                            ContainerError::from(error::FingerprintDBError::DBInsertError)
+                        })
+                }
+                Err(_) => Err(ContainerError::from(error::FingerprintDBError::DBInsertError)),
+            }
+        }
+
+        // ── hash_table ──
+
+        pub(crate) async fn find_by_data_hash_kv(
+            &self,
+            data_hash: &[u8],
+        ) -> Result<Option<types::HashTable>, ContainerError<error::HashDBError>> {
+            let partition_key = PartitionKey::Hash { data_hash };
+
+            let result = try_redis_get_else_try_database_get(
+                async {
+                    let kv_result =
+                        kv_wrapper::<types::HashTableNew, types::HashTableNew>(
+                            self,
+                            KvOperation::<types::HashTableNew>::Get,
+                            partition_key,
+                        )
+                        .await?;
+                    match kv_result {
+                        KvResult::Get(v) => Ok(types::HashTable {
+                            id: 0,
+                            hash_id: v.hash_id,
+                            data_hash: v.data_hash,
+                            created_at: crate::utils::date_time::now(),
+                            updated_by: v.updated_by,
+                        }),
+                        _ => Err(error_stack::Report::new(
+                            hyperswitch_redis_interface::errors::RedisError::UnknownResult,
+                        )),
+                    }
+                },
+                || async {
+                    self.find_by_data_hash_pg(data_hash.to_vec())
+                        .await?
+                        .ok_or_else(|| {
+                            error_stack::Report::new(error::StorageError::ValueNotFound(
+                                "hash_table".to_string(),
+                            ))
+                        })
+                },
+            )
+            .await;
+
+            match result {
+                Ok(v) => Ok(Some(v)),
+                Err(err) => match err.current_context() {
+                    error::StorageError::ValueNotFound(_) => Ok(None),
+                    _ => Err(err.change_context(error::HashDBError::DBFilterError).into()),
+                },
+            }
+        }
+
+        pub(crate) async fn find_by_data_hash_pg(
+            &self,
+            data_hash: Vec<u8>,
+        ) -> error_stack::Result<Option<types::HashTable>, error::StorageError> {
+            let mut conn = self
+                .get_conn()
+                .await
+                .change_context(error::StorageError::PoolClientFailure)?;
+            let output: Result<_, diesel::result::Error> = types::HashTable::table()
+                .filter(schema::hash_table::data_hash.eq(data_hash))
+                .get_result(&mut conn)
+                .await;
+            match output {
+                Ok(inner) => Ok(Some(inner)),
+                Err(diesel::result::Error::NotFound) => Ok(None),
+                Err(err) => Err(error_stack::Report::new(err))
+                    .change_context(error::StorageError::FindError),
+            }
+        }
+
+        pub(crate) async fn insert_hash_kv(
+            &self,
+            data_hash: Vec<u8>,
+        ) -> Result<types::HashTable, ContainerError<error::HashDBError>> {
+            // Try find first
+            if let Some(existing) = self.find_by_data_hash_kv(&data_hash).await? {
+                return Ok(existing);
+            }
+
+            // Not found — insert via SetNx + drainer
+            let new_hash = types::HashTableNew {
+                hash_id: utils::generate_uuid(),
+                data_hash: data_hash.clone(),
+                updated_by: StorageScheme::RedisKv.to_string(),
+            };
+
+            let partition_key = PartitionKey::Hash {
+                data_hash: &data_hash,
+            };
+            let key_str = partition_key.to_string();
+
+            let drainer_query =
+                serializable_query::generate_insert_query::<schema::hash_table::table, _>(
+                    types::HashTableNew {
+                        hash_id: new_hash.hash_id.clone(),
+                        data_hash: data_hash.clone(),
+                        updated_by: new_hash.updated_by.clone(),
+                    },
+                )
+                .change_context(error::HashDBError::DBInsertError)?;
+
+            let result = kv_wrapper::<(), types::HashTableNew>(
+                self,
+                KvOperation::SetNx(&new_hash, drainer_query),
+                partition_key,
+            )
+            .await
+            .map_err(|err| {
+                ContainerError::from(
+                    err.to_redis_failed_response(&key_str)
+                        .change_context(error::HashDBError::DBInsertError),
+                )
+            })?;
+
+            match result.try_into_setnx() {
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeySet) => {
+                    Ok(types::HashTable {
+                        id: 0,
+                        hash_id: new_hash.hash_id,
+                        data_hash,
+                        created_at: time::PrimitiveDateTime::MIN,
+                        updated_by: new_hash.updated_by,
+                    })
+                }
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
+                    self.find_by_data_hash_kv(&data_hash)
+                        .await?
+                        .ok_or_else(|| ContainerError::from(error::HashDBError::DBInsertError))
+                }
+                Err(_) => Err(ContainerError::from(error::HashDBError::DBInsertError)),
+            }
+        }
     }
 }

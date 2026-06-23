@@ -140,21 +140,23 @@ impl<'a> LockerNew<'a> {
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
+    pub updated_by: String,
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::fingerprint)]
 pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: String,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -194,11 +196,12 @@ impl std::ops::Deref for CardNumber {
     }
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
 pub(super) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: String,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -209,11 +212,12 @@ pub(super) struct EntityTableNew {
     pub enc_key_id: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Insertable)]
 #[diesel(table_name = schema::hash_table)]
 pub(super) struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
+    pub updated_by: String,
 }
 
 ///

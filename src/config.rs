@@ -11,6 +11,9 @@ use hyperswitch_masking::Secret;
 #[cfg(feature = "redis")]
 use hyperswitch_redis_interface::RedisSettings;
 
+#[cfg(feature = "kv")]
+use crate::storage::kv::{KvTable, TableKvSettings};
+
 use crate::{
     api_client::ApiClientConfig,
     crypto::secrets_manager::{
@@ -40,6 +43,8 @@ pub struct GlobalConfig {
     pub external_key_manager: ExternalKeyManagerConfig,
     #[cfg(feature = "redis")]
     pub redis: Option<RedisSettings>,
+    #[cfg(feature = "kv")]
+    pub kv: KvConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +126,13 @@ pub struct TenantSecrets {
 
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
+
+    /// Per-table KV configuration.  Each table can independently be set to
+    /// `redis_kv` or `postgres_only`, with its own `soft_kill` flag.
+    /// Tables not listed default to `postgres_only`.
+    #[cfg(feature = "kv")]
+    #[serde(default)]
+    pub kv: std::collections::HashMap<KvTable, TableKvSettings>,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -329,6 +341,18 @@ impl GlobalConfig {
         }
         Ok(())
     }
+}
+
+#[cfg(feature = "kv")]
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct KvConfig {
+    /// Suffix appended to the drainer stream name (e.g. `"drainer"` →
+    /// `{shard}_{schema}_drainer`).
+    pub drainer_stream_suffix: String,
+    /// Number of partitions (shards) for the drainer stream.
+    pub drainer_num_partitions: u8,
+    /// TTL (seconds) for keys written to Redis KV.
+    pub ttl_for_kv: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -17,6 +17,7 @@ diesel::table! {
         fingerprint_hash -> Bytea,
         #[max_length = 64]
         fingerprint_id -> Varchar,
+        updated_by -> Varchar,
     }
 }
 
@@ -27,6 +28,7 @@ diesel::table! {
         hash_id -> Varchar,
         data_hash -> Bytea,
         created_at -> Timestamp,
+        updated_by -> Varchar,
     }
 }
 

@@ -20,6 +20,8 @@ use crate::{
 pub mod caching;
 pub mod consts;
 pub mod db;
+#[cfg(feature = "kv")]
+pub mod kv;
 #[cfg(feature = "redis")]
 pub mod redis;
 pub mod schema;
@@ -33,7 +35,20 @@ pub trait State {}
 #[derive(Clone)]
 pub struct Storage {
     pg_pool: Arc<Pool<AsyncPgConnection>>,
+    #[cfg(feature = "kv")]
+    redis: Option<redis_store::RedisStore>,
+    #[cfg(feature = "kv")]
+    schema: String,
+    #[cfg(feature = "kv")]
+    kv_tables: std::collections::HashMap<kv::KvTable, kv::TableKvSettings>,
+    #[cfg(feature = "kv")]
+    kv_config: crate::config::KvConfig,
+    #[cfg(feature = "kv")]
+    request_id: Option<String>,
 }
+
+#[cfg(feature = "redis")]
+use crate::storage::redis as redis_store;
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
 
@@ -42,6 +57,9 @@ impl Storage {
     pub async fn new(
         database: &Database,
         schema: &str,
+        #[cfg(feature = "kv")] redis: Option<redis_store::RedisStore>,
+        #[cfg(feature = "kv")] kv_tables: std::collections::HashMap<kv::KvTable, kv::TableKvSettings>,
+        #[cfg(feature = "kv")] kv_config: &crate::config::KvConfig,
     ) -> error_stack::Result<Self, error::StorageError> {
         let database_url = format!(
             "postgres://{}:{}@{}:{}/{}?application_name={}&options=-c search_path%3D{}",
@@ -68,6 +86,16 @@ impl Storage {
             .change_context(error::StorageError::DBPoolError)?;
         Ok(Self {
             pg_pool: Arc::new(pool),
+            #[cfg(feature = "kv")]
+            redis,
+            #[cfg(feature = "kv")]
+            schema: schema.to_string(),
+            #[cfg(feature = "kv")]
+            kv_tables,
+            #[cfg(feature = "kv")]
+            kv_config: kv_config.clone(),
+            #[cfg(feature = "kv")]
+            request_id: None,
         })
     }
 
@@ -78,6 +106,49 @@ impl Storage {
             .get()
             .await
             .change_context(error::StorageError::PoolClientFailure)?)
+    }
+
+    /// Resolve per-table KV settings; absent table ⇒ `PostgresOnly` default.
+    #[cfg(feature = "kv")]
+    pub fn kv_settings_for(&self, table: kv::KvTable) -> kv::TableKvSettings {
+        self.kv_tables
+            .get(&table)
+            .copied()
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(feature = "kv")]
+impl kv::RedisConnInterface for Storage {
+    fn get_redis_conn(
+        &self,
+    ) -> error_stack::Result<std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>, hyperswitch_redis_interface::errors::RedisError> {
+        self.redis
+            .as_ref()
+            .map(|r| r.get_redis_conn())
+            .ok_or_else(|| error_stack::Report::new(hyperswitch_redis_interface::errors::RedisError::RedisConnectionError))
+    }
+}
+
+#[cfg(feature = "kv")]
+impl kv::KvStoreContext for Storage {
+    fn ttl_for_kv(&self) -> u32 {
+        self.kv_config.ttl_for_kv
+    }
+
+    fn drainer_stream_name(&self, shard_key: &str) -> String {
+        format!(
+            "{{{}}}_{}_{}",
+            shard_key, self.schema, self.kv_config.drainer_stream_suffix
+        )
+    }
+
+    fn drainer_num_partitions(&self) -> u8 {
+        self.kv_config.drainer_num_partitions
+    }
+
+    fn request_id(&self) -> &str {
+        self.request_id.as_deref().unwrap_or("")
     }
 }
 

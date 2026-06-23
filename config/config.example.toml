@@ -104,3 +104,19 @@ unresponsive_check_interval = 2    # how often to check for unresponsiveness (se
 max_feed_count = 200               # max commands fed to the server at once
 max_failure_threshold_seconds = 5  # max seconds Redis may be unreachable before it's failed
 
+# KV (write-through Redis) configuration — global drainer settings (only used with the `kv` feature)
+[kv]
+drainer_stream_suffix = "drainer"  # suffix for the drainer stream name
+drainer_num_partitions = 16        # number of shard partitions
+ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
+
+# Per-tenant, per-table KV settings.  Each table can be independently enabled:
+#   [tenant_secrets.<tenant_id>.kv.<table_name>]
+#   storage_scheme = "postgres_only" | "redis_kv"  (default: postgres_only)
+#   soft_kill = false  (gradual rollout: inserts → Postgres, reads → Redis-first)
+#
+# Example:
+#   [tenant_secrets.public.kv.fingerprint]
+#   storage_scheme = "redis_kv"
+#   soft_kill = false
+
