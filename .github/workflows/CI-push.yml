@@ -51,7 +51,7 @@ jobs:
         with:
           toolchain: "${{ env.rust_version }}"
 
-      - uses: Swatinem/rust-cache@v2.7.0
+      - uses: Swatinem/rust-cache@v2.9.1
 
       - name: Install cargo-hack
         uses: taiki-e/install-action@v2
@@ -95,7 +95,7 @@ jobs:
           tool: cargo-nextest
           checksum: true
 
-      - uses: Swatinem/rust-cache@v2.7.0
+      - uses: Swatinem/rust-cache@v2.9.1
 
       - name: Run clippy
         shell: bash
