@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "middleware")]
 use axum::middleware;
@@ -19,7 +19,7 @@ use crate::storage::caching::Caching;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
-    error, logger,
+    error, logger, observability,
     routes::{self, routes_v2},
     storage,
     tenant::GlobalAppState,
@@ -110,15 +110,40 @@ impl MakeRequestId for MakeUuidV7 {
     }
 }
 
+#[allow(clippy::expect_used)]
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Received shutdown signal, starting graceful shutdown");
+}
+
 ///
 /// The server responsible for the custodian APIs and main locker APIs this will perform all storage, retrieval and
 /// deletion operation
 ///
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
-) -> Result<(), error::ConfigurationError>
-where
-{
+) -> Result<(), error::ConfigurationError> {
     let socket_addr = std::net::SocketAddr::new(
         global_app_state.global_config.server.host.parse()?,
         global_app_state.global_config.server.port,
@@ -186,6 +211,21 @@ where
 
     router = router.nest("/health", routes::health::serve());
 
+    let metrics_handle = observability::init_metrics(&global_app_state.global_config.metrics);
+    if metrics_handle.provider().is_some() {
+        router = router.layer(observability::HttpRequestMetricsLayer);
+    }
+
+    if let observability::MetricsHandle::Prometheus {
+        registry,
+        host,
+        port,
+        ..
+    } = &metrics_handle
+    {
+        observability::start_prometheus_metrics_server(host, *port, registry.clone())?;
+    }
+
     router = router.layer(
         tower_trace::TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| utils::record_fields_from_header(request))
@@ -229,13 +269,23 @@ where
         let rusttls_config =
             RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.private_key).await?;
 
+        let handle = axum_server::Handle::new();
+        let shutdown_handle = handle.clone();
+        tokio::spawn(async move {
+            shutdown_signal().await;
+            shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
+        });
+
         axum_server::from_tcp_rustls(tcp_listener, rusttls_config)
+            .handle(handle)
             .serve(router.into_make_service())
             .await?;
     } else {
         let tcp_listener = tokio::net::TcpListener::bind(socket_addr).await?;
 
-        axum::serve(tcp_listener, router.into_make_service()).await?;
+        axum::serve(tcp_listener, router.into_make_service())
+            .with_graceful_shutdown(shutdown_signal())
+            .await?;
     }
 
     Ok(())
