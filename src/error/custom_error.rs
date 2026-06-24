@@ -60,6 +60,8 @@ pub enum TestDBError {
     DBDeleteError,
     #[error("Unpredictable error occurred")]
     UnknownError,
+    #[error("Read replica pool is not configured")]
+    DBReplicaNotConfigured,
 }
 
 #[derive(Debug, thiserror::Error)]
