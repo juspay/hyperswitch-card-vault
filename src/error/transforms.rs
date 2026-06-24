@@ -317,7 +317,9 @@ impl<'a> From<&'a super::ReverseLookupDBError> for super::ApiError {
     fn from(value: &'a super::ReverseLookupDBError) -> Self {
         match value {
             super::ReverseLookupDBError::DBError => Self::DatabaseError,
-            super::ReverseLookupDBError::DBFilterError => Self::RetrieveDataFailed("reverse lookup"),
+            super::ReverseLookupDBError::DBFilterError => {
+                Self::RetrieveDataFailed("reverse lookup")
+            }
             super::ReverseLookupDBError::DBInsertError => {
                 Self::DatabaseInsertFailed("reverse lookup")
             }
