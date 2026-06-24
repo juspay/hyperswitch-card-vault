@@ -16,7 +16,7 @@ Decrypting the Response After Receiving
 
 ```bash
 
-$ cat response.json | cargo run --bin utils -- jwe-decrypt --priv <LOCKER_PRIVATE_KEY.pem> --pub <CLIENT_PUBLIC_KEY.pem>
+$ cat response.json | cargo run --bin utils -- jwe-decrypt --priv <CLIENT_PRIVATE_KEY.pem> --pub <LOCKER_PUBLIC_KEY.pem>
 
 ```
 
