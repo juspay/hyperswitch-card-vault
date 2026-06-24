@@ -30,7 +30,7 @@ locker_private_key = "" # the locker private key to used used and the private ke
 # configure master_key and public_key for each tenant
 # master_key - used for database encryption this could be aes encrypted by key custodian
 # public_key - used for signature verification and encryption of response payload which is sent back to tenant
-hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
+hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public", redis_key_prefix = "" }
 
 # To protect secret/sensitive values like:
 # - database.passwod
@@ -106,7 +106,7 @@ max_failure_threshold_seconds = 5  # max seconds Redis may be unreachable before
 
 # KV (write-through Redis) configuration — global drainer settings (only used with the `kv` feature)
 [kv]
-drainer_stream_suffix = "drainer"  # suffix for the drainer stream name
+drainer_stream_suffix = "DRAINER_STREAM"  # suffix for the drainer stream name
 drainer_num_partitions = 16        # number of shard partitions
 ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 

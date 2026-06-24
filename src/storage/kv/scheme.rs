@@ -1,15 +1,4 @@
-use std::fmt::Debug;
-
-use hyperswitch_redis_interface::errors::RedisError;
-use serde::de;
 use tracing::info;
-
-use super::{
-    metrics,
-    partition_key::PartitionKey,
-    wrapper::{KvOperation, KvStoreContext, kv_wrapper},
-};
-use crate::storage::kv::{constraints::UniqueConstraints, partition_key::KvStorePartition};
 
 /// Per-tenant storage scheme.
 ///
@@ -31,6 +20,8 @@ pub enum StorageScheme {
 /// Identifies which KV-supported table a config entry applies to.
 ///
 /// Used as the key in the per-tenant `kv: HashMap<KvTable, TableKvSettings>`.
+/// Only the tables wired into the live KV paths are present; `locker` / `vault`
+/// are re-added when those tables gain KV support.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize, serde::Serialize, strum::Display,
 )]
@@ -39,8 +30,6 @@ pub enum StorageScheme {
 pub enum KvTable {
     Fingerprint,
     HashTable,
-    Locker,
-    Vault,
 }
 
 /// Per-table KV settings stored in the per-tenant config.
@@ -59,20 +48,17 @@ pub struct TableKvSettings {
 /// An enum to represent what operation is being performed, used by
 /// [`decide_storage_scheme`] to decide the storage scheme (especially under
 /// soft-kill).
-pub enum Op<'a> {
+#[derive(Debug, Clone, Copy)]
+pub enum Op {
     Insert,
-    Update(PartitionKey<'a>, &'a str, Option<&'a str>),
     Find,
 }
 
-impl std::fmt::Display for Op<'_> {
+impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Insert => f.write_str("insert"),
             Self::Find => f.write_str("find"),
-            Self::Update(p_key, _, updated_by) => {
-                f.write_str(&format!("update_{p_key} for updated_by_{updated_by:?}"))
-            }
         }
     }
 }
@@ -85,66 +71,54 @@ impl std::fmt::Display for Op<'_> {
 /// When soft-kill is **on** (the gradual-rollout mode):
 /// - `Insert` → `PostgresOnly` (writes still go to Postgres)
 /// - `Find` → `RedisKv` (reads try Redis first)
-/// - `Update` with `updated_by = "postgres_only"` → `PostgresOnly`
-/// - `Update` with a non-empty `updated_by` → HGet-probe Redis; if the key
-///   exists use `RedisKv`, otherwise fall back to `PostgresOnly`
-/// - `Update` with no `updated_by` → `PostgresOnly`
 ///
 /// Vendored from `storage_impl/src/redis/kv_store.rs::decide_storage_scheme`.
-pub async fn decide_storage_scheme<D>(
-    store: &impl KvStoreContext,
-    settings: TableKvSettings,
-    operation: Op<'_>,
-) -> StorageScheme
-where
-    D: de::DeserializeOwned
-        + serde::Serialize
-        + Debug
-        + KvStorePartition
-        + UniqueConstraints
-        + Sync,
-{
+/// The `Update` soft-kill HGet-probe is deferred until the drainer lands; when
+/// it returns, re-add the `store`/`async` shape and the `Op::Update` variant
+/// together.
+pub fn decide_storage_scheme(settings: TableKvSettings, operation: Op) -> StorageScheme {
     if settings.soft_kill {
-        let ops = operation.to_string();
         let updated_scheme = match operation {
             Op::Insert => StorageScheme::PostgresOnly,
             Op::Find => StorageScheme::RedisKv,
-            Op::Update(_, _, Some("postgres_only")) => StorageScheme::PostgresOnly,
-            Op::Update(partition_key, field, Some(_updated_by)) => {
-                match Box::pin(kv_wrapper::<D, _>(
-                    store,
-                    KvOperation::<D>::HGet(field),
-                    partition_key,
-                ))
-                .await
-                {
-                    Ok(_) => {
-                        metrics::KV_SOFT_KILL_ACTIVE_UPDATE.add(1, &[]);
-                        StorageScheme::RedisKv
-                    }
-                    Err(_) => StorageScheme::PostgresOnly,
-                }
-            }
-            Op::Update(_, _, None) => StorageScheme::PostgresOnly,
         };
-
-        let type_name = std::any::type_name::<D>();
         info!(
             soft_kill_mode = "decide_storage_scheme",
             decided_scheme = %updated_scheme,
             configured_scheme = %settings.storage_scheme,
-            entity = %type_name,
-            operation = %ops,
+            operation = %operation,
         );
-
         updated_scheme
     } else {
         settings.storage_scheme
     }
 }
 
-/// Result type for `decide_storage_scheme` that may fail during the Redis
-/// probe in soft-kill mode.  In practice the Redis error is swallowed and
-/// converted to `PostgresOnly`, so the function never returns `Err`.
-#[allow(dead_code)]
-type DecideResult = Result<StorageScheme, RedisError>;
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+
+    #[test]
+    fn soft_kill_routes_insert_to_postgres_and_find_to_redis() {
+        let soft_kill = TableKvSettings {
+            storage_scheme: StorageScheme::RedisKv,
+            soft_kill: true,
+        };
+        // Inserts stay on Postgres during soft-kill rollout.
+        assert_eq!(
+            decide_storage_scheme(soft_kill, Op::Insert),
+            StorageScheme::PostgresOnly
+        );
+        // Reads try Redis first during soft-kill rollout.
+        let soft_kill = TableKvSettings {
+            storage_scheme: StorageScheme::PostgresOnly,
+            soft_kill: true,
+        };
+        assert_eq!(
+            decide_storage_scheme(soft_kill, Op::Find),
+            StorageScheme::RedisKv
+        );
+    }
+}

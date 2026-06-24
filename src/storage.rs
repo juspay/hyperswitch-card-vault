@@ -38,8 +38,6 @@ pub struct Storage {
     #[cfg(feature = "kv")]
     redis: Option<redis_store::RedisStore>,
     #[cfg(feature = "kv")]
-    schema: String,
-    #[cfg(feature = "kv")]
     kv_tables: std::collections::HashMap<kv::KvTable, kv::TableKvSettings>,
     #[cfg(feature = "kv")]
     kv_config: crate::config::KvConfig,
@@ -89,8 +87,6 @@ impl Storage {
             #[cfg(feature = "kv")]
             redis,
             #[cfg(feature = "kv")]
-            schema: schema.to_string(),
-            #[cfg(feature = "kv")]
             kv_tables,
             #[cfg(feature = "kv")]
             kv_config: kv_config.clone(),
@@ -137,10 +133,7 @@ impl kv::KvStoreContext for Storage {
     }
 
     fn drainer_stream_name(&self, shard_key: &str) -> String {
-        format!(
-            "{{{}}}_{}_{}",
-            shard_key, self.schema, self.kv_config.drainer_stream_suffix
-        )
+        self.kv_config.drainer_stream_name(shard_key)
     }
 
     fn drainer_num_partitions(&self) -> u8 {

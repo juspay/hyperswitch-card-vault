@@ -1,36 +1,16 @@
-//! Lightweight counter metrics for KV operations.
+//! OpenTelemetry counter metrics for KV operations.
 //!
-//! These are simple `AtomicU64` counters during the scaffolding phase.
-//! They can be upgraded to OpenTelemetry-style metrics (matching the
-//! `redis_interface` crate's approach) when the metrics pipeline is wired.
+//! Counters are defined via the vault's own `observability` macros, mirroring
+//! the approach used for HTTP request metrics.  A global meter provider must
+//! be stood up at startup (see [`crate::observability::init_metrics`]) for the
+//! counters to be exported; without a provider they are no-ops.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::{counter_metric, global_meter};
 
-pub struct Counter(AtomicU64);
+global_meter!(pub(crate) KV_METER, "card_vault_kv");
 
-impl Default for Counter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Counter {
-    pub const fn new() -> Self {
-        Self(AtomicU64::new(0))
-    }
-
-    pub fn add(&self, value: u64, _attributes: &[(&str, &str)]) {
-        self.0.fetch_add(value, Ordering::Relaxed);
-    }
-
-    pub fn get(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
-    }
-}
-
-pub static KV_OPERATION_SUCCESSFUL: Counter = Counter::new();
-pub static KV_OPERATION_FAILED: Counter = Counter::new();
-pub static KV_PUSHED_TO_DRAINER: Counter = Counter::new();
-pub static KV_FAILED_TO_PUSH_TO_DRAINER: Counter = Counter::new();
-pub static KV_MISS: Counter = Counter::new();
-pub static KV_SOFT_KILL_ACTIVE_UPDATE: Counter = Counter::new();
+counter_metric!(pub(crate) KV_OPERATION_SUCCESSFUL, KV_METER);
+counter_metric!(pub(crate) KV_OPERATION_FAILED, KV_METER);
+counter_metric!(pub(crate) KV_PUSHED_TO_DRAINER, KV_METER);
+counter_metric!(pub(crate) KV_FAILED_TO_PUSH_TO_DRAINER, KV_METER);
+counter_metric!(pub(crate) KV_MISS, KV_METER);

@@ -247,12 +247,7 @@ impl super::HashInterface for Storage {
         #[cfg(feature = "kv")]
         {
             let settings = self.kv_settings_for(super::kv::KvTable::HashTable);
-            let scheme = super::kv::decide_storage_scheme::<types::HashTable>(
-                self,
-                settings,
-                super::kv::Op::Find,
-            )
-            .await;
+            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Find);
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 return self.find_by_data_hash_kv(data_hash).await;
             }
@@ -280,12 +275,7 @@ impl super::HashInterface for Storage {
         #[cfg(feature = "kv")]
         {
             let settings = self.kv_settings_for(super::kv::KvTable::HashTable);
-            let scheme = super::kv::decide_storage_scheme::<types::HashTable>(
-                self,
-                settings,
-                super::kv::Op::Insert,
-            )
-            .await;
+            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Insert);
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 return self.insert_hash_kv(data_hash).await;
             }
@@ -365,12 +355,7 @@ impl super::FingerprintInterface for Storage {
         #[cfg(feature = "kv")]
         {
             let settings = self.kv_settings_for(super::kv::KvTable::Fingerprint);
-            let scheme = super::kv::decide_storage_scheme::<types::Fingerprint>(
-                self,
-                settings,
-                super::kv::Op::Find,
-            )
-            .await;
+            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Find);
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 return self.find_by_fingerprint_hash_kv(&fingerprint_hash).await;
             }
@@ -400,12 +385,7 @@ impl super::FingerprintInterface for Storage {
         #[cfg(feature = "kv")]
         {
             let settings = self.kv_settings_for(super::kv::KvTable::Fingerprint);
-            let scheme = super::kv::decide_storage_scheme::<types::Fingerprint>(
-                self,
-                settings,
-                super::kv::Op::Insert,
-            )
-            .await;
+            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Insert);
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 return self.get_or_insert_fingerprint_kv(data, key, fingerprint_id).await;
             }
@@ -505,6 +485,15 @@ impl super::EntityInterface for Storage {
 }
 
 // ─── KV helpers (gated by `kv` feature) ─────────────────────────────────────
+//
+// The KV read/insert paths reconstruct domain rows (`Fingerprint`, `HashTable`)
+// from the value cached in Redis.  Until the drainer replays the write into
+// Postgres, the surrogate columns Redis does not store are not authoritative:
+//   - `id`        is fabricated as `0`
+//   - `created_at` is fabricated as `time::PrimitiveDateTime::MIN`
+// Callers must not rely on these fields for rows served from the KV path; they
+// become valid only after the row is drained to Postgres and re-read from
+// there.
 
 #[cfg(feature = "kv")]
 mod kv_helpers {
@@ -623,11 +612,7 @@ mod kv_helpers {
 
             let drainer_query =
                 serializable_query::generate_insert_query::<schema::fingerprint::table, _>(
-                    types::FingerprintTableNew {
-                        fingerprint_hash: fingerprint_hash.clone(),
-                        fingerprint_id: new_fingerprint.fingerprint_id.clone(),
-                        updated_by: new_fingerprint.updated_by.clone(),
-                    },
+                    new_fingerprint.clone(),
                 )
                 .change_context(error::FingerprintDBError::DBInsertError)?;
 
@@ -686,7 +671,7 @@ mod kv_helpers {
                             id: 0,
                             hash_id: v.hash_id,
                             data_hash: v.data_hash,
-                            created_at: crate::utils::date_time::now(),
+                            created_at: time::PrimitiveDateTime::MIN,
                             updated_by: v.updated_by,
                         }),
                         _ => Err(error_stack::Report::new(
@@ -758,11 +743,7 @@ mod kv_helpers {
 
             let drainer_query =
                 serializable_query::generate_insert_query::<schema::hash_table::table, _>(
-                    types::HashTableNew {
-                        hash_id: new_hash.hash_id.clone(),
-                        data_hash: data_hash.clone(),
-                        updated_by: new_hash.updated_by.clone(),
-                    },
+                    new_hash.clone(),
                 )
                 .change_context(error::HashDBError::DBInsertError)?;
 

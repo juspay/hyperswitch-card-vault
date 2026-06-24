@@ -8,12 +8,10 @@
 /// |--------------|-----------------------------------------------------|
 /// | fingerprint  | `fingerprint_{fingerprint_hash_hex}`               |
 /// | hash_table   | `hash_{data_hash_hex}` (content-addressed)         |
-/// | locker       | `locker_{merchant_id}_{customer_id}_{locker_id}`   |
-/// | vault        | `vault_{entity_id}_{vault_id}`                      |
 ///
 /// `fingerprint` and `hash_table` are content-addressed (found by their hash),
-/// so no reverse lookup is needed.  `locker` and `vault` variants are defined
-/// for reference per the CSV map but not wired in this phase.
+/// so no reverse lookup is needed.  `locker` and `vault` variants are re-added
+/// when those tables gain KV support.
 #[derive(Clone)]
 pub enum PartitionKey<'a> {
     /// Partition key for the `fingerprint` table.
@@ -27,21 +25,6 @@ pub enum PartitionKey<'a> {
     Hash {
         data_hash: &'a [u8],
     },
-    /// Partition key for the `locker` table (v1).  Not wired in this phase.
-    Locker {
-        merchant_id: &'a str,
-        customer_id: &'a str,
-        locker_id: &'a str,
-    },
-    /// Partition key for the `vault` table (v2).  Not wired in this phase.
-    Vault {
-        entity_id: &'a str,
-        vault_id: &'a str,
-    },
-    /// A free-form combination key, used for reverse lookups.
-    CombinationKey {
-        combination: &'a str,
-    },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
@@ -54,18 +37,6 @@ impl std::fmt::Display for PartitionKey<'_> {
                 hex::encode(fingerprint_hash)
             )),
             Self::Hash { data_hash } => f.write_str(&format!("hash_{}", hex::encode(data_hash))),
-            Self::Locker {
-                merchant_id,
-                customer_id,
-                locker_id,
-            } => f.write_str(&format!(
-                "locker_{merchant_id}_{customer_id}_{locker_id}"
-            )),
-            Self::Vault {
-                entity_id,
-                vault_id,
-            } => f.write_str(&format!("vault_{entity_id}_{vault_id}")),
-            Self::CombinationKey { combination } => f.write_str(combination),
         }
     }
 }
@@ -106,36 +77,6 @@ mod tests {
             data_hash: &hash,
         };
         assert_eq!(key.to_string(), "hash_abcdef01");
-    }
-
-    #[test]
-    fn partition_key_display_locker() {
-        let key = PartitionKey::Locker {
-            merchant_id: "merchant_1",
-            customer_id: "cust_1",
-            locker_id: "locker_1",
-        };
-        assert_eq!(
-            key.to_string(),
-            "locker_merchant_1_cust_1_locker_1"
-        );
-    }
-
-    #[test]
-    fn partition_key_display_vault() {
-        let key = PartitionKey::Vault {
-            entity_id: "ent_123",
-            vault_id: "vlt_456",
-        };
-        assert_eq!(key.to_string(), "vault_ent_123_vlt_456");
-    }
-
-    #[test]
-    fn partition_key_display_combination() {
-        let key = PartitionKey::CombinationKey {
-            combination: "custom_key",
-        };
-        assert_eq!(key.to_string(), "custom_key");
     }
 
     #[test]

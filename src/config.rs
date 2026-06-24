@@ -130,6 +130,12 @@ pub struct TenantSecrets {
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
 
+    /// Redis key prefix for this tenant.  Empty (default) ⇒ keys are not
+    /// namespaced, matching hyperswitch's public-tenant convention.
+    #[cfg(feature = "redis")]
+    #[serde(default)]
+    pub redis_key_prefix: String,
+
     /// Per-table KV configuration.  Each table can independently be set to
     /// `redis_kv` or `postgres_only`, with its own `soft_kill` flag.
     /// Tables not listed default to `postgres_only`.
@@ -355,13 +361,24 @@ impl GlobalConfig {
 #[cfg(feature = "kv")]
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct KvConfig {
-    /// Suffix appended to the drainer stream name (e.g. `"drainer"` →
-    /// `{shard}_{schema}_drainer`).
+    /// Suffix appended to the drainer stream name (e.g. `"DRAINER_STREAM"` →
+    /// `{shard_N}_DRAINER_STREAM`).
     pub drainer_stream_suffix: String,
     /// Number of partitions (shards) for the drainer stream.
     pub drainer_num_partitions: u8,
     /// TTL (seconds) for keys written to Redis KV.
     pub ttl_for_kv: u32,
+}
+
+#[cfg(feature = "kv")]
+impl KvConfig {
+    /// Build the Redis Stream name for a given shard key.
+    ///
+    /// Format: `{shard_key}_DRAINER_STREAM` — no tenant-id prefix, no schema
+    /// segment.  This matches the hyperswitch drainer consumer's expectation.
+    pub fn drainer_stream_name(&self, shard_key: &str) -> String {
+        format!("{{{}}}_{}", shard_key, self.drainer_stream_suffix)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -563,5 +580,20 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[cfg(feature = "kv")]
+    #[test]
+    fn drainer_stream_name_produces_expected_format() {
+        let config = KvConfig {
+            drainer_stream_suffix: "DRAINER_STREAM".to_string(),
+            drainer_num_partitions: 16,
+            ttl_for_kv: 900,
+        };
+        // No tenant-id prefix, no schema segment — just {shard_N}_DRAINER_STREAM.
+        assert_eq!(
+            config.drainer_stream_name("shard_5"),
+            "{shard_5}_DRAINER_STREAM"
+        );
     }
 }

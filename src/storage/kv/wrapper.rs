@@ -4,7 +4,7 @@ use error_stack::ResultExt;
 use hyperswitch_redis_interface::{
     RedisConnectionPool,
     errors::RedisError,
-    types::{HsetnxReply, RedisEntryId, SetnxReply},
+    types::{RedisEntryId, SetnxReply},
 };
 use serde::de;
 use tracing::debug;
@@ -42,30 +42,24 @@ pub trait KvStoreContext: RedisConnInterface {
 
 /// Reconstruct an owned [`RedisError`] from a `&RedisError`.
 ///
-/// `RedisError` does not implement `Clone`, so we compare against the known
-/// unit variants using `PartialEq` (which it does derive) and fall back to
-/// [`RedisError::UnknownResult`] for parameterised variants.
+/// `RedisError` does not implement `Clone`, so we rebuild an owned value from
+/// the variants our consumers actually discriminate.  Only
+/// [`RedisError::NotFound`], [`RedisError::SetNxFailed`] and
+/// [`RedisError::SetAddMembersFailed`] are matched explicitly — these are the
+/// sole variants that [`crate::error::kv::to_redis_failed_response`] and
+/// [`super::fallback::try_redis_get_else_try_database_get`] branch on.  Every
+/// other variant (including the parameterised ones `RedisError` does not
+/// derive `PartialEq` for) collapses to [`RedisError::UnknownResult`], which
+/// those consumers handle identically to the rest via their `_` arm.
+///
+/// When a new variant gains a distinct mapping in a consumer, extend *both*
+/// this match and the consumer together.
 fn redis_error_from_ref(err: &RedisError) -> RedisError {
-    if err == &RedisError::NotFound {
-        RedisError::NotFound
-    } else if err == &RedisError::SetNxFailed {
-        RedisError::SetNxFailed
-    } else if err == &RedisError::SetAddMembersFailed {
-        RedisError::SetAddMembersFailed
-    } else if err == &RedisError::SetHashFailed {
-        RedisError::SetHashFailed
-    } else if err == &RedisError::SetHashFieldFailed {
-        RedisError::SetHashFieldFailed
-    } else if err == &RedisError::GetHashFieldFailed {
-        RedisError::GetHashFieldFailed
-    } else if err == &RedisError::StreamAppendFailed {
-        RedisError::StreamAppendFailed
-    } else if err == &RedisError::JsonSerializationFailed {
-        RedisError::JsonSerializationFailed
-    } else if err == &RedisError::JsonDeserializationFailed {
-        RedisError::JsonDeserializationFailed
-    } else {
-        RedisError::UnknownResult
+    match err {
+        RedisError::NotFound => RedisError::NotFound,
+        RedisError::SetNxFailed => RedisError::SetNxFailed,
+        RedisError::SetAddMembersFailed => RedisError::SetAddMembersFailed,
+        _ => RedisError::UnknownResult,
     }
 }
 
@@ -84,68 +78,31 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
             error_stack::Report::new(redis_err)
         })
     }
-}// ─── KvOperation / KvResult ─────────────────────────────────────────────────
+}
+
+// ─── KvOperation / KvResult ─────────────────────────────────────────────────
 
 /// An enum to represent what operation to do on Redis.
+///
+/// Only the operations reached by the live `fingerprint` / `hash_table`
+/// `Get` + `SetNx` paths are retained; the `Hset` / `HSetNx` / `HGet` / `Scan`
+/// operations are deferred until the drainer lands (or a table needs them).
 pub enum KvOperation<'a, S: serde::Serialize + Debug> {
-    Hset((&'a str, String), SerializableQuery),
     SetNx(&'a S, SerializableQuery),
-    HSetNx(&'a str, &'a S, SerializableQuery),
-    HGet(&'a str),
     Get,
-    Scan(&'a str),
 }
 
 /// The result of a KV operation.
 #[derive(Debug)]
 pub enum KvResult<T: de::DeserializeOwned> {
-    HGet(T),
     Get(T),
-    Hset(()),
     SetNx(SetnxReply),
-    HSetNx(HsetnxReply),
-    Scan(Vec<T>),
 }
 
 impl<T: de::DeserializeOwned> KvResult<T> {
-    pub fn try_into_hget(self) -> Result<T, RedisError> {
-        match self {
-            Self::HGet(v) => Ok(v),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-
-    pub fn try_into_hset(self) -> Result<(), RedisError> {
-        match self {
-            Self::Hset(()) => Ok(()),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-
-    pub fn try_into_hsetnx(self) -> Result<HsetnxReply, RedisError> {
-        match self {
-            Self::HSetNx(v) => Ok(v),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-
     pub fn try_into_setnx(self) -> Result<SetnxReply, RedisError> {
         match self {
             Self::SetNx(v) => Ok(v),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-
-    pub fn try_into_scan(self) -> Result<Vec<T>, RedisError> {
-        match self {
-            Self::Scan(v) => Ok(v),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-
-    pub fn try_into_get(self) -> Result<T, RedisError> {
-        match self {
-            Self::Get(v) => Ok(v),
             _ => Err(RedisError::UnknownResult),
         }
     }
@@ -157,12 +114,8 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Hset(_, _) => f.write_str("Hset"),
             Self::SetNx(_, _) => f.write_str("Setnx"),
-            Self::HSetNx(_, _, _) => f.write_str("HSetNx"),
-            Self::HGet(_) => f.write_str("Hget"),
             Self::Get => f.write_str("Get"),
-            Self::Scan(_) => f.write_str("Scan"),
         }
     }
 }
@@ -189,80 +142,34 @@ where
 
     let result = async {
         match op {
-            KvOperation::Hset(value, query) => {
-                debug!(kv_operation = %operation, ?value);
-
-                redis_conn
-                    .set_hash_fields(&key.into(), vec![value], Some(i64::from(ttl)))
-                    .await
-                    .bridge()?;
-
-                push_to_drainer_stream::<S>(store, query, partition_key).await?;
-
-                Ok(KvResult::Hset(()))
-            }
-
-            KvOperation::HGet(field) => {
-                let result = redis_conn
-                    .get_hash_field_and_deserialize(&key.into(), field, type_name)
-                    .await
-                    .bridge()?;
-                Ok(KvResult::HGet(result))
-            }
-
-            KvOperation::Scan(pattern) => {
-                let result: Vec<T> = redis_conn
-                    .hscan_and_deserialize(&key.into(), pattern, None)
-                    .await
-                    .bridge()
-                    .and_then(|result| {
-                        if result.is_empty() {
-                            Err(error_stack::Report::new(RedisError::NotFound))
-                        } else {
-                            Ok(result)
-                        }
-                    })?;
-                Ok(KvResult::Scan(result))
-            }
-
-            KvOperation::HSetNx(field, value, query) => {
-                debug!(kv_operation = %operation, ?value);
-
-                value.check_for_constraints(&redis_conn).await.bridge()?;
-
-                let result = redis_conn
-                    .serialize_and_set_hash_field_if_not_exist(
-                        &key.into(),
-                        field,
-                        value,
-                        Some(ttl),
-                    )
-                    .await
-                    .bridge()?;
-
-                if matches!(result, HsetnxReply::KeySet) {
-                    push_to_drainer_stream::<S>(store, query, partition_key).await?;
-                    Ok(KvResult::HSetNx(result))
-                } else {
-                    Err(error_stack::Report::new(RedisError::SetNxFailed))
-                }
-            }
-
             KvOperation::SetNx(value, query) => {
                 debug!(kv_operation = %operation, ?value);
+
+                // Check unique constraints BEFORE setting the key.  If the
+                // constraint already exists (SADD returned 0 new members),
+                // the data was previously inserted — possibly by another
+                // request or a prior run whose key has since expired from
+                // Redis (the constraint SET has no TTL).  Signal KeyNotSet so
+                // the caller re-reads from Redis/DB instead of erroring.
+                if let Err(err) = value.check_for_constraints(&redis_conn).await.bridge() {
+                    if matches!(err.current_context(), RedisError::SetAddMembersFailed) {
+                        return Ok(KvResult::SetNx(SetnxReply::KeyNotSet));
+                    }
+                    return Err(err);
+                }
 
                 let result = redis_conn
                     .serialize_and_set_key_if_not_exist(&key.into(), value, Some(i64::from(ttl)))
                     .await
                     .bridge()?;
 
-                value.check_for_constraints(&redis_conn).await.bridge()?;
-
                 if matches!(result, SetnxReply::KeySet) {
                     push_to_drainer_stream::<S>(store, query, partition_key).await?;
                     Ok(KvResult::SetNx(result))
                 } else {
-                    Err(error_stack::Report::new(RedisError::SetNxFailed))
+                    // Key already exists (race with another request) — signal
+                    // KeyNotSet so the caller re-reads.
+                    Ok(KvResult::SetNx(SetnxReply::KeyNotSet))
                 }
             }
 
@@ -276,18 +183,26 @@ where
         }
     };
 
-    let attributes: Vec<(&str, String)> = vec![("operation", operation.clone())];
-    let attr_refs: Vec<(&str, &str)> =
-        attributes.iter().map(|(k, v)| (*k, v.as_str())).collect();
     result
         .await
         .inspect(|_| {
             debug!(kv_operation = %operation, status = "success");
-            metrics::KV_OPERATION_SUCCESSFUL.add(1, &attr_refs);
+            metrics::KV_OPERATION_SUCCESSFUL
+                .add(1, crate::metric_attributes!(("operation", operation.clone())));
         })
         .inspect_err(|err| {
-            logger::error!(kv_operation = %operation, status = "error", error = ?err);
-            metrics::KV_OPERATION_FAILED.add(1, &attr_refs);
+            // `NotFound` is a normal miss (caller falls back to DB) — log at
+            // debug, not error.  All other errors are genuine failures.
+            match err.current_context() {
+                RedisError::NotFound => {
+                    debug!(kv_operation = %operation, status = "not_found");
+                }
+                other => {
+                    logger::error!(kv_operation = %operation, status = "error", error = ?other);
+                    metrics::KV_OPERATION_FAILED
+                        .add(1, crate::metric_attributes!(("operation", operation.clone())));
+                }
+            }
         })
 }
 
@@ -307,14 +222,8 @@ where
     let shard_key = R::shard_key(partition_key, store.drainer_num_partitions());
     let stream_name = store.drainer_stream_name(&shard_key);
 
-    let metric_attributes: Vec<(&str, String)> = vec![
-        ("operation", serializable_query.operation().to_string()),
-        ("entity_type", serializable_query.entity_type()),
-    ];
-    let metric_refs: Vec<(&str, &str)> = metric_attributes
-        .iter()
-        .map(|(k, v)| (*k, v.as_str()))
-        .collect();
+    let operation_str = serializable_query.operation().to_string();
+    let entity_type_str = serializable_query.entity_type();
 
     let redis_conn = store.get_redis_conn()?;
 
@@ -328,9 +237,23 @@ where
         )
         .await
         .bridge()
-        .map(|_| metrics::KV_PUSHED_TO_DRAINER.add(1, &metric_refs))
+        .map(|_| {
+            metrics::KV_PUSHED_TO_DRAINER.add(
+                1,
+                crate::metric_attributes!(
+                    ("operation", operation_str.clone()),
+                    ("entity_type", entity_type_str.clone()),
+                ),
+            );
+        })
         .inspect_err(|error| {
-            metrics::KV_FAILED_TO_PUSH_TO_DRAINER.add(1, &metric_refs);
+            metrics::KV_FAILED_TO_PUSH_TO_DRAINER.add(
+                1,
+                crate::metric_attributes!(
+                    ("operation", operation_str.clone()),
+                    ("entity_type", entity_type_str.clone()),
+                ),
+            );
             logger::error!(?error, "Failed to add entry in drainer stream");
         })
         .change_context(RedisError::StreamAppendFailed)

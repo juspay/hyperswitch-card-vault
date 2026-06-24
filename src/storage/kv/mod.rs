@@ -6,9 +6,13 @@
 //! drainer can replay entries without modification, but it does **not** import
 //! the hyperswitch domain machinery.
 //!
-//! **Scaffolding only.** No storage table is wired yet.  The per-tenant
-//! scheme defaults to [`scheme::StorageScheme::PostgresOnly`], so default
-//! builds are unchanged.  Everything here is behind the `kv` feature.
+//! The live surface is `Get` + `SetNx` on two content-addressed tables,
+//! `fingerprint` and `hash_table`, gated behind the `kv` feature.  Per-tenant
+//! scheme config (`[tenant_secrets.<tenant>.kv.<table>]`) selects
+//! [`scheme::StorageScheme::RedisKv`] (write-through Redis + drainer stream) or
+//! [`scheme::StorageScheme::PostgresOnly`] (the default when a table is absent).
+//! `config/development.toml` enables `redis_kv` for both tables, and the
+//! `release` feature set includes `kv`.
 
 pub mod constraints;
 pub mod entity;
@@ -22,8 +26,8 @@ pub mod serializable_query;
 pub mod wrapper;
 
 pub use constraints::UniqueConstraints;
-pub use entity::{EntityType, KvSupportedEntity};
-pub use fallback::{find_all_combined_kv_database, try_redis_get_else_try_database_get};
+pub use entity::EntityType;
+pub use fallback::try_redis_get_else_try_database_get;
 pub use partition_key::{KvStorePartition, PartitionKey};
 pub use scheme::{KvTable, Op, StorageScheme, TableKvSettings, decide_storage_scheme};
 pub use serializable_query::{DatabaseOperation, SerializableQuery};

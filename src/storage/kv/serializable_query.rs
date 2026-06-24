@@ -64,25 +64,18 @@ mod pg_type_metadata {
     }
 }
 
-use std::fmt::Debug;
-
 use diesel::{
     associations::HasTable,
     debug_query,
-    dsl::{Filter, Find},
     pg::Pg,
     query_builder::{
-        bind_collector::RawBytesBindCollector, AsChangeset, AsQuery, CollectedQuery,
-        InsertStatement, IntoUpdateTarget, MoveableBindCollector, QueryBuilder, QueryFragment,
-        UpdateStatement,
+        bind_collector::RawBytesBindCollector, InsertStatement, QueryBuilder, QueryFragment,
     },
-    query_dsl::methods::{FilterDsl, FindDsl},
     query_source::Table,
     Insertable,
 };
-use diesel_async::RunQueryDsl;
 use error_stack::ResultExt;
-use hyperswitch_masking::{ExposeInterface, Secret};
+use hyperswitch_masking::Secret;
 use tracing::debug;
 
 use super::entity::EntityType;
@@ -207,44 +200,12 @@ impl SerializableQuery {
         Ok(serializable_query)
     }
 
-    fn to_collected_query(&self) -> CollectedQuery<RawBytesBindCollector<Pg>> {
-        let mut bind_collector = RawBytesBindCollector::<Pg>::new();
-        bind_collector.binds = self
-            .binds
-            .clone()
-            .into_iter()
-            .map(|option| option.map(ExposeInterface::expose))
-            .collect();
-        bind_collector.metadata = self.metadata.clone();
-
-        CollectedQuery::new(
-            self.sql.clone(),
-            self.safe_to_cache_prepared,
-            bind_collector.moveable(),
-        )
-    }
-
-    pub async fn execute(
-        self,
-        conn: &mut diesel_async::AsyncPgConnection,
-    ) -> error_stack::Result<usize, StorageError> {
-        let query = self.to_collected_query();
-
-        debug!(query = %debug_query::<Pg, _>(&query).to_string());
-
-        query
-            .execute(conn)
-            .await
-            .change_context(StorageError::InsertError)
-            .attach_printable("Failed to execute drainer query")
-    }
-
     pub fn to_field_value_pairs(
         &self,
         request_id: String,
         global_id: String,
     ) -> error_stack::Result<Vec<(&str, String)>, StorageError> {
-        let pushed_at = now_unix_timestamp();
+        let pushed_at = time::OffsetDateTime::now_utc().unix_timestamp();
 
         Ok(vec![
             (
@@ -257,10 +218,6 @@ impl SerializableQuery {
             ("pushed_at", pushed_at.to_string()),
         ])
     }
-}
-
-fn now_unix_timestamp() -> i64 {
-    time::OffsetDateTime::now_utc().unix_timestamp()
 }
 
 pub(crate) fn generate_insert_query<T, N>(
@@ -276,51 +233,6 @@ where
     let query = diesel::insert_into(<T as HasTable>::table()).values(new);
     SerializableQuery::from_query(query, entity_type, DatabaseOperation::Insert)
         .attach_printable("Failed to generate insert query")
-}
-
-#[allow(clippy::type_complexity)]
-#[allow(dead_code)]
-pub(crate) fn generate_update_query_by_id<T, V, Pk>(
-    id: Pk,
-    values: V,
-) -> error_stack::Result<SerializableQuery, StorageError>
-where
-    T: FindDsl<Pk> + HasTable<Table = T> + Table + 'static,
-    V: AsChangeset<Target = <Find<T, Pk> as HasTable>::Table> + EntityType,
-    Find<T, Pk>: IntoUpdateTarget + 'static,
-    UpdateStatement<
-        <Find<T, Pk> as HasTable>::Table,
-        <Find<T, Pk> as IntoUpdateTarget>::WhereClause,
-        <V as AsChangeset>::Changeset,
-    >: AsQuery + QueryFragment<Pg> + Send + 'static,
-    Pk: Clone,
-{
-    let entity_type = V::ENTITY_TYPE.to_owned();
-    let query = diesel::update(<T as HasTable>::table().find(id)).set(values);
-    SerializableQuery::from_query(query, entity_type, DatabaseOperation::Update)
-        .attach_printable("Failed to generate update query (with primary key)")
-}
-
-#[allow(clippy::type_complexity)]
-#[allow(dead_code)]
-pub(crate) fn generate_update_query_with_predicate<T, V, P>(
-    predicate: P,
-    values: V,
-) -> error_stack::Result<SerializableQuery, StorageError>
-where
-    T: FilterDsl<P> + HasTable<Table = T> + Table + 'static,
-    V: AsChangeset<Target = <Filter<T, P> as HasTable>::Table> + EntityType,
-    Filter<T, P>: IntoUpdateTarget + 'static,
-    UpdateStatement<
-        <Filter<T, P> as HasTable>::Table,
-        <Filter<T, P> as IntoUpdateTarget>::WhereClause,
-        <V as AsChangeset>::Changeset,
-    >: AsQuery + QueryFragment<Pg> + Send + 'static,
-{
-    let entity_type = V::ENTITY_TYPE.to_owned();
-    let query = diesel::update(<T as HasTable>::table().filter(predicate)).set(values);
-    SerializableQuery::from_query(query, entity_type, DatabaseOperation::Update)
-        .attach_printable("Failed to generate update query (with predicate)")
 }
 
 #[cfg(test)]
