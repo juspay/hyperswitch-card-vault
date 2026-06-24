@@ -22,7 +22,7 @@ dbname = "locker"
 tti = 7200 # i.e. 2 hours
 max_capacity = 5000
 
-secrets]
+[secrets]
 locker_private_key = ""
 
 [tenant_secrets]
@@ -60,7 +60,7 @@ max_feed_count = 200
 max_failure_threshold_seconds = 5
 
 [kv]
-drainer_stream_suffix = "drainer"
+drainer_stream_suffix = "DRAINER_STREAM"
 drainer_num_partitions = 16
 ttl_for_kv = 900
 
