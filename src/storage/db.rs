@@ -23,7 +23,8 @@ impl MerchantInterface for Storage {
         merchant_id: &str,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        // Reads are routed to the read replica when enabled (#171).
+        let mut conn = self.route_conn().await?;
 
         // Single SELECT; a missing row surfaces (via `?`) as `MerchantDBError::NotFoundError`.
         // Decryption of the stored DEK is the merchant-specific envelope.
@@ -55,7 +56,7 @@ impl MerchantInterface for Storage {
         key: &Self::Algorithm,
         limit: i64,
     ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
 
         let result: Result<Vec<types::MerchantInner>, ContainerError<Self::Error>> =
             schema::merchant::table
@@ -239,6 +240,18 @@ impl super::TestInterface for Storage {
 
         Ok(())
     }
+
+    async fn test_replica(&self) -> Result<(), ContainerError<Self::Error>> {
+        let mut conn = self.get_replica_conn().await?;
+
+        let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+        let _x: i32 = query
+            .get_result(&mut conn)
+            .await
+            .change_error(error::StorageError::FindError)?;
+
+        Ok(())
+    }
 }
 
 impl super::FingerprintInterface for Storage {
@@ -286,7 +299,8 @@ impl super::EntityInterface for Storage {
         &self,
         entity_id: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        // Reads are routed to the read replica when enabled (#171).
+        let mut conn = self.route_conn().await?;
 
         // A missing row surfaces as `EntityDBError::NotFoundError` (see the `From<diesel>`
         // classifier), which `find_or_create_entity` in the key manager checks via

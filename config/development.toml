@@ -53,3 +53,6 @@ max_failure_threshold_seconds = 5
 
 [metrics]
 mode = "disabled"
+
+[runtime_config]
+mode = "disabled"

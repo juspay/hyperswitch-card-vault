@@ -57,11 +57,14 @@ impl TenantAppState {
         tenant_config: TenantConfig,
         api_client: ApiClient,
         #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
+        runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
             &global_config.database,
+            global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
+            runtime_config_manager,
         )
         .await
         .map(
