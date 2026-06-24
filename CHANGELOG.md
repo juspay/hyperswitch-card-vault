@@ -4,6 +4,34 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.8.0 (2026-06-24)
+
+### Features
+
+- **fingerprint:** Support caller-supplied fingerprint ID via `x-fingerprint-id` header ([#164](https://github.com/juspay/hyperswitch-card-vault/pull/164)) ([`c2768d0`](https://github.com/juspay/hyperswitch-card-vault/commit/c2768d0d3289eb2c2e5684615249efa821880beb))
+- **storage:** Add redis support for locker ([#168](https://github.com/juspay/hyperswitch-card-vault/pull/168)) ([`6fb3d42`](https://github.com/juspay/hyperswitch-card-vault/commit/6fb3d42ac3b201c06e7786da28ace060ab17c7f4))
+- Implement upsert functionality for vault data and add error handling for updates ([#158](https://github.com/juspay/hyperswitch-card-vault/pull/158)) ([`a9fd7fa`](https://github.com/juspay/hyperswitch-card-vault/commit/a9fd7fab3246bf4c06e8f0bbf88646d1013cb37b))
+- Add support to export metrics in OpenTelemetry or Prometheus formats ([#169](https://github.com/juspay/hyperswitch-card-vault/pull/169)) ([`9f3011d`](https://github.com/juspay/hyperswitch-card-vault/commit/9f3011dd83df49ecf167bbe7bf8b019b16dddfe7))
+
+### Bug Fixes
+
+- **config:** Fix failures in parsing metrics port from environment variables ([#173](https://github.com/juspay/hyperswitch-card-vault/pull/173)) ([`539f61e`](https://github.com/juspay/hyperswitch-card-vault/commit/539f61ee9a6cbfcbb3bf81d8c395dc413a250532))
+
+### Refactors
+
+- Migrate to use `build_info` and `log_utils` crates for build information and logging framework ([#161](https://github.com/juspay/hyperswitch-card-vault/pull/161)) ([`b5ca83a`](https://github.com/juspay/hyperswitch-card-vault/commit/b5ca83a4d4805243c60aaee214b67e1fef12dca6))
+- Rename package from `tartarus` to `hyperswitch-card-vault` ([#165](https://github.com/juspay/hyperswitch-card-vault/pull/165)) ([`ea99b64`](https://github.com/juspay/hyperswitch-card-vault/commit/ea99b646c763612aa493ea87a86b36f2873ff67e))
+
+### Build System / Dependencies
+
+- **deps:** Pull `hyperswitch_masking` from `crates.io` instead of as a git dependency ([#159](https://github.com/juspay/hyperswitch-card-vault/pull/159)) ([`59ddad0`](https://github.com/juspay/hyperswitch-card-vault/commit/59ddad049221930f611034e46e7fee1bb43747e7))
+- Bump edition to 2024 ([#160](https://github.com/juspay/hyperswitch-card-vault/pull/160)) ([`c7d2ad1`](https://github.com/juspay/hyperswitch-card-vault/commit/c7d2ad1be58259abda869fbdd2ffe2155282f2a0))
+
+**Full Changelog:** [`v0.7.0...v0.8.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.7.0...v0.8.0)
+
+- - -
+
+
 ## 0.7.0 (2026-02-24)
 
 ### Features
