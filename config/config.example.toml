@@ -120,3 +120,19 @@ ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 #   storage_scheme = "redis_kv"
 #   soft_kill = false
 
+# Metrics configuration: export metrics for monitoring.
+# - disabled: no metrics exported
+# - otlp: configure endpoint, endpoint_timeout_secs, metrics_export_interval_secs
+# - prometheus: configure host, port (scraped at /metrics on a separate HTTP server)
+[metrics]
+mode = "otlp" # Options: "disabled", "otlp", "prometheus"
+
+# When mode is "otlp", configure endpoint, endpoint_timeout_secs and metrics_export_interval_secs:
+endpoint = "http://localhost:4317" # OTLP gRPC endpoint
+endpoint_timeout_secs = 10         # OTLP exporter connection timeout (seconds)
+metrics_export_interval_secs = 60  # How often to export metrics (seconds)
+
+# When mode is "prometheus", configure host and port:
+# host = "127.0.0.1" # IP address the Prometheus HTTP server binds to
+# port = 9090        # Port the Prometheus HTTP server listens on
+

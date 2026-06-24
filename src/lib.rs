@@ -7,6 +7,7 @@ pub mod error;
 pub mod logger;
 #[cfg(feature = "middleware")]
 pub mod middleware;
+pub mod observability;
 pub mod routes;
 pub mod storage;
 pub mod tenant;
