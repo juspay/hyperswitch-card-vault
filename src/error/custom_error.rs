@@ -90,6 +90,20 @@ pub enum EntityDBError {
     NotFoundError,
 }
 
+#[derive(Debug, Copy, Clone, thiserror::Error)]
+pub enum ReverseLookupDBError {
+    #[error("Error while connecting to database")]
+    DBError,
+    #[error("Error while finding reverse lookup record in the database")]
+    DBFilterError,
+    #[error("Error while inserting reverse lookup record in the database")]
+    DBInsertError,
+    #[error("Reverse lookup record not found in database")]
+    NotFoundError,
+    #[error("Unpredictable error occurred")]
+    UnknownError,
+}
+
 pub trait NotFoundError {
     fn is_not_found(&self) -> bool;
 }
@@ -103,5 +117,14 @@ impl NotFoundError for super::ContainerError<MerchantDBError> {
 impl NotFoundError for super::ContainerError<EntityDBError> {
     fn is_not_found(&self) -> bool {
         matches!(self.error.current_context(), EntityDBError::NotFoundError)
+    }
+}
+
+impl NotFoundError for super::ContainerError<ReverseLookupDBError> {
+    fn is_not_found(&self) -> bool {
+        matches!(
+            self.error.current_context(),
+            ReverseLookupDBError::NotFoundError
+        )
     }
 }

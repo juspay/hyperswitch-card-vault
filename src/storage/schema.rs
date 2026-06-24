@@ -58,6 +58,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    reverse_lookup (lookup_id) {
+        #[max_length = 255]
+        lookup_id -> Varchar,
+        #[max_length = 50]
+        sk_id -> Varchar,
+        #[max_length = 255]
+        pk_id -> Varchar,
+        #[max_length = 30]
+        source -> Varchar,
+    }
+}
+
+diesel::table! {
     vault (entity_id, vault_id) {
         id -> Int4,
         #[max_length = 255]
@@ -76,5 +89,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     hash_table,
     locker,
     merchant,
+    reverse_lookup,
     vault,
 );

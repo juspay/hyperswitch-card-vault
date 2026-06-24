@@ -444,3 +444,45 @@ impl super::EntityInterface for Storage {
             .map_err(From::from)
     }
 }
+
+impl super::ReverseLookupInterface for Storage {
+    type Error = error::ReverseLookupDBError;
+
+    async fn find_by_lookup_id(
+        &self,
+        lookup_id: &str,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        let output: Result<types::ReverseLookup, diesel::result::Error> =
+            types::ReverseLookup::table()
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
+                .get_result(&mut conn)
+                .await;
+
+        match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(reverse_lookup) => Ok(reverse_lookup),
+        }
+        .map_err(From::from)
+    }
+
+    async fn insert_reverse_lookup(
+        &self,
+        new: types::ReverseLookupNew,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        diesel::insert_into(types::ReverseLookup::table())
+            .values(new)
+            .get_result(&mut conn)
+            .await
+            .change_error(error::StorageError::InsertError)
+            .map_err(From::from)
+    }
+}
