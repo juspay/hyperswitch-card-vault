@@ -326,6 +326,40 @@ impl<'a> From<&'a super::EntityDBError> for super::ApiError {
     }
 }
 
+error_transform!(super::StorageError => super::ReverseLookupDBError);
+impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
+    fn from(value: &'a super::StorageError) -> Self {
+        match value {
+            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
+                Self::DBError
+            }
+            super::StorageError::FindError => Self::DBFilterError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
+            super::StorageError::DecryptionError
+            | super::StorageError::EncryptionError
+            | super::StorageError::DeleteError => Self::UnknownError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
+        }
+    }
+}
+
+error_transform!(super::ReverseLookupDBError => super::ApiError);
+impl<'a> From<&'a super::ReverseLookupDBError> for super::ApiError {
+    fn from(value: &'a super::ReverseLookupDBError) -> Self {
+        match value {
+            super::ReverseLookupDBError::DBError => Self::DatabaseError,
+            super::ReverseLookupDBError::DBFilterError => Self::RetrieveDataFailed("reverse lookup"),
+            super::ReverseLookupDBError::DBInsertError => {
+                Self::DatabaseInsertFailed("reverse lookup")
+            }
+            super::ReverseLookupDBError::NotFoundError => Self::NotFoundError,
+            super::ReverseLookupDBError::UnknownError => Self::UnknownError,
+        }
+    }
+}
+
 error_transform!(super::KeyManagerError => super::ApiError);
 impl<'a> From<&'a super::KeyManagerError> for super::ApiError {
     fn from(value: &'a super::KeyManagerError) -> Self {

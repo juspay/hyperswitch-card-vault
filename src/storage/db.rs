@@ -387,7 +387,9 @@ impl super::FingerprintInterface for Storage {
             let settings = self.kv_settings_for(super::kv::KvTable::Fingerprint);
             let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Insert);
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
-                return self.get_or_insert_fingerprint_kv(data, key, fingerprint_id).await;
+                return self
+                    .get_or_insert_fingerprint_kv(data, key, fingerprint_id)
+                    .await;
             }
         }
 
@@ -597,8 +599,8 @@ mod kv_helpers {
             }
 
             // Not found — insert via SetNx + drainer
-            let id = fingerprint_id
-                .unwrap_or_else(|| utils::generate_nano_id(consts::ID_LENGTH).into());
+            let id =
+                fingerprint_id.unwrap_or_else(|| utils::generate_nano_id(consts::ID_LENGTH).into());
             let new_fingerprint = types::FingerprintTableNew {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id: id,
@@ -610,11 +612,11 @@ mod kv_helpers {
             };
             let key_str = partition_key.to_string();
 
-            let drainer_query =
-                serializable_query::generate_insert_query::<schema::fingerprint::table, _>(
-                    new_fingerprint.clone(),
-                )
-                .change_context(error::FingerprintDBError::DBInsertError)?;
+            let drainer_query = serializable_query::generate_insert_query::<
+                schema::fingerprint::table,
+                _,
+            >(new_fingerprint.clone())
+            .change_context(error::FingerprintDBError::DBInsertError)?;
 
             let result = kv_wrapper::<(), types::FingerprintTableNew>(
                 self,
@@ -638,14 +640,13 @@ mod kv_helpers {
                         updated_by: new_fingerprint.updated_by,
                     })
                 }
-                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
-                    self.find_by_fingerprint_hash_kv(&fingerprint_hash)
-                        .await?
-                        .ok_or_else(|| {
-                            ContainerError::from(error::FingerprintDBError::DBInsertError)
-                        })
-                }
-                Err(_) => Err(ContainerError::from(error::FingerprintDBError::DBInsertError)),
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => self
+                    .find_by_fingerprint_hash_kv(&fingerprint_hash)
+                    .await?
+                    .ok_or_else(|| ContainerError::from(error::FingerprintDBError::DBInsertError)),
+                Err(_) => Err(ContainerError::from(
+                    error::FingerprintDBError::DBInsertError,
+                )),
             }
         }
 
@@ -659,13 +660,12 @@ mod kv_helpers {
 
             let result = try_redis_get_else_try_database_get(
                 async {
-                    let kv_result =
-                        kv_wrapper::<types::HashTableNew, types::HashTableNew>(
-                            self,
-                            KvOperation::<types::HashTableNew>::Get,
-                            partition_key,
-                        )
-                        .await?;
+                    let kv_result = kv_wrapper::<types::HashTableNew, types::HashTableNew>(
+                        self,
+                        KvOperation::<types::HashTableNew>::Get,
+                        partition_key,
+                    )
+                    .await?;
                     match kv_result {
                         KvResult::Get(v) => Ok(types::HashTable {
                             id: 0,
@@ -741,11 +741,11 @@ mod kv_helpers {
             };
             let key_str = partition_key.to_string();
 
-            let drainer_query =
-                serializable_query::generate_insert_query::<schema::hash_table::table, _>(
-                    new_hash.clone(),
-                )
-                .change_context(error::HashDBError::DBInsertError)?;
+            let drainer_query = serializable_query::generate_insert_query::<
+                schema::hash_table::table,
+                _,
+            >(new_hash.clone())
+            .change_context(error::HashDBError::DBInsertError)?;
 
             let result = kv_wrapper::<(), types::HashTableNew>(
                 self,
@@ -770,13 +770,53 @@ mod kv_helpers {
                         updated_by: new_hash.updated_by,
                     })
                 }
-                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
-                    self.find_by_data_hash_kv(&data_hash)
-                        .await?
-                        .ok_or_else(|| ContainerError::from(error::HashDBError::DBInsertError))
-                }
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => self
+                    .find_by_data_hash_kv(&data_hash)
+                    .await?
+                    .ok_or_else(|| ContainerError::from(error::HashDBError::DBInsertError)),
                 Err(_) => Err(ContainerError::from(error::HashDBError::DBInsertError)),
             }
         }
+    }
+}
+impl super::ReverseLookupInterface for Storage {
+    type Error = error::ReverseLookupDBError;
+
+    async fn find_by_lookup_id(
+        &self,
+        lookup_id: &str,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        let output: Result<types::ReverseLookup, diesel::result::Error> =
+            types::ReverseLookup::table()
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
+                .get_result(&mut conn)
+                .await;
+
+        match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(reverse_lookup) => Ok(reverse_lookup),
+        }
+        .map_err(From::from)
+    }
+
+    async fn insert_reverse_lookup(
+        &self,
+        new: types::ReverseLookupNew,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        diesel::insert_into(types::ReverseLookup::table())
+            .values(new)
+            .get_result(&mut conn)
+            .await
+            .change_error(error::StorageError::InsertError)
+            .map_err(From::from)
     }
 }
