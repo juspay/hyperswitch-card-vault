@@ -145,8 +145,8 @@ impl<'a> LockerNew<'a> {
 #[allow(dead_code)]
 pub(crate) struct ReverseLookup {
     pub lookup_id: Vec<u8>,
-    pub sk_id: String,
-    pub pk_id: String,
+    pub secondary_key: String,
+    pub partition_key: String,
     pub source: String,
 }
 
@@ -154,8 +154,8 @@ pub(crate) struct ReverseLookup {
 #[diesel(table_name = schema::reverse_lookup)]
 pub(crate) struct ReverseLookupNew {
     pub lookup_id: Vec<u8>,
-    pub sk_id: String,
-    pub pk_id: String,
+    pub secondary_key: String,
+    pub partition_key: String,
     pub source: String,
 }
 
@@ -163,8 +163,8 @@ impl From<ReverseLookupNew> for ReverseLookup {
     fn from(value: ReverseLookupNew) -> Self {
         Self {
             lookup_id: value.lookup_id,
-            sk_id: value.sk_id,
-            pk_id: value.pk_id,
+            secondary_key: value.secondary_key,
+            partition_key: value.partition_key,
             source: value.source,
         }
     }

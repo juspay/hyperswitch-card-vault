@@ -324,8 +324,8 @@ pub(crate) trait FingerprintInterface {
 /// ReverseLookupInterface:
 ///
 /// Interface for interacting with the reverse_lookup database table.
-/// The table maps an external lookup_id to the primary key (pk_id) and
-/// secondary key (sk_id) along with the source of insertion.
+/// The table maps an external lookup_id to the partition key and
+/// secondary key along with the source of insertion.
 pub(crate) trait ReverseLookupInterface {
     type Error;
 

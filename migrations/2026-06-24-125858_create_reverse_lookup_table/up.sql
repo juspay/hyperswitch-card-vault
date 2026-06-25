@@ -2,8 +2,8 @@
 
 CREATE TABLE IF NOT EXISTS reverse_lookup (
     lookup_id BYTEA NOT NULL PRIMARY KEY,
-    sk_id VARCHAR NOT NULL,
-    pk_id VARCHAR NOT NULL,
+    secondary_key VARCHAR NOT NULL,
+    partition_key VARCHAR NOT NULL,
     source VARCHAR NOT NULL
 );
 
