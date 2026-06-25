@@ -88,7 +88,7 @@ impl KvStorePartition for ReverseLookupNew {}
 
 impl UniqueConstraints for ReverseLookup {
     fn unique_constraints(&self) -> Vec<String> {
-        vec![self.lookup_id.clone()]
+        vec![hex::encode(&self.lookup_id)]
     }
 
     fn table_name(&self) -> &str {
@@ -98,7 +98,7 @@ impl UniqueConstraints for ReverseLookup {
 
 impl UniqueConstraints for ReverseLookupNew {
     fn unique_constraints(&self) -> Vec<String> {
-        vec![self.lookup_id.clone()]
+        vec![hex::encode(&self.lookup_id)]
     }
 
     fn table_name(&self) -> &str {

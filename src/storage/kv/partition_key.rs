@@ -8,7 +8,7 @@
 /// |--------------|-----------------------------------------------------|
 /// | fingerprint     | `fingerprint_{fingerprint_hash_hex}`               |
 /// | hash_table      | `hash_{data_hash_hex}` (content-addressed)         |
-/// | reverse_lookup  | `reverse_lookup_{lookup_id}`                        |
+/// | reverse_lookup  | `reverse_lookup_{lookup_id_hex}`                    |
 ///
 /// `fingerprint` and `hash_table` are content-addressed (found by their hash).
 /// `reverse_lookup` is keyed by its `lookup_id`.  `locker` and `vault` variants
@@ -28,7 +28,7 @@ pub enum PartitionKey<'a> {
     },
     /// Partition key for the `reverse_lookup` table, keyed by `lookup_id`.
     ReverseLookup {
-        lookup_id: &'a str,
+        lookup_id: &'a [u8],
     },
 }
 
@@ -43,7 +43,7 @@ impl std::fmt::Display for PartitionKey<'_> {
             )),
             Self::Hash { data_hash } => f.write_str(&format!("hash_{}", hex::encode(data_hash))),
             Self::ReverseLookup { lookup_id } => {
-                f.write_str(&format!("reverse_lookup_{lookup_id}"))
+                f.write_str(&format!("reverse_lookup_{}", hex::encode(lookup_id)))
             }
         }
     }
@@ -90,9 +90,12 @@ mod tests {
     #[test]
     fn partition_key_display_reverse_lookup() {
         let key = PartitionKey::ReverseLookup {
-            lookup_id: "lookup_123",
+            lookup_id: b"lookup_123",
         };
-        assert_eq!(key.to_string(), "reverse_lookup_lookup_123");
+        assert_eq!(
+            key.to_string(),
+            format!("reverse_lookup_{}", hex::encode(b"lookup_123"))
+        );
     }
 
     #[test]

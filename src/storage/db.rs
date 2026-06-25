@@ -782,7 +782,7 @@ mod kv_helpers {
 
         pub(crate) async fn find_by_lookup_id_kv(
             &self,
-            lookup_id: &str,
+            lookup_id: &[u8],
         ) -> Result<types::ReverseLookup, ContainerError<error::ReverseLookupDBError>> {
             let partition_key = PartitionKey::ReverseLookup { lookup_id };
 
@@ -827,7 +827,7 @@ mod kv_helpers {
 
         pub(crate) async fn find_by_lookup_id_pg(
             &self,
-            lookup_id: &str,
+            lookup_id: &[u8],
         ) -> error_stack::Result<Option<types::ReverseLookup>, error::StorageError> {
             let mut conn = self
                 .get_conn()
@@ -899,7 +899,7 @@ impl super::ReverseLookupInterface for Storage {
 
     async fn find_by_lookup_id(
         &self,
-        lookup_id: &str,
+        lookup_id: &[u8],
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {

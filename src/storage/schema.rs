@@ -61,8 +61,7 @@ diesel::table! {
 
 diesel::table! {
     reverse_lookup (lookup_id) {
-        #[max_length = 255]
-        lookup_id -> Varchar,
+        lookup_id -> Bytea,
         #[max_length = 50]
         sk_id -> Varchar,
         #[max_length = 255]
