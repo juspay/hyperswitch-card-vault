@@ -11,6 +11,23 @@ curl -X GET http://localhost:3001/health -H 'x-tenant-id: public' -H 'content-ty
 }
 ```
 
+### Create entity — explicit provisioning (idempotent)
+```bash
+curl -X POST http://localhost:3001/entity -H 'x-tenant-id: public' -H 'content-type: application/json' \
+  -d '{"entity_id":"merchant_ext"}'
+```
+**Response — `HTTP 200`**
+```json
+{
+  "entity_id": "merchant_ext",
+  "created_at": "2026-06-24T19:27:37.552Z"
+}
+```
+Calling again with the same `entity_id` returns `HTTP 200` with the identical record (no new key
+created in the key manager, no new row). Once provisioned, the add-card / vault flows below find the
+existing entity and skip the deprecated lazy auto-create path (no `add_flow_auto_create` warning is
+logged). Blank `entity_id` → `HTTP 400`; missing `entity_id` field → `HTTP 422`; missing `x-tenant-id` → `HTTP 400`.
+
 ### Add card — new (no duplication)
 ```bash
 curl -X POST http://localhost:3001/data/add -H 'x-tenant-id: public' -H 'content-type: application/json' \

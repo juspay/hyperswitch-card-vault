@@ -114,6 +114,57 @@ want_code 200 "TC5.6 vault delete existing"
 req POST /api/v2/vault/delete "{\"entity_id\":\"$EID\",\"vault_id\":\"missing-$RUN\"}"
 want_code 200 "TC5.7 vault delete missing → 200 (idempotent)"
 
+echo "[entity provisioning]"
+# Explicit, idempotent provisioning endpoint. Backing table is config-driven:
+# `merchant` (internal key manager) or `entity` (external key manager).
+PENT="prov_$RUN"
+req POST /entity "{\"entity_id\":\"$PENT\"}"
+want_code 200 "TC6.1 POST /entity create new"
+want "$(jqv '.entity_id')" "$PENT" "TC6.1 entity_id echoed back"
+CA1=$(jqv '.created_at|tostring'); [[ -n $CA1 && $CA1 != null ]] && ok "TC6.1 created_at present ($CA1)" || bad "TC6.1 no created_at"
+
+req POST /entity "{\"entity_id\":\"$PENT\"}"
+want_code 200 "TC6.2 POST /entity again → 200 (idempotent)"
+want "$(jqv '.created_at|tostring')" "$CA1" "TC6.2 same created_at → no new record  [find-or-create]"
+
+req POST /entity '{"entity_id":"  "}'
+want_code 400 "TC6.3 blank entity_id → 400  [validation]"
+
+req POST /entity '{}'
+want_code 422 "TC6.4 missing entity_id field → 422  [deserialization]"
+
+req POST /entity '{"entity_id":"x"}' "" no_tenant
+want_code 400 "TC6.5 missing x-tenant-id → 400"
+
+# Full lifecycle on one pre-provisioned entity: every downstream add finds the existing
+# record and must NOT take the deprecated lazy auto-create path. Both the v1 card flow
+# (merchant_id) and the v2 vault flow (entity_id) key off the same provisioned id.
+E2E="prov_e2e_$RUN"
+req POST /entity "{\"entity_id\":\"$E2E\"}"
+want_code 200 "TC6.6 provision entity up-front"
+req POST /data/add "{\"merchant_id\":\"$E2E\",\"merchant_customer_id\":\"$CID\",\"card\":$CARD,\"ttl\":3600}"
+want_code 200 "TC6.6 add card on pre-provisioned entity"
+E2EREF=$(jqv '.payload.card_reference')
+req POST /data/retrieve "{\"merchant_id\":\"$E2E\",\"merchant_customer_id\":\"$CID\",\"card_reference\":\"$E2EREF\"}"
+want "$(jqv '.payload.card.card_number')" "4111111111111111" "TC6.6 retrieve card round-trips"
+req POST /api/v2/vault/add "{\"entity_id\":\"$E2E\",\"vault_id\":\"vault_$RUN\",\"data\":{\"acct\":\"123\"},\"ttl\":3600}"
+want_code 200 "TC6.6 vault add on same entity"
+req POST /api/v2/vault/retrieve "{\"entity_id\":\"$E2E\",\"vault_id\":\"vault_$RUN\"}"
+want "$(jqv '.data.acct')" "123" "TC6.6 vault retrieve round-trips"
+req POST /data/delete "{\"merchant_id\":\"$E2E\",\"merchant_customer_id\":\"$CID\",\"card_reference\":\"$E2EREF\"}"
+want_code 200 "TC6.6 delete card"
+req POST /data/retrieve "{\"merchant_id\":\"$E2E\",\"merchant_customer_id\":\"$CID\",\"card_reference\":\"$E2EREF\"}"
+want_code 404 "TC6.6 retrieve after delete → 404"
+# Optional: with LOG=<server log file>, assert the migration signal stayed silent for the
+# pre-provisioned entity (no auto-create happened at any step).
+if [[ -n "${LOG:-}" && -f "${LOG:-}" ]]; then
+  if grep "add_flow_auto_create" "$LOG" | grep -q "$E2E"; then
+    bad "TC6.6 unexpected add_flow_auto_create warn for pre-provisioned $E2E"
+  else
+    ok "TC6.6 no auto-create warn for pre-provisioned entity  [migration signal silent]"
+  fi
+fi
+
 echo "[delete card]"
 req POST /data/delete "{\"merchant_id\":\"$MID\",\"merchant_customer_id\":\"$CID\",\"card_reference\":\"$REF\"}"
 want_code 200 "TC3.1 delete card"
