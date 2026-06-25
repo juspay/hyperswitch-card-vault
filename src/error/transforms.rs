@@ -304,9 +304,9 @@ error_transform!(super::StorageError => super::ReverseLookupDBError);
 impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
-            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
-                Self::DBError
-            }
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::NotFoundError => Self::NotFoundError,
             super::StorageError::DecryptionError
