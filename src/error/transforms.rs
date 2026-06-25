@@ -149,6 +149,7 @@ impl<'a> From<&'a super::FingerprintDBError> for super::ApiError {
             super::FingerprintDBError::DBError => Self::DatabaseError,
             super::FingerprintDBError::DBFilterError => Self::RetrieveDataFailed("fingerprint"),
             super::FingerprintDBError::DBInsertError => Self::DatabaseInsertFailed("fingerprint"),
+            super::FingerprintDBError::Duplicate => Self::DatabaseInsertFailed("fingerprint"),
             super::FingerprintDBError::UnknownError => Self::UnknownError,
         }
     }
@@ -180,6 +181,7 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
                                                          // occur because of master key failure
             super::MerchantDBError::DBError |
             super::MerchantDBError::DBFilterError |
+            super::MerchantDBError::Duplicate |
             super::MerchantDBError::DBInsertError=> Self::MerchantError,
             super::MerchantDBError::NotFoundError=> Self::NotFoundError,
             super::MerchantDBError::UnknownError => Self::UnknownError
@@ -200,6 +202,7 @@ impl<'a> From<&'a super::VaultDBError> for super::ApiError {
             super::VaultDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
             super::VaultDBError::UnknownError => Self::UnknownError,
             super::VaultDBError::NotFoundError => Self::NotFoundError,
+            super::VaultDBError::Duplicate => Self::DatabaseInsertFailed("locker"),
         }
     }
 }
@@ -211,6 +214,7 @@ impl<'a> From<&'a super::HashDBError> for super::ApiError {
             super::HashDBError::DBError => Self::DatabaseError,
             super::HashDBError::DBFilterError => Self::RetrieveDataFailed("hash table"),
             super::HashDBError::DBInsertError => Self::DatabaseInsertFailed("hash table"),
+            super::HashDBError::Duplicate => Self::DatabaseInsertFailed("hash table"),
             super::HashDBError::UnknownError => Self::UnknownError,
         }
     }
@@ -289,6 +293,7 @@ impl<'a> From<&'a super::EntityDBError> for super::ApiError {
             super::EntityDBError::DBError => Self::DatabaseError,
             super::EntityDBError::DBFilterError => Self::RetrieveDataFailed("entity"),
             super::EntityDBError::DBInsertError => Self::DatabaseInsertFailed("entity"),
+            super::EntityDBError::Duplicate => Self::DatabaseInsertFailed("entity"),
             super::EntityDBError::UnknownError => Self::UnknownError,
             super::EntityDBError::NotFoundError => Self::NotFoundError,
         }
@@ -330,6 +335,7 @@ impl<'a> From<&'a super::EntityDBError> for super::KeyManagerError {
             super::EntityDBError::DBError
             | super::EntityDBError::DBFilterError
             | super::EntityDBError::DBInsertError
+            | super::EntityDBError::Duplicate
             | super::EntityDBError::UnknownError
             | super::EntityDBError::NotFoundError => Self::DbError,
         }
