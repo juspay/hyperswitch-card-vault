@@ -46,8 +46,7 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
             | super::StorageError::ValueNotFound(_)
             | super::StorageError::DuplicateValue { .. }
             | super::StorageError::KVError
-            | super::StorageError::SerializationFailed
-            | super::StorageError::DeserializationFailed => Self::NotFoundError,
+            | super::StorageError::SerializationFailed => Self::NotFoundError,
         }
     }
 }
@@ -72,8 +71,7 @@ impl<'a> From<&'a super::StorageError> for super::VaultDBError {
             }
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
             super::StorageError::KVError
-            | super::StorageError::SerializationFailed
-            | super::StorageError::DeserializationFailed => Self::UnknownError,
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -96,8 +94,7 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
             super::StorageError::ValueNotFound(_) => Self::DBFilterError,
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
             super::StorageError::KVError
-            | super::StorageError::SerializationFailed
-            | super::StorageError::DeserializationFailed => Self::UnknownError,
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -121,8 +118,7 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
             super::StorageError::ValueNotFound(_) => Self::UnknownError,
             super::StorageError::DuplicateValue { .. } => Self::DBWriteError,
             super::StorageError::KVError
-            | super::StorageError::SerializationFailed
-            | super::StorageError::DeserializationFailed => Self::UnknownError,
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -147,8 +143,7 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             }
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
             super::StorageError::KVError
-            | super::StorageError::SerializationFailed
-            | super::StorageError::DeserializationFailed => Self::UnknownError,
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -292,8 +287,7 @@ impl<'a> From<&'a super::StorageError> for super::EntityDBError {
             }
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
             super::StorageError::KVError
-            | super::StorageError::SerializationFailed
-            | super::StorageError::DeserializationFailed => Self::UnknownError,
+            | super::StorageError::SerializationFailed => Self::UnknownError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,

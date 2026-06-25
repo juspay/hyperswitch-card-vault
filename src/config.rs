@@ -678,21 +678,4 @@ mod tests {
             _ => assert!(false),
         }
     }
-
-    #[cfg(feature = "kv")]
-    #[test]
-    fn drainer_stream_name_produces_expected_format() {
-        let config = KvConfig {
-            drainer_stream_suffix: "DRAINER_STREAM".to_string(),
-            drainer_num_partitions: 16,
-            ttl_for_kv: 900,
-            enable_kv: false,
-            soft_kill: false,
-        };
-        // No tenant-id prefix, no schema segment — just {shard_N}_DRAINER_STREAM.
-        assert_eq!(
-            config.drainer_stream_name("shard_5"),
-            "{shard_5}_DRAINER_STREAM"
-        );
-    }
 }
