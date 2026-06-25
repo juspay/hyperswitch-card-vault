@@ -76,10 +76,21 @@ impl VaultInterface for Storage {
                         return Ok(types::Vault::from(kv_value));
                     }
                     Ok(hyperswitch_redis_interface::types::HsetnxReply::KeyNotSet) => {
-                        // Key already exists — fall through to PG which will
-                        // hit UniqueViolation and the domain layer retries with find.
+                        // Key already exists in Redis — return a duplicate
+                        // error so the domain layer (get_or_insert / upsert)
+                        // can take the appropriate fallback path.  Do NOT
+                        // fall through to PG: the drainer may not have flushed
+                        // the original insert yet, which would let the PG
+                        // insert succeed and mask the duplicate (race).
+                        return Err(ContainerError::from(
+                            error::VaultDBError::Duplicate,
+                        ));
                     }
-                    Err(_) => return Err(ContainerError::from(error::VaultDBError::DBInsertError)),
+                    Err(_) => {
+                        return Err(ContainerError::from(
+                            error::VaultDBError::DBInsertError,
+                        ))
+                    }
                 }
             }
         }

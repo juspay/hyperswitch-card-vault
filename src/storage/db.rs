@@ -149,8 +149,15 @@ impl super::LockerInterface for Storage {
                         return Ok(types::Locker::from(kv_value));
                     }
                     Ok(hyperswitch_redis_interface::types::HsetnxReply::KeyNotSet) => {
-                        // Key already exists — fall through to PG which will
-                        // hit UniqueViolation and the domain layer retries with find.
+                        // Key already exists in Redis — return a duplicate
+                        // error so the domain layer (get_or_insert) can
+                        // fall back to find.  Do NOT fall through to PG:
+                        // the drainer may not have flushed the original
+                        // insert yet, which would let the PG insert succeed
+                        // and mask the duplicate (race).
+                        return Err(ContainerError::from(
+                            error::VaultDBError::Duplicate,
+                        ));
                     }
                     Err(_) => return Err(ContainerError::from(error::VaultDBError::DBInsertError)),
                 }
@@ -342,7 +349,10 @@ impl super::HashInterface for Storage {
                     }
                     Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
                         // hash_id collision (extremely unlikely with UUID) —
-                        // fall through to PG.
+                        // return a duplicate so the domain layer can fall
+                        // back to find.  Do NOT fall through to PG (race
+                        // with drainer).
+                        return Err(ContainerError::from(error::HashDBError::Duplicate));
                     }
                     Err(_) => return Err(ContainerError::from(error::HashDBError::DBInsertError)),
                 }
@@ -524,8 +534,12 @@ impl super::FingerprintInterface for Storage {
                         });
                     }
                     Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
-                        // Key already exists — fall through to PG which will
-                        // hit UniqueViolation and the domain layer retries with find.
+                        // Key already exists in Redis — return a duplicate
+                        // so the domain layer can fall back to find.  Do NOT
+                        // fall through to PG (race with drainer).
+                        return Err(ContainerError::from(
+                            error::FingerprintDBError::Duplicate,
+                        ));
                     }
                     Err(_) => {
                         return Err(ContainerError::from(error::FingerprintDBError::DBInsertError))

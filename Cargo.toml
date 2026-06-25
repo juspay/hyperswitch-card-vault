@@ -8,7 +8,7 @@ rust-version = "1.85"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["caching"]
+default = ["caching", "kv"]
 release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager", "vergen", "redis", "kv"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
@@ -17,7 +17,7 @@ middleware = []
 key_custodian = []
 caching = ["dep:moka"]
 redis = ["dep:hyperswitch_redis_interface"]
-kv = ["redis", "dep:crc32fast", "dep:strum", "dep:error-stack-04"]
+kv = ["redis", "caching", "dep:crc32fast", "dep:strum", "dep:error-stack-04"]
 console = ["tokio/tracing", "dep:console-subscriber"]
 external_key_manager = ["reqwest/rustls-tls"]
 vergen = ["build_info/vergen-gix"]
@@ -62,7 +62,7 @@ error-stack = "0.5.0"
 futures-util = "0.3.30"
 digest = "0.10"
 hyperswitch_masking = { version = "0.0.1", features = ["diesel", "serde"] }
-hyperswitch_redis_interface = { git = "https://github.com/juspay/hyperswitch", branch = "hdel_addition_redis_interface", package = "redis_interface", default-features = false, features = ["fred", "metrics"], optional = true }
+hyperswitch_redis_interface = { git = "https://github.com/juspay/hyperswitch", tag = "2026.06.25.0" , package = "redis_interface", default-features = false, features = ["fred", "metrics"], optional = true }
 ring = { version = "0.17.14", features = ["std"] }
 hex = "0.4.3"
 time = { version = "0.3.45", features = ["serde"] }

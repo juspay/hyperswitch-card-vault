@@ -27,13 +27,12 @@ pub(crate) struct TableKvSettings {
 pub(crate) enum Op<'a> {
     Insert,
     Find,
-    /// Update operation.  Under soft-kill, the store is probed with an `HGet`
-    /// to check whether the key exists in Redis.  If it does, the update
-    /// goes through Redis; otherwise it falls back to Postgres.
-    ///
-    /// `updated_by` is the scheme the *caller* intends to write; if it is
-    /// `RedisKv` the update goes through Redis even when the existing row
-    /// was last written by Postgres.
+    /// Update operation.  Under soft-kill, the `updated_by` field determines
+    /// the behaviour:
+    /// - `Some(PostgresOnly)` → `PostgresOnly` (no probe — record is PG-only)
+    /// - `None` → `PostgresOnly` (no probe — no scheme recorded)
+    /// - `Some(RedisKv)` → probe Redis with `HGet`; if the key is still
+    ///   present → `RedisKv` (metric bumped); if missing/err → `PostgresOnly`
     Update(PartitionKey<'a>, Option<StorageScheme>),
 }
 
@@ -55,11 +54,15 @@ impl std::fmt::Display for Op<'_> {
 /// unchanged.
 ///
 /// When soft-kill is **on** (the gradual-rollout mode):
-/// - `Insert` → `PostgresOnly` (writes still go to Postgres)
-/// - `Find` → `RedisKv` (reads try Redis first)
-/// - `Update` → probe Redis with `HGet`; if the key exists and was last
-///   written by Redis (`updated_by == RedisKv`), or the caller explicitly
-///   requests `RedisKv`, use `RedisKv`; otherwise `PostgresOnly`.
+/// - `Insert` → `PostgresOnly` (new records never enter KV)
+/// - `Find` → `RedisKv` (reads still check KV — data may still live there)
+/// - `Update` with `updated_by = Some(PostgresOnly)` → `PostgresOnly`
+///   (record is already PG-only — no probe needed)
+/// - `Update` with `updated_by = None` → `PostgresOnly`
+///   (no scheme recorded — no probe needed)
+/// - `Update` with `updated_by = Some(RedisKv)` → probe Redis with `HGet`;
+///   if the key is still present → `RedisKv` (and bump
+///   `KV_SOFT_KILL_ACTIVE_UPDATE`); if missing/err → `PostgresOnly`
 ///
 /// Vendored from `storage_impl/src/redis/kv_store.rs::decide_storage_scheme`.
 pub(crate) async fn decide_storage_scheme<S>(
@@ -73,7 +76,6 @@ where
         + std::fmt::Debug
         + super::partition_key::KvStorePartition
         + super::constraints::UniqueConstraints
-        + super::constraints::KvUpdateProbe
         + Sync,
 {
     if !settings.soft_kill {
@@ -83,7 +85,12 @@ where
     let updated_scheme = match operation {
         Op::Insert => StorageScheme::PostgresOnly,
         Op::Find => StorageScheme::RedisKv,
-        Op::Update(ref partition_key, updated_by) => {
+        // Arm 1 — record last lived in Postgres: straight to Postgres, no probe.
+        Op::Update(_, Some(StorageScheme::PostgresOnly)) => StorageScheme::PostgresOnly,
+        // Arm 3 — no scheme recorded: straight to Postgres, no probe.
+        Op::Update(_, None) => StorageScheme::PostgresOnly,
+        // Arm 2 — record claims RedisKv: actively probe Redis to confirm.
+        Op::Update(ref partition_key, Some(StorageScheme::RedisKv)) => {
             use super::wrapper::{KvOperation, kv_wrapper};
             use super::partition_key::hash_field_key;
 
@@ -97,24 +104,13 @@ where
             .await;
 
             match result {
-                Ok(kv_result) => match kv_result.try_into_hget() {
-                    Ok(value) => {
-                        let existing_scheme = value.updated_by();
-
-                        if existing_scheme == StorageScheme::RedisKv
-                            || updated_by == Some(StorageScheme::RedisKv)
-                        {
-                            super::metrics::KV_SOFT_KILL_ACTIVE_UPDATE.add(
-                                1,
-                                crate::metric_attributes!(("operation", "update")),
-                            );
-                            StorageScheme::RedisKv
-                        } else {
-                            StorageScheme::PostgresOnly
-                        }
-                    }
-                    Err(_) => StorageScheme::PostgresOnly,
-                },
+                Ok(_) => {
+                    super::metrics::KV_SOFT_KILL_ACTIVE_UPDATE.add(
+                        1,
+                        crate::metric_attributes!(("operation", "update")),
+                    );
+                    StorageScheme::RedisKv
+                }
                 Err(_) => StorageScheme::PostgresOnly,
             }
         }
@@ -218,6 +214,64 @@ mod tests {
         assert_eq!(
             decide_storage_scheme::<FingerprintTableNew>(&DummyKv, soft_kill, Op::Find).await,
             StorageScheme::RedisKv
+        );
+    }
+
+    #[tokio::test]
+    async fn soft_kill_update_short_circuits_for_postgres_only_and_none() {
+        let soft_kill = TableKvSettings {
+            storage_scheme: StorageScheme::RedisKv,
+            soft_kill: true,
+        };
+        let pkey = PartitionKey::Vault {
+            entity_id: "merchant_123",
+            vault_id: "vault_123",
+        };
+
+        // Arm 1 — updated_by = Some(PostgresOnly) → PostgresOnly, no probe.
+        assert_eq!(
+            decide_storage_scheme::<FingerprintTableNew>(
+                &DummyKv,
+                soft_kill,
+                Op::Update(pkey.clone(), Some(StorageScheme::PostgresOnly)),
+            )
+            .await,
+            StorageScheme::PostgresOnly
+        );
+
+        // Arm 3 — updated_by = None → PostgresOnly, no probe.
+        assert_eq!(
+            decide_storage_scheme::<FingerprintTableNew>(
+                &DummyKv,
+                soft_kill,
+                Op::Update(pkey, None),
+            )
+            .await,
+            StorageScheme::PostgresOnly
+        );
+    }
+
+    #[tokio::test]
+    async fn soft_kill_update_probes_redis_for_redis_kv() {
+        // Arm 2 — updated_by = Some(RedisKv) → probe Redis.
+        // DummyKv has no Redis connection, so the probe returns Err → PostgresOnly.
+        let soft_kill = TableKvSettings {
+            storage_scheme: StorageScheme::RedisKv,
+            soft_kill: true,
+        };
+        let pkey = PartitionKey::Vault {
+            entity_id: "merchant_123",
+            vault_id: "vault_123",
+        };
+
+        assert_eq!(
+            decide_storage_scheme::<FingerprintTableNew>(
+                &DummyKv,
+                soft_kill,
+                Op::Update(pkey, Some(StorageScheme::RedisKv)),
+            )
+            .await,
+            StorageScheme::PostgresOnly
         );
     }
 }

@@ -8,11 +8,10 @@
 use hyperswitch_masking::PeekInterface;
 
 use super::{
-    constraints::{KvUpdateProbe, UniqueConstraints},
+    constraints::UniqueConstraints,
     entity::EntityType,
     partition_key::KvStorePartition,
 };
-use crate::storage::scheme::StorageScheme;
 use crate::storage::types::{
     Fingerprint, FingerprintTableNew, HashTable, HashTableNew, LockerKvValue,
 };
@@ -38,12 +37,6 @@ impl UniqueConstraints for Fingerprint {
     }
 }
 
-impl KvUpdateProbe for Fingerprint {
-    fn updated_by(&self) -> StorageScheme {
-        self.updated_by
-    }
-}
-
 impl UniqueConstraints for FingerprintTableNew {
     fn unique_constraints(&self) -> Vec<String> {
         vec![hex::encode(self.fingerprint_hash.peek())]
@@ -51,12 +44,6 @@ impl UniqueConstraints for FingerprintTableNew {
 
     fn table_name(&self) -> &str {
         "fingerprint"
-    }
-}
-
-impl KvUpdateProbe for FingerprintTableNew {
-    fn updated_by(&self) -> StorageScheme {
-        self.updated_by
     }
 }
 
@@ -80,12 +67,6 @@ impl UniqueConstraints for HashTable {
     }
 }
 
-impl KvUpdateProbe for HashTable {
-    fn updated_by(&self) -> StorageScheme {
-        self.updated_by
-    }
-}
-
 impl UniqueConstraints for HashTableNew {
     fn unique_constraints(&self) -> Vec<String> {
         vec![self.hash_id.clone()]
@@ -93,12 +74,6 @@ impl UniqueConstraints for HashTableNew {
 
     fn table_name(&self) -> &str {
         "hash_table"
-    }
-}
-
-impl KvUpdateProbe for HashTableNew {
-    fn updated_by(&self) -> StorageScheme {
-        self.updated_by
     }
 }
 
@@ -127,12 +102,6 @@ impl UniqueConstraints for LockerKvValue {
     }
 }
 
-impl KvUpdateProbe for LockerKvValue {
-    fn updated_by(&self) -> StorageScheme {
-        self.updated_by
-    }
-}
-
 // ─── Vault ──────────────────────────────────────────────────────────────────
 
 impl EntityType for VaultNew {
@@ -154,11 +123,5 @@ impl UniqueConstraints for VaultNew {
 
     fn table_name(&self) -> &str {
         "vault"
-    }
-}
-
-impl KvUpdateProbe for VaultNew {
-    fn updated_by(&self) -> StorageScheme {
-        self.updated_by
     }
 }
