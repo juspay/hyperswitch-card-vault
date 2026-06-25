@@ -176,17 +176,21 @@ pub async fn server_builder(
         ),
         allow(unused_mut)
     )]
-    let mut router = router.nest(
-        "/api/v2/vault",
-        axum::Router::new()
-            .route("/delete", post(routes_v2::data::delete_data))
-            .route("/add", post(routes_v2::data::add_data))
-            .route("/retrieve", post(routes_v2::data::retrieve_data))
-            .route(
-                "/fingerprint",
-                post(routes::data::get_or_insert_fingerprint),
-            ),
-    );
+    let mut router = router
+        .nest(
+            "/api/v2/vault",
+            axum::Router::new()
+                .route("/delete", post(routes_v2::data::delete_data))
+                .route("/add", post(routes_v2::data::add_data))
+                .route("/retrieve", post(routes_v2::data::retrieve_data))
+                .route(
+                    "/fingerprint",
+                    post(routes::data::get_or_insert_fingerprint),
+                ),
+        )
+        // Explicit provisioning endpoint. Config decides the backing table: `merchant` under the
+        // internal key manager, `entity` under the external key manager.
+        .route("/entity", post(routes::entity::create_entity));
 
     #[cfg(feature = "middleware")]
     {
