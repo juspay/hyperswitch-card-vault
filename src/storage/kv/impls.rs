@@ -12,7 +12,9 @@ use super::{
     entity::EntityType,
     partition_key::KvStorePartition,
 };
-use crate::storage::types::{Fingerprint, FingerprintTableNew, HashTable, HashTableNew};
+use crate::storage::types::{
+    Fingerprint, FingerprintTableNew, HashTable, HashTableNew, ReverseLookup, ReverseLookupNew,
+};
 
 // ─── Fingerprint ────────────────────────────────────────────────────────────
 
@@ -71,5 +73,35 @@ impl UniqueConstraints for HashTableNew {
 
     fn table_name(&self) -> &str {
         "hash_table"
+    }
+}
+
+// ─── ReverseLookup ──────────────────────────────────────────────────────────
+
+impl EntityType for ReverseLookupNew {
+    const ENTITY_TYPE: &'static str = "reverse_lookup";
+}
+
+impl KvStorePartition for ReverseLookup {}
+
+impl KvStorePartition for ReverseLookupNew {}
+
+impl UniqueConstraints for ReverseLookup {
+    fn unique_constraints(&self) -> Vec<String> {
+        vec![self.lookup_id.clone()]
+    }
+
+    fn table_name(&self) -> &str {
+        "reverse_lookup"
+    }
+}
+
+impl UniqueConstraints for ReverseLookupNew {
+    fn unique_constraints(&self) -> Vec<String> {
+        vec![self.lookup_id.clone()]
+    }
+
+    fn table_name(&self) -> &str {
+        "reverse_lookup"
     }
 }

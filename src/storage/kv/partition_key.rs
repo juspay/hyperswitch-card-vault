@@ -6,12 +6,13 @@
 ///
 /// | Table        | Partition key format                                |
 /// |--------------|-----------------------------------------------------|
-/// | fingerprint  | `fingerprint_{fingerprint_hash_hex}`               |
-/// | hash_table   | `hash_{data_hash_hex}` (content-addressed)         |
+/// | fingerprint     | `fingerprint_{fingerprint_hash_hex}`               |
+/// | hash_table      | `hash_{data_hash_hex}` (content-addressed)         |
+/// | reverse_lookup  | `reverse_lookup_{lookup_id}`                        |
 ///
-/// `fingerprint` and `hash_table` are content-addressed (found by their hash),
-/// so no reverse lookup is needed.  `locker` and `vault` variants are re-added
-/// when those tables gain KV support.
+/// `fingerprint` and `hash_table` are content-addressed (found by their hash).
+/// `reverse_lookup` is keyed by its `lookup_id`.  `locker` and `vault` variants
+/// are re-added when those tables gain KV support.
 #[derive(Clone)]
 pub enum PartitionKey<'a> {
     /// Partition key for the `fingerprint` table.
@@ -21,9 +22,13 @@ pub enum PartitionKey<'a> {
     },
     /// Partition key for the `hash_table` table (v1).  Content-addressed by
     /// `data_hash` (the only read path); `hash_id` is a surrogate consumed by
-    /// locker.  Not needing a reverse lookup.
+    /// locker.
     Hash {
         data_hash: &'a [u8],
+    },
+    /// Partition key for the `reverse_lookup` table, keyed by `lookup_id`.
+    ReverseLookup {
+        lookup_id: &'a str,
     },
 }
 
@@ -37,6 +42,9 @@ impl std::fmt::Display for PartitionKey<'_> {
                 hex::encode(fingerprint_hash)
             )),
             Self::Hash { data_hash } => f.write_str(&format!("hash_{}", hex::encode(data_hash))),
+            Self::ReverseLookup { lookup_id } => {
+                f.write_str(&format!("reverse_lookup_{lookup_id}"))
+            }
         }
     }
 }
@@ -77,6 +85,14 @@ mod tests {
             data_hash: &hash,
         };
         assert_eq!(key.to_string(), "hash_abcdef01");
+    }
+
+    #[test]
+    fn partition_key_display_reverse_lookup() {
+        let key = PartitionKey::ReverseLookup {
+            lookup_id: "lookup_123",
+        };
+        assert_eq!(key.to_string(), "reverse_lookup_lookup_123");
     }
 
     #[test]

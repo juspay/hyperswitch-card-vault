@@ -30,6 +30,7 @@ pub enum StorageScheme {
 pub enum KvTable {
     Fingerprint,
     HashTable,
+    ReverseLookup,
 }
 
 /// Per-table KV settings stored in the per-tenant config.

@@ -777,6 +777,121 @@ mod kv_helpers {
                 Err(_) => Err(ContainerError::from(error::HashDBError::DBInsertError)),
             }
         }
+
+        // ── reverse_lookup ──
+
+        pub(crate) async fn find_by_lookup_id_kv(
+            &self,
+            lookup_id: &str,
+        ) -> Result<types::ReverseLookup, ContainerError<error::ReverseLookupDBError>> {
+            let partition_key = PartitionKey::ReverseLookup { lookup_id };
+
+            let result = try_redis_get_else_try_database_get(
+                async {
+                    let kv_result = kv_wrapper::<
+                        types::ReverseLookupNew,
+                        types::ReverseLookupNew,
+                    >(
+                        self,
+                        KvOperation::<types::ReverseLookupNew>::Get,
+                        partition_key,
+                    )
+                    .await?;
+                    match kv_result {
+                        KvResult::Get(v) => Ok(types::ReverseLookup::from(v)),
+                        _ => Err(error_stack::Report::new(
+                            hyperswitch_redis_interface::errors::RedisError::UnknownResult,
+                        )),
+                    }
+                },
+                || async {
+                    self.find_by_lookup_id_pg(lookup_id)
+                        .await?
+                        .ok_or_else(|| error_stack::Report::new(error::StorageError::NotFoundError))
+                },
+            )
+            .await;
+
+            match result {
+                Ok(v) => Ok(v),
+                Err(err) => match err.current_context() {
+                    error::StorageError::NotFoundError => Err(err
+                        .change_context(error::ReverseLookupDBError::NotFoundError)
+                        .into()),
+                    _ => Err(err
+                        .change_context(error::ReverseLookupDBError::DBFilterError)
+                        .into()),
+                },
+            }
+        }
+
+        pub(crate) async fn find_by_lookup_id_pg(
+            &self,
+            lookup_id: &str,
+        ) -> error_stack::Result<Option<types::ReverseLookup>, error::StorageError> {
+            let mut conn = self
+                .get_conn()
+                .await
+                .change_context(error::StorageError::PoolClientFailure)?;
+            let output: Result<_, diesel::result::Error> = types::ReverseLookup::table()
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
+                .get_result(&mut conn)
+                .await;
+            match output {
+                Ok(inner) => Ok(Some(inner)),
+                Err(diesel::result::Error::NotFound) => Ok(None),
+                Err(err) => Err(error_stack::Report::new(err))
+                    .change_context(error::StorageError::FindError),
+            }
+        }
+
+        pub(crate) async fn insert_reverse_lookup_kv(
+            &self,
+            mut new: types::ReverseLookupNew,
+        ) -> Result<types::ReverseLookup, ContainerError<error::ReverseLookupDBError>> {
+            // Try find first
+            if let Ok(existing) = self.find_by_lookup_id_kv(&new.lookup_id).await {
+                return Ok(existing);
+            }
+
+            // Not found — insert via SetNx + drainer
+            new.updated_by = StorageScheme::RedisKv.to_string();
+
+            let partition_key = PartitionKey::ReverseLookup {
+                lookup_id: &new.lookup_id,
+            };
+            let key_str = partition_key.to_string();
+
+            let drainer_query = serializable_query::generate_insert_query::<
+                schema::reverse_lookup::table,
+                _,
+            >(new.clone())
+            .change_context(error::ReverseLookupDBError::DBInsertError)?;
+
+            let result = kv_wrapper::<(), types::ReverseLookupNew>(
+                self,
+                KvOperation::SetNx(&new, drainer_query),
+                partition_key,
+            )
+            .await
+            .map_err(|err| {
+                ContainerError::from(
+                    err.to_redis_failed_response(&key_str)
+                        .change_context(error::ReverseLookupDBError::DBInsertError),
+                )
+            })?;
+
+            match result.try_into_setnx() {
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeySet) => {
+                    Ok(types::ReverseLookup::from(new))
+                }
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => Ok(self
+                    .find_by_lookup_id_kv(&new.lookup_id)
+                    .await
+                    .map_err(|_| ContainerError::from(error::ReverseLookupDBError::DBInsertError))?),
+                Err(_) => Err(ContainerError::from(error::ReverseLookupDBError::DBInsertError)),
+            }
+        }
     }
 }
 impl super::ReverseLookupInterface for Storage {
@@ -786,6 +901,15 @@ impl super::ReverseLookupInterface for Storage {
         &self,
         lookup_id: &str,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings_for(super::kv::KvTable::ReverseLookup);
+            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Find);
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                return self.find_by_lookup_id_kv(lookup_id).await;
+            }
+        }
+
         let mut conn = self.get_conn().await?;
 
         let output: Result<types::ReverseLookup, diesel::result::Error> =
@@ -810,6 +934,17 @@ impl super::ReverseLookupInterface for Storage {
         &self,
         new: types::ReverseLookupNew,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings_for(super::kv::KvTable::ReverseLookup);
+            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Insert);
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                return self.insert_reverse_lookup_kv(new).await;
+            }
+        }
+
+        let mut new = new;
+        new.updated_by = "postgres_only".to_string();
         let mut conn = self.get_conn().await?;
 
         diesel::insert_into(types::ReverseLookup::table())

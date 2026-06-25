@@ -334,13 +334,19 @@ impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
                 Self::DBError
             }
             super::StorageError::FindError => Self::DBFilterError,
-            super::StorageError::NotFoundError => Self::NotFoundError,
-            super::StorageError::DecryptionError
-            | super::StorageError::EncryptionError
-            | super::StorageError::DeleteError => Self::UnknownError,
+            super::StorageError::NotFoundError | super::StorageError::ValueNotFound(_) => {
+                Self::NotFoundError
+            }
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
             }
+            super::StorageError::DecryptionError
+            | super::StorageError::EncryptionError
+            | super::StorageError::DeleteError
+            | super::StorageError::DuplicateValue { .. }
+            | super::StorageError::KVError
+            | super::StorageError::SerializationFailed
+            | super::StorageError::DeserializationFailed => Self::UnknownError,
         }
     }
 }

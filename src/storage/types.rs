@@ -148,15 +148,17 @@ pub(crate) struct ReverseLookup {
     pub sk_id: String,
     pub pk_id: String,
     pub source: String,
+    pub updated_by: String,
 }
 
-#[derive(Debug, Clone, Insertable)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
 #[diesel(table_name = schema::reverse_lookup)]
 pub(crate) struct ReverseLookupNew {
     pub lookup_id: String,
     pub sk_id: String,
     pub pk_id: String,
     pub source: String,
+    pub updated_by: String,
 }
 
 impl From<ReverseLookupNew> for ReverseLookup {
@@ -166,6 +168,7 @@ impl From<ReverseLookupNew> for ReverseLookup {
             sk_id: value.sk_id,
             pk_id: value.pk_id,
             source: value.source,
+            updated_by: value.updated_by,
         }
     }
 }

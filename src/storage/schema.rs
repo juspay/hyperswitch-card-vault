@@ -69,6 +69,7 @@ diesel::table! {
         pk_id -> Varchar,
         #[max_length = 30]
         source -> Varchar,
+        updated_by -> Varchar,
     }
 }
 

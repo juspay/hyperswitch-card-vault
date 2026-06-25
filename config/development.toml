@@ -36,6 +36,10 @@ soft_kill = false
 storage_scheme = "redis_kv"
 soft_kill = false
 
+[tenant_secrets.public.kv.reverse_lookup]
+storage_scheme = "redis_kv"
+soft_kill = false
+
 [external_key_manager]
 mode = "disabled"
 
