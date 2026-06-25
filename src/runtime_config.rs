@@ -9,17 +9,8 @@ const API_KEY_HEADER_NAME: &str = "X-Internal-Api-Key";
 
 /// Binds a runtime-config key string to the type that deserializes its value.
 ///
-/// Implement this for any struct you want to fetch via
-/// [`RuntimeConfigManager::get`]:
-///
-/// ```ignore
-/// #[derive(Default, serde::Deserialize)]
-/// pub struct ReplicaRouting { #[serde(default)] use_replica: bool }
-/// impl RuntimeConfigItem for ReplicaRouting { const KEY: &str = "locker.use_read_replica"; }
-/// ```
-///
-/// Then fetch with `manager.get::<ReplicaRouting>().await`.
-/// Adding a new runtime key is one struct + one `impl` line — no other plumbing.
+/// Fetch with `manager.get::<T>().await`.  Adding a key is one struct + one
+/// `impl` line.
 pub trait RuntimeConfigItem: serde::de::DeserializeOwned {
     /// The config endpoint key, e.g. `"locker.use_read_replica"`.
     const KEY: &'static str;
@@ -41,9 +32,7 @@ enum RuntimeConfigState {
         endpoint_url: String,
         api_key: Secret<String>,
         client: reqwest::Client,
-        /// Keys to prefetch/warm at startup and on each refresh tick.
         keys: Vec<String>,
-        /// TTL (seconds) — used to compute the refresh interval (`ttl * 0.8`).
         ttl_seconds: u64,
         #[cfg(feature = "caching")]
         cache: moka::future::Cache<String, String>,
@@ -196,11 +185,8 @@ impl RuntimeConfigManager {
         }
     }
 
-    /// Spawn a background task that warms the moka cache at startup and
-    /// periodically refreshes it at `ttl * 0.8` so the cache never goes cold.
-    ///
-    /// Returns `None` when runtime config is `Disabled` (no-op).
-    /// The task runs until the tokio runtime is dropped (natural shutdown).
+    /// Spawn a background task that prefetches keys at startup and refreshes
+    /// them at `ttl * 0.8`.  Returns `None` when runtime config is `Disabled`.
     pub fn spawn_prefetch_task(self: &Arc<Self>) -> Option<tokio::task::JoinHandle<()>> {
         let ttl_seconds = match &self.state {
             RuntimeConfigState::Disabled => return None,
@@ -219,26 +205,16 @@ impl RuntimeConfigManager {
         );
 
         Some(tokio::spawn(async move {
-            // Startup warm — fire and forget; the first `get()` will lazy-fetch
-            // if the warm hasn't landed yet.
             #[cfg(feature = "caching")]
             manager.prefetch_keys().await;
 
             let mut ticker = tokio::time::interval(refresh_interval);
-            // Don't fire immediately (we just warmed); align to the interval.
-            ticker.set_missed_tick_behavior(
-                tokio::time::MissedTickBehavior::Delay,
-            );
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
             loop {
                 ticker.tick().await;
                 #[cfg(feature = "caching")]
                 manager.prefetch_keys().await;
-                #[cfg(not(feature = "caching"))]
-                {
-                    // Without caching there's nothing to prefetch; the loop
-                    // just keeps the task alive as a no-op.
-                }
             }
         }))
     }

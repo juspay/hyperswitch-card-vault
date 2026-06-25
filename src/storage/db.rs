@@ -108,8 +108,7 @@ impl super::LockerInterface for Storage {
                 super::kv::Op::Insert,
             )
             .await;
-            // Stamp the decided scheme so the column can never disagree with
-            // the path actually taken.
+            // Stamp the decided scheme on the row.
             new.updated_by = scheme;
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 let locker_id = new.locker_id.peek().clone();
@@ -149,12 +148,8 @@ impl super::LockerInterface for Storage {
                         return Ok(types::Locker::from(kv_value));
                     }
                     Ok(hyperswitch_redis_interface::types::HsetnxReply::KeyNotSet) => {
-                        // Key already exists in Redis — return a duplicate
-                        // error so the domain layer (get_or_insert) can
-                        // fall back to find.  Do NOT fall through to PG:
-                        // the drainer may not have flushed the original
-                        // insert yet, which would let the PG insert succeed
-                        // and mask the duplicate (race).
+                        // Redis duplicate: don't fall through to PG because
+                        // the drainer may not have flushed the original row yet.
                         return Err(ContainerError::from(
                             error::VaultDBError::Duplicate,
                         ));
@@ -207,7 +202,7 @@ impl super::LockerInterface for Storage {
                         return Ok(types::Locker::from(value));
                     }
                 }
-                // Redis miss or error — fall through to Postgres below.
+                // Miss/error: fall through to Postgres.
             }
         }
 
@@ -278,10 +273,7 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        // `find_optional_by_data_hash` queries by the non-PK `data_hash` column — a
-        // reverse lookup.  Per the KV design, reverse lookups always hit
-        // Postgres, even when the table's scheme is `redis_kv`.  KV is
-        // write-through only for `hash_table`.
+        // `data_hash` is a non-PK lookup, so reverse lookups always hit Postgres.
         let mut conn = self.get_conn().await?;
 
         let output = types::HashTable::table()
@@ -464,7 +456,7 @@ impl super::FingerprintInterface for Storage {
                         updated_by: v.updated_by,
                     }));
                 }
-                // Redis miss or error — fall through to Postgres below.
+                // Miss/error: fall through to Postgres.
             }
         }
 

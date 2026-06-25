@@ -147,12 +147,8 @@ impl SerializableQuery {
 
     /// Construct a [`SerializableQuery`] from any diesel query fragment.
     ///
-    /// Unlike the hyperswitch original which needed an `async-bb8-diesel`
-    /// connection to collect binds, this version uses a [`KvPgMetadataLookup`]
-    /// with fake OIDs, so **no database connection is required**.
-    /// `to_sql` and `is_safe_to_cache_prepared` are also connection-free;
-    /// only bind collection needed a `PgMetadataLookup`, and we provide a
-    /// stand-in.  This is the "Risk 1" adaptation described in the plan.
+    /// Uses [`KvPgMetadataLookup`] with fake OIDs so bind collection needs no
+    /// database connection (the "Risk 1" adaptation from the plan).
     fn from_query<Q>(
         query: Q,
         entity_type: String,
@@ -235,9 +231,7 @@ where
         .attach_printable("Failed to generate insert query")
 }
 
-/// Generate a serializable `UPDATE` query for the drainer.  The caller builds
-/// the full `diesel::update(table).filter(...).set(...)` statement and passes
-/// it; this function handles the SQL + bind collection (no DB connection
+/// Generate a serializable `UPDATE` query for the drainer (no DB connection
 /// needed, same as [`generate_insert_query`]).
 pub(crate) fn generate_update_query<Q>(
     query: Q,
@@ -361,8 +355,6 @@ mod tests {
     fn serializable_query_update_round_trip() {
         use diesel::ExpressionMethods;
 
-        // Build a vault update query and verify it serializes + deserializes
-        // correctly with DatabaseOperation::Update.
         let update_stmt = diesel::update(schema::vault::table)
             .filter(
                 schema::vault::vault_id.eq("test_vault_id"),

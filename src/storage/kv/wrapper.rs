@@ -74,8 +74,8 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
 
 /// An enum to represent what operation to do on Redis.
 ///
-/// - `Get` / `SetNx` are used by content-addressed tables (fingerprint, hash_table).
-/// - `HGet` / `HSetNx` / `Hset` are used by composite-keyed tables (locker, vault).
+/// - `Get` / `SetNx` are used by `fingerprint` and `hash_table`.
+/// - `HGet` / `HSetNx` / `Hset` are used by composite-keyed tables (`locker`, `vault`).
 pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
     SetNx(&'a S, SerializableQuery),
     Get,

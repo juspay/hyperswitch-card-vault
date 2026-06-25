@@ -36,8 +36,7 @@ impl VaultInterface for Storage {
                 crate::storage::kv::Op::Insert,
             )
             .await;
-            // Stamp the decided scheme so the column can never disagree with
-            // the path actually taken.
+            // Stamp the decided scheme on the row.
             new.updated_by = scheme;
             if matches!(scheme, crate::storage::kv::StorageScheme::RedisKv) {
                 let vault_id = new.vault_id.peek().clone();
@@ -76,12 +75,8 @@ impl VaultInterface for Storage {
                         return Ok(types::Vault::from(kv_value));
                     }
                     Ok(hyperswitch_redis_interface::types::HsetnxReply::KeyNotSet) => {
-                        // Key already exists in Redis — return a duplicate
-                        // error so the domain layer (get_or_insert / upsert)
-                        // can take the appropriate fallback path.  Do NOT
-                        // fall through to PG: the drainer may not have flushed
-                        // the original insert yet, which would let the PG
-                        // insert succeed and mask the duplicate (race).
+                        // Redis duplicate: don't fall through to PG because
+                        // the drainer may not have flushed the original row yet.
                         return Err(ContainerError::from(
                             error::VaultDBError::Duplicate,
                         ));
@@ -139,7 +134,7 @@ impl VaultInterface for Storage {
                         return Ok(types::Vault::from(value));
                     }
                 }
-                // Redis miss or error — fall through to Postgres below.
+                // Miss/error: fall through to Postgres.
             }
         }
 
@@ -180,8 +175,7 @@ impl VaultInterface for Storage {
                 crate::storage::kv::Op::Update(partition_key, Some(new.updated_by)),
             )
             .await;
-            // Stamp the decided scheme so the column can never disagree with
-            // the path actually taken.
+            // Stamp the decided scheme on the row.
             new.updated_by = scheme;
             if matches!(scheme, crate::storage::kv::StorageScheme::RedisKv) {
                 let vault_id = new.vault_id.peek().clone();

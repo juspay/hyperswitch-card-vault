@@ -27,12 +27,8 @@ pub(crate) struct TableKvSettings {
 pub(crate) enum Op<'a> {
     Insert,
     Find,
-    /// Update operation.  Under soft-kill, the `updated_by` field determines
-    /// the behaviour:
-    /// - `Some(PostgresOnly)` → `PostgresOnly` (no probe — record is PG-only)
-    /// - `None` → `PostgresOnly` (no probe — no scheme recorded)
-    /// - `Some(RedisKv)` → probe Redis with `HGet`; if the key is still
-    ///   present → `RedisKv` (metric bumped); if missing/err → `PostgresOnly`
+    /// Update operation.  Soft-kill routing is resolved in
+    /// [`decide_storage_scheme`].
     Update(PartitionKey<'a>, Option<StorageScheme>),
 }
 
@@ -85,11 +81,8 @@ where
     let updated_scheme = match operation {
         Op::Insert => StorageScheme::PostgresOnly,
         Op::Find => StorageScheme::RedisKv,
-        // Arm 1 — record last lived in Postgres: straight to Postgres, no probe.
         Op::Update(_, Some(StorageScheme::PostgresOnly)) => StorageScheme::PostgresOnly,
-        // Arm 3 — no scheme recorded: straight to Postgres, no probe.
         Op::Update(_, None) => StorageScheme::PostgresOnly,
-        // Arm 2 — record claims RedisKv: actively probe Redis to confirm.
         Op::Update(ref partition_key, Some(StorageScheme::RedisKv)) => {
             use super::wrapper::{KvOperation, kv_wrapper};
             use super::partition_key::hash_field_key;
@@ -201,12 +194,10 @@ mod tests {
             storage_scheme: StorageScheme::RedisKv,
             soft_kill: true,
         };
-        // Inserts stay on Postgres during soft-kill rollout.
         assert_eq!(
             decide_storage_scheme::<FingerprintTableNew>(&DummyKv, soft_kill, Op::Insert).await,
             StorageScheme::PostgresOnly
         );
-        // Reads try Redis first during soft-kill rollout.
         let soft_kill = TableKvSettings {
             storage_scheme: StorageScheme::PostgresOnly,
             soft_kill: true,
@@ -228,32 +219,21 @@ mod tests {
             vault_id: "vault_123",
         };
 
-        // Arm 1 — updated_by = Some(PostgresOnly) → PostgresOnly, no probe.
-        assert_eq!(
-            decide_storage_scheme::<FingerprintTableNew>(
-                &DummyKv,
-                soft_kill,
-                Op::Update(pkey.clone(), Some(StorageScheme::PostgresOnly)),
-            )
-            .await,
-            StorageScheme::PostgresOnly
-        );
-
-        // Arm 3 — updated_by = None → PostgresOnly, no probe.
-        assert_eq!(
-            decide_storage_scheme::<FingerprintTableNew>(
-                &DummyKv,
-                soft_kill,
-                Op::Update(pkey, None),
-            )
-            .await,
-            StorageScheme::PostgresOnly
-        );
+        for updated_by in [Some(StorageScheme::PostgresOnly), None] {
+            assert_eq!(
+                decide_storage_scheme::<FingerprintTableNew>(
+                    &DummyKv,
+                    soft_kill,
+                    Op::Update(pkey.clone(), updated_by),
+                )
+                .await,
+                StorageScheme::PostgresOnly
+            );
+        }
     }
 
     #[tokio::test]
     async fn soft_kill_update_probes_redis_for_redis_kv() {
-        // Arm 2 — updated_by = Some(RedisKv) → probe Redis.
         // DummyKv has no Redis connection, so the probe returns Err → PostgresOnly.
         let soft_kill = TableKvSettings {
             storage_scheme: StorageScheme::RedisKv,

@@ -83,8 +83,6 @@ pub enum StorageError {
     ValueNotFound(String),
     #[error("Serialization failure")]
     SerializationFailed,
-    #[error("Deserialization failure")]
-    DeserializationFailed,
 }
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]

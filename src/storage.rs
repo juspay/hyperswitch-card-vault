@@ -47,9 +47,8 @@ impl crate::runtime_config::RuntimeConfigItem for ReplicaRouting {
 
 /// Runtime-config payload for the KV master switch (`locker.enable_kv`).
 ///
-/// Per-field `#[serde(default)]` is REQUIRED (not the struct-level `Default`): it
-/// lets a partial endpoint payload like `{"enable_kv": true}` deserialize with
-/// `soft_kill = false`, instead of erroring on the missing field.
+/// Per-field `#[serde(default)]` is required so partial payloads like
+/// `{"enable_kv": true}` deserialize without erroring on missing `soft_kill`.
 #[cfg(feature = "kv")]
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 pub struct KvRuntimeConfig {
@@ -64,13 +63,9 @@ impl crate::runtime_config::RuntimeConfigItem for KvRuntimeConfig {
     const KEY: &'static str = "locker.enable_kv";
 }
 
-/// Pure mapping from the runtime-config payload to [`kv::TableKvSettings`].
+/// Map the runtime-config payload to [`kv::TableKvSettings`].
 ///
-/// Extracted so the truth table (see `kv_runtime_config_maps_to_settings` test)
-/// is unit-testable without a live [`Storage`] or network.  Note: under
-/// soft-kill, [`kv::decide_storage_scheme`] ignores `storage_scheme` and routes
-/// by op (Insert→Postgres, Find→Redis, Update→Redis-probe).  `soft_kill` is
-/// therefore gated on `enable_kv` so an `enable_kv=false, soft_kill=true`
+/// `soft_kill` is gated on `enable_kv` so an `enable_kv=false, soft_kill=true`
 /// payload can never route Finds to Redis.  DO NOT "simplify" the `&&` away.
 #[cfg(feature = "kv")]
 impl From<KvRuntimeConfig> for kv::TableKvSettings {
@@ -226,18 +221,11 @@ impl Storage {
         }
     }
 
-    /// Resolve the global KV settings from runtime config (`locker.enable_kv`,
-    /// TTL-cached).
+    /// Resolve the global KV settings from runtime config (`locker.enable_kv`).
     ///
-    /// Performs an async runtime-config lookup — this is NOT a free getter.
-    ///
-    /// **Resolution order:**
-    /// 1. If runtime config is enabled, fetch `locker.enable_kv` from the
-    ///    endpoint (TTL-cached). Fail-closed on errors.
-    /// 2. If runtime config is disabled, fall back to the file-based
-    ///    `[kv] enable_kv` / `soft_kill` values from the TOML config.
-    /// 3. If neither source provides a value, return `PostgresOnly` with
-    ///    `soft_kill=false`.
+    /// Falls back to file-based `[kv] enable_kv` / `soft_kill` when the runtime
+    /// config endpoint is disabled or unreachable.  Fail-closed: missing values
+    /// default to `PostgresOnly` / `soft_kill = false`.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::TableKvSettings {
         // Try runtime config endpoint first.

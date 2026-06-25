@@ -18,26 +18,17 @@
 /// fields (HSETNX/HGET/HSET).
 #[derive(Clone, Debug)]
 pub(crate) enum PartitionKey<'a> {
-    /// Partition key for the `fingerprint` table.
-    /// `find_by_fingerprint_hash` and `get_or_insert_fingerprint` both use this key.
     Fingerprint {
         fingerprint_hash: &'a [u8],
     },
-    /// Partition key for the `hash_table` table (v1).  Keyed by the surrogate
-    /// primary key `hash_id`.  The `data_hash` column is a non-PK lookup, so
-    /// `find_by_data_hash` routes to Postgres — KV is write-through only.
     Hash {
         hash_id: &'a str,
     },
-    /// Partition key for the `locker` table (v1).  Keyed by the composite
-    /// primary key (merchant_id, customer_id, locker_id).
     Locker {
         merchant_id: &'a str,
         customer_id: &'a str,
         locker_id: &'a str,
     },
-    /// Partition key for the `vault` table (v2).  Keyed by the composite
-    /// primary key (entity_id, vault_id).
     Vault {
         entity_id: &'a str,
         vault_id: &'a str,
@@ -71,11 +62,9 @@ impl std::fmt::Display for PartitionKey<'_> {
 
 /// Derive the Redis hash field name for a composite-keyed partition key.
 ///
-/// For `fingerprint` and `hash_table` (content-addressed, single-key) the
-/// Redis key *is* the partition key string, so no separate hash field is
-/// needed.  For `locker` and `vault` the Redis key is the partition key
-/// string and the hash field is `locker_{locker_id}` or `vault_{vault_id}`
-/// respectively.
+/// `fingerprint` and `hash_table` use plain Redis keys, so they have no hash
+/// field.  `locker` and `vault` store the row under the partition key as the
+/// Redis key and `locker_{locker_id}` / `vault_{vault_id}` as the hash field.
 ///
 /// # Panics
 ///
