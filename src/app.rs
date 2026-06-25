@@ -57,6 +57,7 @@ impl TenantAppState {
         tenant_config: TenantConfig,
         api_client: ApiClient,
         #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
+        runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         // Create the tenant-specific redis handle early so it can be shared
         // between Storage (for KV) and TenantAppState (for direct use).
@@ -67,11 +68,11 @@ impl TenantAppState {
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
             &global_config.database,
+            global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
+            runtime_config_manager,
             #[cfg(feature = "kv")]
             tenant_redis.clone(),
-            #[cfg(feature = "kv")]
-            tenant_config.tenant_secrets.kv.clone(),
             #[cfg(feature = "kv")]
             &global_config.kv,
         )
@@ -156,6 +157,12 @@ async fn shutdown_signal() {
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
 ) -> Result<(), error::ConfigurationError> {
+    // Warm + periodically refresh runtime-config keys so the moka cache never
+    // goes cold.  No-op when runtime config is Disabled.
+    let _prefetch_handle = global_app_state
+        .runtime_config_manager
+        .spawn_prefetch_task();
+
     let socket_addr = std::net::SocketAddr::new(
         global_app_state.global_config.server.host.parse()?,
         global_app_state.global_config.server.port,

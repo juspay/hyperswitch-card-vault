@@ -8,6 +8,7 @@ use diesel::{
 use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use super::schema;
+use super::scheme::StorageScheme;
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
@@ -54,6 +55,7 @@ pub(super) struct LockerInner {
     created_at: time::PrimitiveDateTime,
     hash_id: String,
     ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
 impl From<LockerInner> for Locker {
@@ -66,6 +68,7 @@ impl From<LockerInner> for Locker {
             created_at: value.created_at,
             hash_id: value.hash_id,
             ttl: value.ttl,
+            updated_by: value.updated_by,
         }
     }
 }
@@ -79,6 +82,7 @@ pub struct Locker {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
 #[derive(Debug)]
@@ -122,6 +126,7 @@ pub struct LockerNew<'a> {
     pub enc_data: Encrypted,
     pub hash_id: &'a str,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
 impl<'a> LockerNew<'a> {
@@ -136,6 +141,53 @@ impl<'a> LockerNew<'a> {
             enc_data,
             hash_id,
             ttl: *request.ttl,
+            updated_by: StorageScheme::PostgresOnly,
+        }
+    }
+}
+
+/// Owned, serde-able KV value struct for the `locker` table.
+///
+/// `LockerNew<'a>` borrows `hash_id: &'a str`, so it cannot satisfy
+/// `DeserializeOwned`.  This struct owns all fields and is used as the
+/// Redis hash-field value for locker KV operations.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
+#[diesel(table_name = schema::locker)]
+pub struct LockerKvValue {
+    pub locker_id: Secret<String>,
+    pub merchant_id: String,
+    pub customer_id: String,
+    pub enc_data: Encrypted,
+    pub hash_id: String,
+    pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
+}
+
+impl<'a> From<&LockerNew<'a>> for LockerKvValue {
+    fn from(new: &LockerNew<'a>) -> Self {
+        Self {
+            locker_id: new.locker_id.clone(),
+            merchant_id: new.merchant_id.clone(),
+            customer_id: new.customer_id.clone(),
+            enc_data: new.enc_data.clone(),
+            hash_id: new.hash_id.to_string(),
+            ttl: new.ttl,
+            updated_by: new.updated_by,
+        }
+    }
+}
+
+impl From<LockerKvValue> for Locker {
+    fn from(v: LockerKvValue) -> Self {
+        Self {
+            locker_id: v.locker_id,
+            merchant_id: v.merchant_id,
+            customer_id: v.customer_id,
+            data: v.enc_data.into(),
+            created_at: time::PrimitiveDateTime::MIN,
+            hash_id: v.hash_id,
+            ttl: v.ttl,
+            updated_by: v.updated_by,
         }
     }
 }
@@ -148,7 +200,7 @@ pub(crate) struct ReverseLookup {
     pub sk_id: String,
     pub pk_id: String,
     pub source: String,
-    pub updated_by: String,
+    pub updated_by: StorageScheme,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
@@ -158,7 +210,7 @@ pub(crate) struct ReverseLookupNew {
     pub sk_id: String,
     pub pk_id: String,
     pub source: String,
-    pub updated_by: String,
+    pub updated_by: StorageScheme,
 }
 
 impl From<ReverseLookupNew> for ReverseLookup {
@@ -180,7 +232,7 @@ pub struct HashTable {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
-    pub updated_by: String,
+    pub updated_by: StorageScheme,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
@@ -189,7 +241,7 @@ pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: String,
+    pub updated_by: StorageScheme,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -234,7 +286,7 @@ impl std::ops::Deref for CardNumber {
 pub(super) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: String,
+    pub updated_by: StorageScheme,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -250,15 +302,16 @@ pub(super) struct EntityTableNew {
 pub(super) struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
-    pub updated_by: String,
+    pub updated_by: StorageScheme,
 }
 
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression)]
+#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
+#[serde(transparent)]
 pub struct Encrypted {
     inner: Secret<Vec<u8>>,
 }
@@ -375,5 +428,47 @@ impl<'a> StorageEncryption for MerchantNew<'a> {
             merchant_id: self.merchant_id,
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+
+    #[test]
+    fn encrypted_serde_round_trip() {
+        let original = Encrypted::new(vec![1, 2, 3, 4].into());
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: Encrypted = serde_json::from_str(&json).unwrap();
+        assert_eq!(original.get_inner().peek(), deserialized.get_inner().peek());
+    }
+
+    #[test]
+    fn locker_kv_value_serde_round_trip() {
+        let value = LockerKvValue {
+            locker_id: "card_ref_123".to_string().into(),
+            merchant_id: "merchant_123".to_string(),
+            customer_id: "cust_abc".to_string(),
+            enc_data: Encrypted::new(vec![0xde, 0xad].into()),
+            hash_id: "hash_123".to_string(),
+            ttl: None,
+            updated_by: StorageScheme::RedisKv,
+        };
+        let json = serde_json::to_string(&value).unwrap();
+        let deserialized: LockerKvValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(value.merchant_id, deserialized.merchant_id);
+        assert_eq!(value.customer_id, deserialized.customer_id);
+        assert_eq!(value.hash_id, deserialized.hash_id);
+        assert_eq!(value.updated_by, deserialized.updated_by);
+        assert_eq!(
+            value.enc_data.get_inner().peek(),
+            deserialized.enc_data.get_inner().peek()
+        );
+        assert_eq!(
+            value.locker_id.peek(),
+            deserialized.locker_id.peek()
+        );
     }
 }

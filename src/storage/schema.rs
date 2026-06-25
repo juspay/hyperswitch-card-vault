@@ -46,6 +46,7 @@ diesel::table! {
         #[max_length = 255]
         hash_id -> Varchar,
         ttl -> Nullable<Timestamp>,
+        updated_by -> Varchar,
     }
 }
 
@@ -82,6 +83,7 @@ diesel::table! {
         encrypted_data -> Bytea,
         created_at -> Timestamp,
         expires_at -> Nullable<Timestamp>,
+        updated_by -> Varchar,
     }
 }
 

@@ -9,7 +9,7 @@ use crate::{
 /// GcmAes256
 ///
 /// The algorithm use to perform GcmAes256 encryption/decryption. This is implemented for data
-/// Vec<u8>
+/// `Vec<u8>`
 ///
 pub struct GcmAes256 {
     secret: Vec<u8>,

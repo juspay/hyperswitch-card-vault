@@ -8,7 +8,7 @@ use crate::error::{RedisErrorExt, StorageError};
 /// [`StorageError`] via [`RedisErrorExt::to_redis_failed_response`].
 ///
 /// Vendored from `storage_impl/src/utils.rs`.
-pub async fn try_redis_get_else_try_database_get<F, RFut, DFut, T>(
+pub(crate) async fn try_redis_get_else_try_database_get<F, RFut, DFut, T>(
     redis_fut: RFut,
     database_call_closure: F,
 ) -> error_stack::Result<T, StorageError>

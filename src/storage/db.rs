@@ -1,6 +1,10 @@
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+#[cfg(feature = "kv")]
+use error_stack::ResultExt;
 use hyperswitch_masking::{ExposeInterface, Secret};
+#[cfg(feature = "kv")]
+use hyperswitch_masking::PeekInterface;
 
 use super::{
     LockerInterface, MerchantInterface, Storage, consts, schema, types,
@@ -13,7 +17,11 @@ use crate::{
         hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
     },
     error::{self, ContainerError, ResultContainerExt},
+    storage::scheme::StorageScheme,
 };
+#[cfg(feature = "kv")]
+use crate::error::RedisErrorExt;
+
 
 impl MerchantInterface for Storage {
     type Algorithm = aes::GcmAes256;
@@ -24,7 +32,7 @@ impl MerchantInterface for Storage {
         merchant_id: &str,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
                 .filter(schema::merchant::merchant_id.eq(merchant_id))
@@ -51,7 +59,7 @@ impl MerchantInterface for Storage {
         merchant_id: &str,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
 
         let output: Result<types::MerchantInner, diesel::result::Error> =
             types::MerchantInner::table()
@@ -97,7 +105,7 @@ impl MerchantInterface for Storage {
         key: &Self::Algorithm,
         limit: i64,
     ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
 
         let result: Result<Vec<types::MerchantInner>, ContainerError<Self::Error>> =
             schema::merchant::table
@@ -131,6 +139,37 @@ impl LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings().await;
+            let scheme = super::kv::decide_storage_scheme::<types::LockerKvValue>(
+                self,
+                settings,
+                super::kv::Op::Find,
+            )
+            .await;
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                let partition_key = super::kv::PartitionKey::Locker {
+                    merchant_id,
+                    customer_id,
+                    locker_id: locker_id.peek(),
+                };
+                let field = super::kv::hash_field_key(&partition_key);
+                let result = super::kv::kv_wrapper::<types::LockerKvValue, types::LockerKvValue>(
+                    self,
+                    super::kv::KvOperation::<types::LockerKvValue>::HGet(&field),
+                    partition_key,
+                )
+                .await;
+                if let Ok(kv_result) = result {
+                    if let Ok(value) = kv_result.try_into_hget() {
+                        return Ok(types::Locker::from(value));
+                    }
+                }
+                // Redis miss or error — fall through to Postgres below.
+            }
+        }
+
         let mut conn = self.get_conn().await?;
 
         let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
@@ -185,8 +224,81 @@ impl LockerInterface for Storage {
 
     async fn insert_or_get_from_locker(
         &self,
-        new: types::LockerNew<'_>,
+        mut new: types::LockerNew<'_>,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings().await;
+            let scheme = super::kv::decide_storage_scheme::<types::LockerKvValue>(
+                self,
+                settings,
+                super::kv::Op::Insert,
+            )
+            .await;
+            // Stamp the decided scheme so the column can never disagree with
+            // the path actually taken.
+            new.updated_by = scheme;
+            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
+                let locker_id = new.locker_id.peek().clone();
+                let merchant_id = new.merchant_id.clone();
+                let customer_id = new.customer_id.clone();
+
+                let partition_key = super::kv::PartitionKey::Locker {
+                    merchant_id: &merchant_id,
+                    customer_id: &customer_id,
+                    locker_id: &locker_id,
+                };
+                let field = super::kv::hash_field_key(&partition_key);
+
+                // Try find in Redis first.
+                let find_result =
+                    super::kv::kv_wrapper::<types::LockerKvValue, types::LockerKvValue>(
+                        self,
+                        super::kv::KvOperation::<types::LockerKvValue>::HGet(&field),
+                        partition_key.clone(),
+                    )
+                    .await;
+                if let Ok(kv_result) = find_result {
+                    if let Ok(value) = kv_result.try_into_hget() {
+                        return Ok(types::Locker::from(value));
+                    }
+                }
+
+                // Not found in Redis — insert via HSetNx + drainer.
+                let kv_value = types::LockerKvValue::from(&new);
+
+                let drainer_query =
+                    super::kv::serializable_query::generate_insert_query::<schema::locker::table, _>(
+                        kv_value.clone(),
+                    )
+                    .change_context(error::VaultDBError::DBInsertError)?;
+
+                let result = super::kv::kv_wrapper::<(), types::LockerKvValue>(
+                    self,
+                    super::kv::KvOperation::HSetNx(&field, &kv_value, drainer_query),
+                    partition_key,
+                )
+                .await
+                .map_err(|err| {
+                    ContainerError::from(
+                        err.to_redis_failed_response(&field)
+                            .change_context(error::VaultDBError::DBInsertError),
+                    )
+                })?;
+
+                match result.try_into_hsetnx() {
+                    Ok(hyperswitch_redis_interface::types::HsetnxReply::KeySet) => {
+                        return Ok(types::Locker::from(kv_value));
+                    }
+                    Ok(hyperswitch_redis_interface::types::HsetnxReply::KeyNotSet) => {
+                        // Key already exists — fall through to PG which will
+                        // hit UniqueViolation and re-read.
+                    }
+                    Err(_) => return Err(ContainerError::from(error::VaultDBError::DBInsertError)),
+                }
+            }
+        }
+
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
@@ -244,15 +356,10 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        #[cfg(feature = "kv")]
-        {
-            let settings = self.kv_settings_for(super::kv::KvTable::HashTable);
-            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Find);
-            if matches!(scheme, super::kv::StorageScheme::RedisKv) {
-                return self.find_by_data_hash_kv(data_hash).await;
-            }
-        }
-
+        // `find_by_data_hash` queries by the non-PK `data_hash` column — a
+        // reverse lookup.  Per the KV design, reverse lookups always hit
+        // Postgres, even when the table's scheme is `redis_kv`.  KV is
+        // write-through only for `hash_table`.
         let mut conn = self.get_conn().await?;
 
         let output: Result<_, diesel::result::Error> = types::HashTable::table()
@@ -274,10 +381,15 @@ impl super::HashInterface for Storage {
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let settings = self.kv_settings_for(super::kv::KvTable::HashTable);
-            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Insert);
+            let settings = self.kv_settings().await;
+            let scheme = super::kv::decide_storage_scheme::<types::HashTable>(
+                self,
+                settings,
+                super::kv::Op::Insert,
+            )
+            .await;
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
-                return self.insert_hash_kv(data_hash).await;
+                return self.insert_hash_kv(data_hash, scheme).await;
             }
         }
 
@@ -290,7 +402,7 @@ impl super::HashInterface for Storage {
                     diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
                         hash_id: utils::generate_uuid(),
                         data_hash,
-                        updated_by: "postgres_only".to_string(),
+                        updated_by: StorageScheme::PostgresOnly,
                     });
 
                 Ok(query
@@ -322,7 +434,7 @@ impl super::TestInterface for Storage {
                         .values(types::HashTableNew {
                             hash_id: "test".to_string(),
                             data_hash: b"0".to_vec(),
-                            updated_by: "postgres_only".to_string(),
+                            updated_by: StorageScheme::PostgresOnly,
                         })
                         .execute(x)
                         .await
@@ -343,6 +455,18 @@ impl super::TestInterface for Storage {
 
         Ok(())
     }
+
+    async fn test_replica(&self) -> Result<(), ContainerError<Self::Error>> {
+        let mut conn = self.get_replica_conn().await?;
+
+        let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+        let _x: i32 = query
+            .get_result(&mut conn)
+            .await
+            .change_error(error::StorageError::FindError)?;
+
+        Ok(())
+    }
 }
 
 impl super::FingerprintInterface for Storage {
@@ -354,8 +478,13 @@ impl super::FingerprintInterface for Storage {
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let settings = self.kv_settings_for(super::kv::KvTable::Fingerprint);
-            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Find);
+            let settings = self.kv_settings().await;
+            let scheme = super::kv::decide_storage_scheme::<types::Fingerprint>(
+                self,
+                settings,
+                super::kv::Op::Find,
+            )
+            .await;
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 return self.find_by_fingerprint_hash_kv(&fingerprint_hash).await;
             }
@@ -384,12 +513,15 @@ impl super::FingerprintInterface for Storage {
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let settings = self.kv_settings_for(super::kv::KvTable::Fingerprint);
-            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Insert);
+            let settings = self.kv_settings().await;
+            let scheme = super::kv::decide_storage_scheme::<types::Fingerprint>(
+                self,
+                settings,
+                super::kv::Op::Insert,
+            )
+            .await;
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
-                return self
-                    .get_or_insert_fingerprint_kv(data, key, fingerprint_id)
-                    .await;
+                return self.get_or_insert_fingerprint_kv(data, key, fingerprint_id, scheme).await;
             }
         }
 
@@ -415,7 +547,7 @@ impl super::FingerprintInterface for Storage {
                         .values(types::FingerprintTableNew {
                             fingerprint_hash,
                             fingerprint_id: id,
-                            updated_by: "postgres_only".to_string(),
+                            updated_by: StorageScheme::PostgresOnly,
                         })
                         .get_result(&mut conn)
                         .await;
@@ -448,7 +580,7 @@ impl super::EntityInterface for Storage {
         &self,
         entity_id: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.route_conn().await?;
         let output: Result<types::Entity, diesel::result::Error> = types::Entity::table()
             .filter(schema::entity::entity_id.eq(entity_id))
             .get_result(&mut conn)
@@ -504,9 +636,10 @@ mod kv_helpers {
 
     use super::*;
     use crate::error::RedisErrorExt;
+    use crate::storage::HashInterface;
     use crate::storage::kv::{
-        KvOperation, KvResult, PartitionKey, StorageScheme, kv_wrapper, serializable_query,
-        try_redis_get_else_try_database_get,
+        KvOperation, KvResult, PartitionKey, StorageScheme, kv_wrapper,
+        serializable_query, try_redis_get_else_try_database_get,
     };
 
     impl Storage {
@@ -589,6 +722,7 @@ mod kv_helpers {
             data: Secret<String>,
             key: Secret<String>,
             fingerprint_id: Option<Secret<String>>,
+            scheme: StorageScheme,
         ) -> Result<types::Fingerprint, ContainerError<error::FingerprintDBError>> {
             let algo = HmacSha512::<1>::new(key.map(|inner| inner.into_bytes()));
             let fingerprint_hash = algo.encode(data.expose().into_bytes().into())?;
@@ -599,12 +733,12 @@ mod kv_helpers {
             }
 
             // Not found — insert via SetNx + drainer
-            let id =
-                fingerprint_id.unwrap_or_else(|| utils::generate_nano_id(consts::ID_LENGTH).into());
+            let id = fingerprint_id
+                .unwrap_or_else(|| utils::generate_nano_id(consts::ID_LENGTH).into());
             let new_fingerprint = types::FingerprintTableNew {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id: id,
-                updated_by: StorageScheme::RedisKv.to_string(),
+                updated_by: scheme,
             };
 
             let partition_key = PartitionKey::Fingerprint {
@@ -612,11 +746,11 @@ mod kv_helpers {
             };
             let key_str = partition_key.to_string();
 
-            let drainer_query = serializable_query::generate_insert_query::<
-                schema::fingerprint::table,
-                _,
-            >(new_fingerprint.clone())
-            .change_context(error::FingerprintDBError::DBInsertError)?;
+            let drainer_query =
+                serializable_query::generate_insert_query::<schema::fingerprint::table, _>(
+                    new_fingerprint.clone(),
+                )
+                .change_context(error::FingerprintDBError::DBInsertError)?;
 
             let result = kv_wrapper::<(), types::FingerprintTableNew>(
                 self,
@@ -640,112 +774,53 @@ mod kv_helpers {
                         updated_by: new_fingerprint.updated_by,
                     })
                 }
-                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => self
-                    .find_by_fingerprint_hash_kv(&fingerprint_hash)
-                    .await?
-                    .ok_or_else(|| ContainerError::from(error::FingerprintDBError::DBInsertError)),
-                Err(_) => Err(ContainerError::from(
-                    error::FingerprintDBError::DBInsertError,
-                )),
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
+                    self.find_by_fingerprint_hash_kv(&fingerprint_hash)
+                        .await?
+                        .ok_or_else(|| {
+                            ContainerError::from(error::FingerprintDBError::DBInsertError)
+                        })
+                }
+                Err(_) => Err(ContainerError::from(error::FingerprintDBError::DBInsertError)),
             }
         }
 
         // ── hash_table ──
-
-        pub(crate) async fn find_by_data_hash_kv(
-            &self,
-            data_hash: &[u8],
-        ) -> Result<Option<types::HashTable>, ContainerError<error::HashDBError>> {
-            let partition_key = PartitionKey::Hash { data_hash };
-
-            let result = try_redis_get_else_try_database_get(
-                async {
-                    let kv_result = kv_wrapper::<types::HashTableNew, types::HashTableNew>(
-                        self,
-                        KvOperation::<types::HashTableNew>::Get,
-                        partition_key,
-                    )
-                    .await?;
-                    match kv_result {
-                        KvResult::Get(v) => Ok(types::HashTable {
-                            id: 0,
-                            hash_id: v.hash_id,
-                            data_hash: v.data_hash,
-                            created_at: time::PrimitiveDateTime::MIN,
-                            updated_by: v.updated_by,
-                        }),
-                        _ => Err(error_stack::Report::new(
-                            hyperswitch_redis_interface::errors::RedisError::UnknownResult,
-                        )),
-                    }
-                },
-                || async {
-                    self.find_by_data_hash_pg(data_hash.to_vec())
-                        .await?
-                        .ok_or_else(|| {
-                            error_stack::Report::new(error::StorageError::ValueNotFound(
-                                "hash_table".to_string(),
-                            ))
-                        })
-                },
-            )
-            .await;
-
-            match result {
-                Ok(v) => Ok(Some(v)),
-                Err(err) => match err.current_context() {
-                    error::StorageError::ValueNotFound(_) => Ok(None),
-                    _ => Err(err.change_context(error::HashDBError::DBFilterError).into()),
-                },
-            }
-        }
-
-        pub(crate) async fn find_by_data_hash_pg(
-            &self,
-            data_hash: Vec<u8>,
-        ) -> error_stack::Result<Option<types::HashTable>, error::StorageError> {
-            let mut conn = self
-                .get_conn()
-                .await
-                .change_context(error::StorageError::PoolClientFailure)?;
-            let output: Result<_, diesel::result::Error> = types::HashTable::table()
-                .filter(schema::hash_table::data_hash.eq(data_hash))
-                .get_result(&mut conn)
-                .await;
-            match output {
-                Ok(inner) => Ok(Some(inner)),
-                Err(diesel::result::Error::NotFound) => Ok(None),
-                Err(err) => Err(error_stack::Report::new(err))
-                    .change_context(error::StorageError::FindError),
-            }
-        }
+        //
+        // `hash_table` KV is **write-through only**.  The dedup read
+        // (`find_by_data_hash`) queries by the non-PK `data_hash` column — a
+        // reverse lookup — so it always hits Postgres.  Only `insert_hash`
+        // goes through Redis: it generates a `hash_id`, writes to
+        // `hash_{hash_id}` via `SetNx` + drainer, and falls back to a PG
+        // dedup read on `KeyNotSet`.
 
         pub(crate) async fn insert_hash_kv(
             &self,
             data_hash: Vec<u8>,
+            scheme: StorageScheme,
         ) -> Result<types::HashTable, ContainerError<error::HashDBError>> {
-            // Try find first
-            if let Some(existing) = self.find_by_data_hash_kv(&data_hash).await? {
+            // Dedup read: always Postgres (find_by_data_hash is PG-only now).
+            if let Some(existing) = self.find_by_data_hash(&data_hash).await? {
                 return Ok(existing);
             }
 
-            // Not found — insert via SetNx + drainer
+            // Not found in PG — insert via SetNx + drainer, keyed by hash_id.
             let new_hash = types::HashTableNew {
                 hash_id: utils::generate_uuid(),
                 data_hash: data_hash.clone(),
-                updated_by: StorageScheme::RedisKv.to_string(),
+                updated_by: scheme,
             };
 
             let partition_key = PartitionKey::Hash {
-                data_hash: &data_hash,
+                hash_id: &new_hash.hash_id,
             };
             let key_str = partition_key.to_string();
 
-            let drainer_query = serializable_query::generate_insert_query::<
-                schema::hash_table::table,
-                _,
-            >(new_hash.clone())
-            .change_context(error::HashDBError::DBInsertError)?;
+            let drainer_query =
+                serializable_query::generate_insert_query::<schema::hash_table::table, _>(
+                    new_hash.clone(),
+                )
+                .change_context(error::HashDBError::DBInsertError)?;
 
             let result = kv_wrapper::<(), types::HashTableNew>(
                 self,
@@ -770,10 +845,13 @@ mod kv_helpers {
                         updated_by: new_hash.updated_by,
                     })
                 }
-                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => self
-                    .find_by_data_hash_kv(&data_hash)
-                    .await?
-                    .ok_or_else(|| ContainerError::from(error::HashDBError::DBInsertError)),
+                Ok(hyperswitch_redis_interface::types::SetnxReply::KeyNotSet) => {
+                    // hash_id collision (extremely unlikely with UUID) —
+                    // re-read from Postgres by data_hash.
+                    self.find_by_data_hash(&data_hash)
+                        .await?
+                        .ok_or_else(|| ContainerError::from(error::HashDBError::DBInsertError))
+                }
                 Err(_) => Err(ContainerError::from(error::HashDBError::DBInsertError)),
             }
         }
@@ -847,15 +925,12 @@ mod kv_helpers {
 
         pub(crate) async fn insert_reverse_lookup_kv(
             &self,
-            mut new: types::ReverseLookupNew,
+            new: types::ReverseLookupNew,
         ) -> Result<types::ReverseLookup, ContainerError<error::ReverseLookupDBError>> {
             // Try find first
             if let Ok(existing) = self.find_by_lookup_id_kv(&new.lookup_id).await {
                 return Ok(existing);
             }
-
-            // Not found — insert via SetNx + drainer
-            new.updated_by = StorageScheme::RedisKv.to_string();
 
             let partition_key = PartitionKey::ReverseLookup {
                 lookup_id: &new.lookup_id,
@@ -894,6 +969,7 @@ mod kv_helpers {
         }
     }
 }
+
 impl super::ReverseLookupInterface for Storage {
     type Error = error::ReverseLookupDBError;
 
@@ -903,8 +979,13 @@ impl super::ReverseLookupInterface for Storage {
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let settings = self.kv_settings_for(super::kv::KvTable::ReverseLookup);
-            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Find);
+            let settings = self.kv_settings().await;
+            let scheme = super::kv::decide_storage_scheme::<types::ReverseLookupNew>(
+                self,
+                settings,
+                super::kv::Op::Find,
+            )
+            .await;
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 return self.find_by_lookup_id_kv(lookup_id).await;
             }
@@ -932,19 +1013,28 @@ impl super::ReverseLookupInterface for Storage {
 
     async fn insert_reverse_lookup(
         &self,
-        new: types::ReverseLookupNew,
+        mut new: types::ReverseLookupNew,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let settings = self.kv_settings_for(super::kv::KvTable::ReverseLookup);
-            let scheme = super::kv::decide_storage_scheme(settings, super::kv::Op::Insert);
+            let settings = self.kv_settings().await;
+            let scheme = super::kv::decide_storage_scheme::<types::ReverseLookupNew>(
+                self,
+                settings,
+                super::kv::Op::Insert,
+            )
+            .await;
+            new.updated_by = scheme;
             if matches!(scheme, super::kv::StorageScheme::RedisKv) {
                 return self.insert_reverse_lookup_kv(new).await;
             }
         }
 
-        let mut new = new;
-        new.updated_by = "postgres_only".to_string();
+        #[cfg(not(feature = "kv"))]
+        {
+            new.updated_by = StorageScheme::PostgresOnly;
+        }
+
         let mut conn = self.get_conn().await?;
 
         diesel::insert_into(types::ReverseLookup::table())

@@ -70,6 +70,8 @@ pub enum StorageError {
     NotFoundError,
     #[error("Error while updating element in database")]
     UpdateError,
+    #[error("Read replica pool is not configured")]
+    ReplicaPoolNotConfigured,
     #[error("DuplicateValue: {entity} already exists {key:?}")]
     DuplicateValue {
         entity: &'static str,
