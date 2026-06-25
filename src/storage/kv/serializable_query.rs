@@ -106,7 +106,7 @@ impl diesel::pg::PgMetadataLookup for KvPgMetadataLookup {
 
 /// The SQL query and its bind parameters, in a (de)serialization-friendly representation
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct SerializableQuery {
+pub(crate) struct SerializableQuery {
     /// The SQL query
     sql: String,
 
@@ -131,17 +131,17 @@ pub struct SerializableQuery {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::Display)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
-pub enum DatabaseOperation {
+pub(crate) enum DatabaseOperation {
     Insert,
     Update,
 }
 
 impl SerializableQuery {
-    pub fn entity_type(&self) -> String {
+    pub(crate) fn entity_type(&self) -> String {
         self.entity_type.clone()
     }
 
-    pub fn operation(&self) -> DatabaseOperation {
+    pub(crate) fn operation(&self) -> DatabaseOperation {
         self.operation
     }
 
@@ -200,7 +200,7 @@ impl SerializableQuery {
         Ok(serializable_query)
     }
 
-    pub fn to_field_value_pairs(
+    pub(crate) fn to_field_value_pairs(
         &self,
         request_id: String,
         global_id: String,
@@ -235,6 +235,21 @@ where
         .attach_printable("Failed to generate insert query")
 }
 
+/// Generate a serializable `UPDATE` query for the drainer.  The caller builds
+/// the full `diesel::update(table).filter(...).set(...)` statement and passes
+/// it; this function handles the SQL + bind collection (no DB connection
+/// needed, same as [`generate_insert_query`]).
+pub(crate) fn generate_update_query<Q>(
+    query: Q,
+    entity_type: String,
+) -> error_stack::Result<SerializableQuery, StorageError>
+where
+    Q: QueryFragment<Pg> + Send + 'static,
+{
+    SerializableQuery::from_query(query, entity_type, DatabaseOperation::Update)
+        .attach_printable("Failed to generate update query")
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -243,6 +258,7 @@ mod tests {
     use hyperswitch_masking::PeekInterface;
 
     use crate::storage::schema;
+    use crate::storage::types::Encrypted;
 
     #[derive(Debug, Insertable)]
     #[diesel(table_name = schema::hash_table)]
@@ -339,5 +355,30 @@ mod tests {
             .map(|(_, v)| v.clone())
             .unwrap();
         assert_eq!(request_id, "req-123");
+    }
+
+    #[test]
+    fn serializable_query_update_round_trip() {
+        use diesel::ExpressionMethods;
+
+        // Build a vault update query and verify it serializes + deserializes
+        // correctly with DatabaseOperation::Update.
+        let update_stmt = diesel::update(schema::vault::table)
+            .filter(
+                schema::vault::vault_id.eq("test_vault_id"),
+            )
+            .set(schema::vault::encrypted_data.eq(Encrypted::new(
+                vec![1u8, 2, 3].into(),
+            )));
+
+        let query = generate_update_query(update_stmt, "vault".to_string()).unwrap();
+
+        let json = serde_json::to_string(&query).unwrap();
+        let deserialized: SerializableQuery = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.entity_type(), "vault");
+        assert_eq!(deserialized.operation(), DatabaseOperation::Update);
+        assert!(deserialized.sql.to_lowercase().contains("update"));
+        assert!(deserialized.sql.to_lowercase().contains("where"));
     }
 }

@@ -1,4 +1,4 @@
-//! KV trait implementations for `fingerprint` and `hash_table`.
+//! KV trait implementations for `fingerprint`, `hash_table`, `locker`, and `vault`.
 //!
 //! These impls are only compiled with the `kv` feature.  They provide the
 //! `EntityType`, `UniqueConstraints`, and `KvStorePartition` impls that the
@@ -8,11 +8,15 @@
 use hyperswitch_masking::PeekInterface;
 
 use super::{
-    constraints::UniqueConstraints,
+    constraints::{KvUpdateProbe, UniqueConstraints},
     entity::EntityType,
     partition_key::KvStorePartition,
 };
-use crate::storage::types::{Fingerprint, FingerprintTableNew, HashTable, HashTableNew};
+use crate::storage::scheme::StorageScheme;
+use crate::storage::types::{
+    Fingerprint, FingerprintTableNew, HashTable, HashTableNew, LockerKvValue,
+};
+use crate::storage::storage_v2::types::VaultNew;
 
 // ─── Fingerprint ────────────────────────────────────────────────────────────
 
@@ -34,6 +38,12 @@ impl UniqueConstraints for Fingerprint {
     }
 }
 
+impl KvUpdateProbe for Fingerprint {
+    fn updated_by(&self) -> StorageScheme {
+        self.updated_by
+    }
+}
+
 impl UniqueConstraints for FingerprintTableNew {
     fn unique_constraints(&self) -> Vec<String> {
         vec![hex::encode(self.fingerprint_hash.peek())]
@@ -41,6 +51,12 @@ impl UniqueConstraints for FingerprintTableNew {
 
     fn table_name(&self) -> &str {
         "fingerprint"
+    }
+}
+
+impl KvUpdateProbe for FingerprintTableNew {
+    fn updated_by(&self) -> StorageScheme {
+        self.updated_by
     }
 }
 
@@ -56,7 +72,7 @@ impl KvStorePartition for HashTableNew {}
 
 impl UniqueConstraints for HashTable {
     fn unique_constraints(&self) -> Vec<String> {
-        vec![hex::encode(&self.data_hash)]
+        vec![self.hash_id.clone()]
     }
 
     fn table_name(&self) -> &str {
@@ -64,12 +80,85 @@ impl UniqueConstraints for HashTable {
     }
 }
 
+impl KvUpdateProbe for HashTable {
+    fn updated_by(&self) -> StorageScheme {
+        self.updated_by
+    }
+}
+
 impl UniqueConstraints for HashTableNew {
     fn unique_constraints(&self) -> Vec<String> {
-        vec![hex::encode(&self.data_hash)]
+        vec![self.hash_id.clone()]
     }
 
     fn table_name(&self) -> &str {
         "hash_table"
+    }
+}
+
+impl KvUpdateProbe for HashTableNew {
+    fn updated_by(&self) -> StorageScheme {
+        self.updated_by
+    }
+}
+
+// ─── Locker ─────────────────────────────────────────────────────────────────
+
+impl EntityType for LockerKvValue {
+    const ENTITY_TYPE: &'static str = "locker";
+}
+
+impl KvStorePartition for LockerKvValue {}
+
+impl UniqueConstraints for LockerKvValue {
+    fn unique_constraints(&self) -> Vec<String> {
+        vec![
+            format!(
+                "locker_id_{}_merchant_id_{}_customer_id_{}",
+                self.locker_id.peek(),
+                self.merchant_id,
+                self.customer_id
+            ),
+        ]
+    }
+
+    fn table_name(&self) -> &str {
+        "locker"
+    }
+}
+
+impl KvUpdateProbe for LockerKvValue {
+    fn updated_by(&self) -> StorageScheme {
+        self.updated_by
+    }
+}
+
+// ─── Vault ──────────────────────────────────────────────────────────────────
+
+impl EntityType for VaultNew {
+    const ENTITY_TYPE: &'static str = "vault";
+}
+
+impl KvStorePartition for VaultNew {}
+
+impl UniqueConstraints for VaultNew {
+    fn unique_constraints(&self) -> Vec<String> {
+        vec![
+            format!(
+                "vault_id_{}_entity_id_{}",
+                self.vault_id.peek(),
+                self.entity_id
+            ),
+        ]
+    }
+
+    fn table_name(&self) -> &str {
+        "vault"
+    }
+}
+
+impl KvUpdateProbe for VaultNew {
+    fn updated_by(&self) -> StorageScheme {
+        self.updated_by
     }
 }

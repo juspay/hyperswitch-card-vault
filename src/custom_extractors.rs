@@ -28,7 +28,26 @@ impl FromRequestParts<Arc<GlobalAppState>> for TenantStateResolver {
             .ok_or(ApiError::TenantError("x-tenant-id not found in headers"))?;
 
         state.is_known_tenant(tenant_id)?;
-        Ok(Self(state.get_app_state_of_tenant(tenant_id).await?))
+        let app_state = state.get_app_state_of_tenant(tenant_id).await?;
+
+        // Clone the per-tenant state so we can attach the request ID from the
+        // `x-request-id` header (set by tower-http's `MakeRequestId` layer)
+        // to the `Storage` instance.  This is cheap — all heavy fields (DB
+        // pools, Redis connections) are behind `Arc`.
+        let mut app_state = (*app_state).clone();
+
+        #[cfg(feature = "kv")]
+        {
+            if let Some(req_id) = parts
+                .headers
+                .get(consts::X_REQUEST_ID)
+                .and_then(|h| h.to_str().ok())
+            {
+                app_state.db = app_state.db.clone().with_request_id(req_id);
+            }
+        }
+
+        Ok(Self(Arc::new(app_state)))
     }
 }
 

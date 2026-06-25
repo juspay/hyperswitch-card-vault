@@ -7,7 +7,10 @@ use tokio::sync::RwLock;
 use crate::config::TenantConfig;
 #[cfg(feature = "key_custodian")]
 use crate::routes::key_custodian::CustodianKeyState;
-use crate::{api_client::ApiClient, app::TenantAppState, config::GlobalConfig, error::ApiError};
+use crate::{
+    api_client::ApiClient, app::TenantAppState, config::GlobalConfig, error::ApiError,
+    runtime_config::RuntimeConfigManager,
+};
 
 pub struct GlobalAppState {
     pub tenants_app_state: RwLock<FxHashMap<String, Arc<TenantAppState>>>,
@@ -18,6 +21,7 @@ pub struct GlobalAppState {
     pub global_config: GlobalConfig,
     #[cfg(feature = "redis")]
     pub redis_store: Option<crate::storage::redis::RedisStore>,
+    pub runtime_config_manager: Arc<RuntimeConfigManager>,
 }
 
 impl GlobalAppState {
@@ -64,6 +68,16 @@ impl GlobalAppState {
             None => None,
         };
 
+        #[allow(clippy::expect_used)]
+        let runtime_config_manager = Arc::new(
+            RuntimeConfigManager::new(
+                &global_config.runtime_config,
+                global_config.api_client.client_idle_timeout,
+                global_config.api_client.pool_max_idle_per_host,
+            )
+            .expect("Failed to create runtime config manager"),
+        );
+
         let tenants_app_state = {
             #[cfg(feature = "key_custodian")]
             {
@@ -82,6 +96,7 @@ impl GlobalAppState {
                         api_client.clone(),
                         #[cfg(feature = "redis")]
                         redis_store.as_ref(),
+                        runtime_config_manager.clone(),
                     )
                     .await
                     .expect("Failed while configuring AppState for tenants");
@@ -100,6 +115,7 @@ impl GlobalAppState {
             global_config,
             #[cfg(feature = "redis")]
             redis_store,
+            runtime_config_manager,
         })
     }
 

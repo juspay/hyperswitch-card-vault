@@ -9,6 +9,7 @@ pub mod logger;
 pub mod middleware;
 pub mod observability;
 pub mod routes;
+pub mod runtime_config;
 pub mod storage;
 pub mod tenant;
 pub mod utils;

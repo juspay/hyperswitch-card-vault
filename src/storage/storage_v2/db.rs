@@ -2,7 +2,11 @@ use diesel::{
     BoolExpressionMethods, ExpressionMethods, associations::HasTable, query_dsl::methods::FilterDsl,
 };
 use diesel_async::RunQueryDsl;
+#[cfg(feature = "kv")]
+use error_stack::ResultExt;
 use hyperswitch_masking::{ExposeInterface, Secret};
+#[cfg(feature = "kv")]
+use hyperswitch_masking::PeekInterface;
 
 use super::{VaultInterface, types};
 use crate::{
@@ -11,6 +15,8 @@ use crate::{
     logger,
     storage::{Storage, schema},
 };
+#[cfg(feature = "kv")]
+use crate::error::RedisErrorExt;
 
 impl VaultInterface for Storage {
     type Algorithm = GcmAes256;
@@ -21,6 +27,37 @@ impl VaultInterface for Storage {
         vault_id: Secret<String>,
         entity_id: &str,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings().await;
+            let scheme = crate::storage::kv::decide_storage_scheme::<types::VaultNew>(
+                self,
+                settings,
+                crate::storage::kv::Op::Find,
+            )
+            .await;
+            if matches!(scheme, crate::storage::kv::StorageScheme::RedisKv) {
+                let partition_key = crate::storage::kv::PartitionKey::Vault {
+                    entity_id,
+                    vault_id: vault_id.peek(),
+                };
+                let field = crate::storage::kv::hash_field_key(&partition_key);
+                let result =
+                    crate::storage::kv::kv_wrapper::<types::VaultNew, types::VaultNew>(
+                        self,
+                        crate::storage::kv::KvOperation::<types::VaultNew>::HGet(&field),
+                        partition_key,
+                    )
+                    .await;
+                if let Ok(kv_result) = result {
+                    if let Ok(value) = kv_result.try_into_hget() {
+                        return Ok(types::Vault::from(value));
+                    }
+                }
+                // Redis miss or error — fall through to Postgres below.
+            }
+        }
+
         let mut conn = self.get_conn().await?;
 
         logger::info!("performing retrieve operation on vault data");
@@ -55,8 +92,85 @@ impl VaultInterface for Storage {
 
     async fn insert_or_get_from_vault(
         &self,
-        new: types::VaultNew,
+        mut new: types::VaultNew,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings().await;
+            let scheme = crate::storage::kv::decide_storage_scheme::<types::VaultNew>(
+                self,
+                settings,
+                crate::storage::kv::Op::Insert,
+            )
+            .await;
+            // Stamp the decided scheme so the column can never disagree with
+            // the path actually taken.
+            new.updated_by = scheme;
+            if matches!(scheme, crate::storage::kv::StorageScheme::RedisKv) {
+                let vault_id = new.vault_id.peek().clone();
+                let entity_id = new.entity_id.clone();
+
+                let partition_key = crate::storage::kv::PartitionKey::Vault {
+                    entity_id: &entity_id,
+                    vault_id: &vault_id,
+                };
+                let field = crate::storage::kv::hash_field_key(&partition_key);
+
+                // Try find in Redis first.
+                let find_result =
+                    crate::storage::kv::kv_wrapper::<types::VaultNew, types::VaultNew>(
+                        self,
+                        crate::storage::kv::KvOperation::<types::VaultNew>::HGet(&field),
+                        partition_key.clone(),
+                    )
+                    .await;
+                if let Ok(kv_result) = find_result {
+                    if let Ok(value) = kv_result.try_into_hget() {
+                        return Ok(types::Vault::from(value));
+                    }
+                }
+
+                // Not found in Redis — insert via HSetNx + drainer.
+                // updated_by already stamped from the decided scheme above.
+                let kv_value = new.clone();
+
+                let drainer_query =
+                    crate::storage::kv::serializable_query::generate_insert_query::<
+                        schema::vault::table,
+                        _,
+                    >(kv_value.clone())
+                    .change_context(error::VaultDBError::DBInsertError)?;
+
+                let result = crate::storage::kv::kv_wrapper::<(), types::VaultNew>(
+                    self,
+                    crate::storage::kv::KvOperation::HSetNx(
+                        &field,
+                        &kv_value,
+                        drainer_query,
+                    ),
+                    partition_key,
+                )
+                .await
+                .map_err(|err| {
+                    ContainerError::from(
+                        err.to_redis_failed_response(&field)
+                            .change_context(error::VaultDBError::DBInsertError),
+                    )
+                })?;
+
+                match result.try_into_hsetnx() {
+                    Ok(hyperswitch_redis_interface::types::HsetnxReply::KeySet) => {
+                        return Ok(types::Vault::from(kv_value));
+                    }
+                    Ok(hyperswitch_redis_interface::types::HsetnxReply::KeyNotSet) => {
+                        // Key already exists — fall through to PG which will
+                        // hit UniqueViolation and re-read.
+                    }
+                    Err(_) => return Err(ContainerError::from(error::VaultDBError::DBInsertError)),
+                }
+            }
+        }
+
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
@@ -91,8 +205,115 @@ impl VaultInterface for Storage {
 
     async fn upsert_or_get_from_vault(
         &self,
-        new: types::VaultNew,
+        mut new: types::VaultNew,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings().await;
+            let scheme = crate::storage::kv::decide_storage_scheme::<types::VaultNew>(
+                self,
+                settings,
+                crate::storage::kv::Op::Insert,
+            )
+            .await;
+            // Stamp the decided scheme so the column can never disagree with
+            // the path actually taken.
+            new.updated_by = scheme;
+            if matches!(scheme, crate::storage::kv::StorageScheme::RedisKv) {
+                let vault_id = new.vault_id.peek().clone();
+                let entity_id = new.entity_id.clone();
+
+                let kv_value = new.clone();
+
+                let partition_key = crate::storage::kv::PartitionKey::Vault {
+                    entity_id: &entity_id,
+                    vault_id: &vault_id,
+                };
+                let field = crate::storage::kv::hash_field_key(&partition_key);
+
+                // Try HSetNx first (no initial HGet — we want to *write*).
+                let drainer_query =
+                    crate::storage::kv::serializable_query::generate_insert_query::<
+                        schema::vault::table,
+                        _,
+                    >(kv_value.clone())
+                    .change_context(error::VaultDBError::DBInsertError)?;
+
+                let result = crate::storage::kv::kv_wrapper::<(), types::VaultNew>(
+                    self,
+                    crate::storage::kv::KvOperation::HSetNx(
+                        &field,
+                        &kv_value,
+                        drainer_query,
+                    ),
+                    partition_key.clone(),
+                )
+                .await
+                .map_err(|err| {
+                    ContainerError::from(
+                        err.to_redis_failed_response(&field)
+                            .change_context(error::VaultDBError::DBInsertError),
+                    )
+                })?;
+
+                match result.try_into_hsetnx() {
+                    Ok(hyperswitch_redis_interface::types::HsetnxReply::KeySet) => {
+                        // Insert succeeded — brand-new row.
+                        return Ok(types::Vault::from(kv_value));
+                    }
+                    Ok(hyperswitch_redis_interface::types::HsetnxReply::KeyNotSet) => {
+                        // Key exists — do HSet update inline.
+                        let serialized = serde_json::to_string(&kv_value)
+                            .change_context(error::VaultDBError::DBInsertError)?;
+
+                        let update_query = diesel::update(types::VaultInner::table())
+                            .filter(
+                                schema::vault::vault_id
+                                    .eq(vault_id.clone())
+                                    .and(schema::vault::entity_id.eq(entity_id.clone())),
+                            )
+                            .set((
+                                schema::vault::encrypted_data
+                                    .eq(kv_value.encrypted_data.clone()),
+                                schema::vault::expires_at.eq(kv_value.expires_at),
+                                schema::vault::updated_by.eq(kv_value.updated_by),
+                            ));
+
+                        let drainer_update_query =
+                            crate::storage::kv::serializable_query::generate_update_query(
+                                update_query,
+                                "vault".to_string(),
+                            )
+                            .change_context(error::VaultDBError::DBInsertError)?;
+
+                        let update_result = crate::storage::kv::kv_wrapper::<(), types::VaultNew>(
+                            self,
+                            crate::storage::kv::KvOperation::Hset(
+                                (field.clone(), serialized),
+                                drainer_update_query,
+                            ),
+                            partition_key,
+                        )
+                        .await
+                        .map_err(|err| {
+                            ContainerError::from(
+                                err.to_redis_failed_response(&field)
+                                    .change_context(error::VaultDBError::DBInsertError),
+                            )
+                        })?;
+
+                        return update_result
+                            .try_into_hset()
+                            .map(|_| types::Vault::from(kv_value))
+                            .map_err(|_| {
+                                ContainerError::from(error::VaultDBError::DBInsertError)
+                            });
+                    }
+                    Err(_) => return Err(ContainerError::from(error::VaultDBError::DBInsertError)),
+                }
+            }
+        }
+
         let mut conn = self.get_conn().await?;
         let cloned_new = new.clone();
 
@@ -127,6 +348,7 @@ impl VaultInterface for Storage {
         vault_id: Secret<String>,
         entity_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>> {
+        // Delete always hits Postgres — not KV.
         let mut conn = self.get_conn().await?;
 
         logger::info!("performing delete operation on vault data");
@@ -155,8 +377,84 @@ impl VaultInterface for Storage {
 
     async fn update_vault_data(
         &self,
-        new: types::VaultNew,
+        mut new: types::VaultNew,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            let settings = self.kv_settings().await;
+            let partition_key = crate::storage::kv::PartitionKey::Vault {
+                entity_id: &new.entity_id,
+                vault_id: new.vault_id.peek(),
+            };
+            let scheme = crate::storage::kv::decide_storage_scheme::<types::VaultNew>(
+                self,
+                settings,
+                crate::storage::kv::Op::Update(
+                    partition_key,
+                    Some(new.updated_by),
+                ),
+            )
+            .await;
+            // Stamp the decided scheme so the column can never disagree with
+            // the path actually taken.
+            new.updated_by = scheme;
+            if matches!(scheme, crate::storage::kv::StorageScheme::RedisKv) {
+                let vault_id = new.vault_id.peek().clone();
+                let entity_id = new.entity_id.clone();
+
+                let kv_value = new.clone();
+
+                let partition_key = crate::storage::kv::PartitionKey::Vault {
+                    entity_id: &entity_id,
+                    vault_id: &vault_id,
+                };
+                let field = crate::storage::kv::hash_field_key(&partition_key);
+
+                let serialized = serde_json::to_string(&kv_value)
+                    .change_context(error::VaultDBError::DBInsertError)?;
+
+                let update_query = diesel::update(types::VaultInner::table())
+                    .filter(
+                        schema::vault::vault_id
+                            .eq(vault_id.clone())
+                            .and(schema::vault::entity_id.eq(entity_id.clone())),
+                    )
+                    .set((
+                        schema::vault::encrypted_data.eq(kv_value.encrypted_data.clone()),
+                        schema::vault::expires_at.eq(kv_value.expires_at),
+                        schema::vault::updated_by.eq(kv_value.updated_by),
+                    ));
+
+                let drainer_query =
+                    crate::storage::kv::serializable_query::generate_update_query(
+                        update_query,
+                        "vault".to_string(),
+                    )
+                    .change_context(error::VaultDBError::DBInsertError)?;
+
+                let result = crate::storage::kv::kv_wrapper::<(), types::VaultNew>(
+                    self,
+                    crate::storage::kv::KvOperation::Hset(
+                        (field.clone(), serialized),
+                        drainer_query,
+                    ),
+                    partition_key,
+                )
+                .await
+                .map_err(|err| {
+                    ContainerError::from(
+                        err.to_redis_failed_response(&field)
+                            .change_context(error::VaultDBError::DBInsertError),
+                    )
+                })?;
+
+                return result
+                    .try_into_hset()
+                    .map(|_| types::Vault::from(kv_value))
+                    .map_err(|_| ContainerError::from(error::VaultDBError::DBInsertError));
+            }
+        }
+
         let mut conn = self.get_conn().await?;
 
         logger::info!("performing update operation on vault data");

@@ -2,6 +2,6 @@
 ///
 /// Vendored from `diesel_models/src/kv/entity_type.rs`.
 /// Per-table impls are added when a table is integrated into KV.
-pub trait EntityType {
+pub(crate) trait EntityType {
     const ENTITY_TYPE: &'static str;
 }

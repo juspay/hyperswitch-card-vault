@@ -6,32 +6,27 @@
 //! drainer can replay entries without modification, but it does **not** import
 //! the hyperswitch domain machinery.
 //!
-//! The live surface is `Get` + `SetNx` on two content-addressed tables,
-//! `fingerprint` and `hash_table`, gated behind the `kv` feature.  Per-tenant
-//! scheme config (`[tenant_secrets.<tenant>.kv.<table>]`) selects
-//! [`scheme::StorageScheme::RedisKv`] (write-through Redis + drainer stream) or
-//! [`scheme::StorageScheme::PostgresOnly`] (the default when a table is absent).
-//! `config/development.toml` enables `redis_kv` for both tables, and the
-//! `release` feature set includes `kv`.
+//! The live surface is `Get` + `SetNx` on two content-addressed tables
+//! (`fingerprint`, `hash_table`) and `HGet` + `HSetNx` + `HSet` on two
+//! composite-keyed tables (`locker`, `vault`), gated behind the `kv` feature.
+//! KV enablement is a **global** runtime-config switch (`locker.enable_kv`,
+//! resolved via [`crate::storage::KvRuntimeConfig`]) returning
+//! [`scheme::StorageScheme::RedisKv`] (write-through Redis + drainer stream)
+//! or [`scheme::StorageScheme::PostgresOnly`] (the fail-closed default).
 
-pub mod constraints;
-pub mod entity;
-pub mod fallback;
+pub(crate) mod constraints;
+pub(crate) mod entity;
+pub(crate) mod fallback;
 #[cfg(feature = "kv")]
-pub mod impls;
-pub mod metrics;
-pub mod partition_key;
-pub mod scheme;
-pub mod serializable_query;
-pub mod wrapper;
+pub(crate) mod impls;
+pub(crate) mod metrics;
+pub(crate) mod partition_key;
+pub(crate) mod scheme;
+pub(crate) mod serializable_query;
+pub(crate) mod wrapper;
 
-pub use constraints::UniqueConstraints;
-pub use entity::EntityType;
-pub use fallback::try_redis_get_else_try_database_get;
-pub use partition_key::{KvStorePartition, PartitionKey};
-pub use scheme::{KvTable, Op, StorageScheme, TableKvSettings, decide_storage_scheme};
-pub use serializable_query::{DatabaseOperation, SerializableQuery};
-pub use wrapper::{
-    BridgeRedis, KvOperation, KvResult, KvStoreContext, RedisConnInterface, kv_wrapper,
-    push_to_drainer_stream,
-};
+pub(crate) use super::scheme::StorageScheme;
+pub(crate) use fallback::try_redis_get_else_try_database_get;
+pub(crate) use partition_key::{PartitionKey, hash_field_key};
+pub(crate) use scheme::{Op, TableKvSettings, decide_storage_scheme};
+pub(crate) use wrapper::{KvOperation, KvResult, KvStoreContext, RedisConnInterface, kv_wrapper};

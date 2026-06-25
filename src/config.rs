@@ -5,14 +5,11 @@ use std::{
 };
 
 use error_stack::ResultExt;
-use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "external_key_manager")]
 use hyperswitch_masking::Secret;
+use hyperswitch_masking::{ExposeInterface, PeekInterface};
 #[cfg(feature = "redis")]
 use hyperswitch_redis_interface::RedisSettings;
-
-#[cfg(feature = "kv")]
-use crate::storage::kv::{KvTable, TableKvSettings};
 
 use crate::{
     api_client::ApiClientConfig,
@@ -28,8 +25,9 @@ use crate::{
 pub struct GlobalConfig {
     pub server: Server,
     pub database: Database,
+    pub read_replica: Option<Database>,
     pub secrets: Secrets,
-    #[serde[default]]
+    #[serde(default)]
     pub secrets_management: SecretsManagementConfig,
     pub log: Log,
     #[serde(default)]
@@ -46,6 +44,8 @@ pub struct GlobalConfig {
     pub external_key_manager: ExternalKeyManagerConfig,
     #[cfg(feature = "redis")]
     pub redis: Option<RedisSettings>,
+    #[serde(default)]
+    pub runtime_config: RuntimeConfig,
     #[cfg(feature = "kv")]
     pub kv: KvConfig,
 }
@@ -135,13 +135,6 @@ pub struct TenantSecrets {
     #[cfg(feature = "redis")]
     #[serde(default)]
     pub redis_key_prefix: String,
-
-    /// Per-table KV configuration.  Each table can independently be set to
-    /// `redis_kv` or `postgres_only`, with its own `soft_kill` flag.
-    /// Tables not listed default to `postgres_only`.
-    #[cfg(feature = "kv")]
-    #[serde(default)]
-    pub kv: std::collections::HashMap<KvTable, TableKvSettings>,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -218,7 +211,9 @@ impl GlobalConfig {
             .add_source(
                 config::Environment::with_prefix("LOCKER")
                     .separator("__")
-                    .try_parsing(true),
+                    .try_parsing(true)
+                    .list_separator(",")
+                    .with_list_parse_key(RUNTIME_CONFIG_KEYS_PATH),
             )
             .build()?;
 
@@ -277,6 +272,15 @@ impl GlobalConfig {
                 "database_password",
             ))?;
 
+        if let Some(ref mut read_replica) = self.read_replica {
+            read_replica.password = secret_management_client
+                .get_secret(read_replica.password.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "read_replica_password",
+                ))?;
+        }
+
         for tenant_secrets in self.tenant_secrets.values_mut() {
             tenant_secrets.master_key = hex::decode(
                 secret_management_client
@@ -306,6 +310,18 @@ impl GlobalConfig {
                 .await
                 .change_context(error::ConfigurationError::KmsDecryptError(
                     "locker_private_key",
+                ))?;
+        }
+
+        if let RuntimeConfig::Enabled {
+            ref mut endpoint, ..
+        } = self.runtime_config
+        {
+            endpoint.api_key = secret_management_client
+                .get_secret(endpoint.api_key.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "runtime_config api_key",
                 ))?;
         }
 
@@ -346,6 +362,7 @@ impl GlobalConfig {
 
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
+        self.runtime_config.validate()?;
         #[cfg(feature = "external_key_manager")]
         {
             self.external_key_manager.validate()?;
@@ -368,6 +385,14 @@ pub struct KvConfig {
     pub drainer_num_partitions: u8,
     /// TTL (seconds) for keys written to Redis KV.
     pub ttl_for_kv: u32,
+    /// File-based fallback for enabling KV when `runtime_config.mode` is
+    /// `"disabled"`.  When the runtime config endpoint is enabled, the
+    /// endpoint's `locker.enable_kv` value takes precedence.
+    #[serde(default)]
+    pub enable_kv: bool,
+    /// File-based fallback for soft-kill mode (gradual rollout).
+    #[serde(default)]
+    pub soft_kill: bool,
 }
 
 #[cfg(feature = "kv")]
@@ -410,6 +435,78 @@ impl std::fmt::Display for Env {
             Self::Development => write!(f, "development"),
             Self::Release => write!(f, "release"),
         }
+    }
+}
+
+/// Config path (dotted) for the `keys` field inside `[runtime_config]`.
+///
+/// Used by the env-source builder to teach `config` crate's list parser
+/// that `LOCKER__RUNTIME_CONFIG__KEYS=a,b` should become `Vec<String>`
+/// instead of a single `String`.
+const RUNTIME_CONFIG_KEYS_PATH: &str = "runtime_config.keys";
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RuntimeConfigEndpoint {
+    pub base_url: String,
+    pub api_key: hyperswitch_masking::Secret<String>,
+}
+
+/// Runtime configuration source.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum RuntimeConfig {
+    #[default]
+    Disabled,
+    Enabled {
+        endpoint: RuntimeConfigEndpoint,
+        #[serde(default = "default_runtime_config_ttl_seconds")]
+        ttl_seconds: u64,
+        #[serde(default = "default_runtime_config_cache_max_capacity")]
+        cache_max_capacity: u64,
+        /// Keys to prefetch/warm at startup and on each periodic refresh tick.
+        ///
+        /// Env-overridable via `LOCKER__RUNTIME_CONFIG__KEYS=key1,key2`.
+        /// Absent keys are simply not prewarmed — `get::<T>()` still lazy-fetches.
+        #[serde(default)]
+        keys: Vec<String>,
+    },
+}
+
+fn default_runtime_config_ttl_seconds() -> u64 {
+    30
+}
+
+fn default_runtime_config_cache_max_capacity() -> u64 {
+    32
+}
+
+impl RuntimeConfig {
+    pub fn is_enabled(&self) -> bool {
+        matches!(self, Self::Enabled { .. })
+    }
+
+    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
+        if let Self::Enabled { endpoint, .. } = self {
+            if endpoint.base_url.trim().is_empty() {
+                return Err(
+                    crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        r#"runtime_config.endpoint.base_url is required when mode is "enabled""#
+                            .into(),
+                    ),
+                );
+            }
+
+            if endpoint.api_key.peek().trim().is_empty() {
+                return Err(
+                    crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        r#"runtime_config.endpoint.api_key is required when mode is "enabled""#
+                            .into(),
+                    ),
+                );
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -589,6 +686,8 @@ mod tests {
             drainer_stream_suffix: "DRAINER_STREAM".to_string(),
             drainer_num_partitions: 16,
             ttl_for_kv: 900,
+            enable_kv: false,
+            soft_kill: false,
         };
         // No tenant-id prefix, no schema segment — just {shard_N}_DRAINER_STREAM.
         assert_eq!(
