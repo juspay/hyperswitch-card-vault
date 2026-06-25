@@ -34,7 +34,10 @@ impl FromRequestParts<Arc<GlobalAppState>> for TenantStateResolver {
         // `x-request-id` header (set by tower-http's `MakeRequestId` layer)
         // to the `Storage` instance.  This is cheap — all heavy fields (DB
         // pools, Redis connections) are behind `Arc`.
-        let mut app_state = (*app_state).clone();
+        let app_state = (*app_state).clone();
+
+        #[cfg(feature = "kv")]
+        let mut app_state = app_state;
 
         #[cfg(feature = "kv")]
         {

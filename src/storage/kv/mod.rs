@@ -16,7 +16,6 @@
 
 pub(crate) mod constraints;
 pub(crate) mod entity;
-pub(crate) mod fallback;
 #[cfg(feature = "kv")]
 pub(crate) mod impls;
 pub(crate) mod metrics;
@@ -26,7 +25,6 @@ pub(crate) mod serializable_query;
 pub(crate) mod wrapper;
 
 pub(crate) use super::scheme::StorageScheme;
-pub(crate) use fallback::try_redis_get_else_try_database_get;
 pub(crate) use partition_key::{PartitionKey, hash_field_key};
 pub(crate) use scheme::{Op, TableKvSettings, decide_storage_scheme};
 pub(crate) use wrapper::{KvOperation, KvResult, KvStoreContext, RedisConnInterface, kv_wrapper};

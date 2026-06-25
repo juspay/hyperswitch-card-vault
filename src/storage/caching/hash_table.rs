@@ -15,20 +15,22 @@ where
 {
     type Error = T::Error;
 
-    async fn find_by_data_hash(
+    async fn find_optional_by_data_hash(
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
         match self.lookup::<types::HashTable>(data_hash.to_vec()).await {
             value @ Some(_) => Ok(value),
-            None => Ok(match self.inner.find_by_data_hash(data_hash).await? {
-                None => None,
-                Some(value) => {
-                    self.cache_data::<types::HashTable>(data_hash.to_vec(), value.clone())
-                        .await;
-                    Some(value)
-                }
-            }),
+            None => Ok(
+                match self.inner.find_optional_by_data_hash(data_hash).await? {
+                    None => None,
+                    Some(value) => {
+                        self.cache_data::<types::HashTable>(data_hash.to_vec(), value.clone())
+                            .await;
+                        Some(value)
+                    }
+                },
+            ),
         }
     }
 

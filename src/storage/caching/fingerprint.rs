@@ -17,18 +17,17 @@ where
 {
     type Error = T::Error;
 
-    async fn find_by_fingerprint_hash(
+    async fn find_optional_by_fingerprint_hash(
         &self,
         fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         let key = fingerprint_hash.peek().to_vec();
-        let cached_data = self.lookup::<types::Fingerprint>(key.clone()).await;
-        match cached_data {
+        match self.lookup::<types::Fingerprint>(key.clone()).await {
             Some(data) => Ok(Some(data)),
             None => {
                 let result = self
                     .inner
-                    .find_by_fingerprint_hash(fingerprint_hash)
+                    .find_optional_by_fingerprint_hash(fingerprint_hash)
                     .await?;
                 if let Some(ref fingerprint) = result {
                     self.cache_data::<types::Fingerprint>(key, fingerprint.clone())
@@ -39,15 +38,14 @@ where
         }
     }
 
-    async fn get_or_insert_fingerprint(
+    async fn insert_fingerprint(
         &self,
-        data: Secret<String>,
-        key: Secret<String>,
-        fingerprint_id: Option<Secret<String>>,
+        fingerprint_hash: Secret<Vec<u8>>,
+        fingerprint_id: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         let output = self
             .inner
-            .get_or_insert_fingerprint(data, key, fingerprint_id)
+            .insert_fingerprint(fingerprint_hash, fingerprint_id)
             .await?;
         self.cache_data::<types::Fingerprint>(
             output.fingerprint_hash.clone().expose(),

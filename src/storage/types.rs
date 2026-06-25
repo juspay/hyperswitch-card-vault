@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(Debug, Identifiable, Queryable)]
 #[diesel(table_name = schema::merchant)]
-pub(super) struct MerchantInner {
+pub(crate) struct MerchantInner {
     id: i32,
     merchant_id: String,
     enc_key: Encrypted,
@@ -33,8 +33,8 @@ pub struct Merchant {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
-pub(super) struct MerchantNewInner<'a> {
-    merchant_id: &'a str,
+pub(crate) struct MerchantNewInner<'a> {
+    pub(super) merchant_id: &'a str,
     enc_key: Encrypted,
 }
 

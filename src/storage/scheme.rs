@@ -6,10 +6,12 @@
 //! [`super::kv::scheme`].
 //!
 //! Diesel mapping: the column is `VARCHAR` (a diesel alias for `Text`), and the
-//! enum serializes via `strum::Display` → `"postgres_only"` / `"redis_kv"`.
-//! Deserialization is via `strum::EnumString`; unknown values are rejected
+//! enum serializes via manual `Display` → `"postgres_only"` / `"redis_kv"`.
+//! Deserialization is via manual `FromStr`; unknown values are rejected
 //! (defensive — the DB column carries no default so every insert must set it
 //! explicitly).
+
+use std::str::FromStr;
 
 use diesel::{
     backend::Backend,
@@ -35,16 +37,34 @@ use diesel::{
     diesel::expression::AsExpression,
     serde::Deserialize,
     serde::Serialize,
-    strum::Display,
-    strum::EnumString,
 )]
 #[diesel(sql_type = Text)]
 #[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
 pub enum StorageScheme {
     #[default]
     PostgresOnly,
     RedisKv,
+}
+
+impl std::fmt::Display for StorageScheme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PostgresOnly => f.write_str("postgres_only"),
+            Self::RedisKv => f.write_str("redis_kv"),
+        }
+    }
+}
+
+impl FromStr for StorageScheme {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "postgres_only" => Ok(Self::PostgresOnly),
+            "redis_kv" => Ok(Self::RedisKv),
+            other => Err(format!("unknown storage scheme: {other}")),
+        }
+    }
 }
 
 // ── Diesel ToSql / FromSql impls ─────────────────────────────────────────────
@@ -106,7 +126,7 @@ mod tests {
 
     #[test]
     fn from_sql_rejects_unknown_value() {
-        // FromSql delegates to strum::EnumString's parse — verify that
+        // FromSql delegates to FromStr's parse — verify that
         // an unknown string is rejected rather than silently defaulting.
         let result = "mysql_kv".parse::<StorageScheme>();
         assert!(result.is_err());
