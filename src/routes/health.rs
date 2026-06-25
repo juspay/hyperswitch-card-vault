@@ -46,6 +46,7 @@ pub struct DatabaseHealth {
     database_read: HealthState,
     database_write: HealthState,
     database_delete: HealthState,
+    database_replica: HealthState,
 }
 
 #[derive(Debug, serde::Serialize, Default)]
@@ -53,7 +54,6 @@ pub enum HealthState {
     Working,
     #[default]
     Failing,
-    #[cfg(any(feature = "external_key_manager", feature = "redis"))]
     Disabled,
 }
 
@@ -64,22 +64,34 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
     let db_test_output = state.db.test().await;
     let db_test_output_case_match = db_test_output.as_ref().map_err(|err| err.get_inner());
 
+    let replica_database_health = if state.db.has_replica() {
+        match state.db.test_replica().await {
+            Ok(()) => HealthState::Working,
+            Err(_) => HealthState::Failing,
+        }
+    } else {
+        HealthState::Disabled
+    };
+
     let db_health = match db_test_output_case_match {
         Ok(()) => DatabaseHealth {
             database_connection: HealthState::Working,
             database_read: HealthState::Working,
             database_write: HealthState::Working,
             database_delete: HealthState::Working,
+            database_replica: replica_database_health,
         },
 
         Err(&error::TestDBError::DBReadError) => DatabaseHealth {
             database_connection: HealthState::Working,
+            database_replica: replica_database_health,
             ..Default::default()
         },
 
         Err(&error::TestDBError::DBWriteError) => DatabaseHealth {
             database_connection: HealthState::Working,
             database_read: HealthState::Working,
+            database_replica: replica_database_health,
             ..Default::default()
         },
 
@@ -87,10 +99,12 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
             database_connection: HealthState::Working,
             database_write: HealthState::Working,
             database_read: HealthState::Working,
+            database_replica: replica_database_health,
             ..Default::default()
         },
 
         Err(_) => DatabaseHealth {
+            database_replica: replica_database_health,
             ..Default::default()
         },
     };
