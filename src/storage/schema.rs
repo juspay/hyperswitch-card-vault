@@ -58,6 +58,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    reverse_lookup (lookup_id) {
+        lookup_id -> Bytea,
+        secondary_key -> Varchar,
+        partition_key -> Varchar,
+        source -> Varchar,
+    }
+}
+
+diesel::table! {
     vault (entity_id, vault_id) {
         id -> Int4,
         #[max_length = 255]
@@ -76,5 +85,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     hash_table,
     locker,
     merchant,
+    reverse_lookup,
     vault,
 );
