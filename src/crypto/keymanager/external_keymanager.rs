@@ -202,14 +202,14 @@ impl super::KeyProvider for ExternalKeyManager {
         let entity = match entity {
             Ok(entity) => Ok(entity),
             Err(inner_err) => match inner_err.is_not_found() {
-                // DEPRECATED lazy provisioning: clients should call `POST /entity/create`
+                // DEPRECATED lazy provisioning: clients should call `POST /entity`
                 // explicitly. Once this warning stops appearing the fallback can be removed and
                 // the add flow switched to `find_by_entity_id`.
                 true => {
                     logger::warn!(
                         entity_id = %entity_id,
                         deprecation = "add_flow_auto_create",
-                        "entity auto-created during add flow; clients should call POST /entity/create explicitly"
+                        "entity auto-created during add flow; clients should call POST /entity explicitly"
                     );
                     let external_keymanager_resp = external_keymanager::create_key_in_key_manager(
                         tenant_app_state,

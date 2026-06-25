@@ -1,0 +1,21 @@
+Table,PartitionKey,HashKey,LookupKeys,Operation,Where Clause,Update Clause
+merchant,mid_{merchant_id},mid_{merchant_id},N/A,find_by_merchant_id,WHERE merchant_id = ?,N/A
+merchant,mid_{merchant_id},mid_{merchant_id},N/A,find_or_create_by_merchant_id,WHERE merchant_id = ?,N/A
+merchant,mid_{merchant_id},mid_{merchant_id},N/A,insert_merchant,INSERT INTO,N/A
+merchant,N/A (PG-only batch scan),N/A,N/A,find_all_keys_excluding_entity_keys,WHERE merchant_id <> ALL(SELECT entity_id FROM entity) LIMIT ?,N/A
+locker,mid_{merchant_id}_cust_{customer_id},locker_{locker_id},N/A,find_by_locker_id_merchant_id_customer_id,WHERE locker_id=? AND merchant_id=? AND customer_id=?,N/A
+locker,mid_{merchant_id}_cust_{customer_id},locker_{locker_id},{hash_id},find_by_hash_id_merchant_id_customer_id,WHERE hash_id=? AND merchant_id=? AND customer_id=?,N/A
+locker,mid_{merchant_id}_cust_{customer_id},locker_{locker_id},{hash_id},insert_or_get_from_locker,INSERT INTO,N/A
+locker,mid_{merchant_id}_cust_{customer_id},locker_{locker_id},N/A,delete_from_locker,WHERE locker_id=? AND merchant_id=? AND customer_id=?,N/A
+hash_table,hash_{hash_id},hash_{hash_id},{data_hash},find_by_data_hash,WHERE data_hash = ?,N/A
+hash_table,hash_{hash_id},hash_{hash_id},{data_hash},insert_hash,INSERT INTO,N/A
+fingerprint,fingerprint_{fingerprint_hash},fingerprint_{fingerprint_hash},N/A,find_by_fingerprint_hash,WHERE fingerprint_hash = ?,N/A
+fingerprint,fingerprint_{fingerprint_hash},fingerprint_{fingerprint_hash},N/A,get_or_insert_fingerprint,INSERT INTO,N/A
+vault,entity_{entity_id},vault_{vault_id},N/A,find_by_vault_id_entity_id,WHERE vault_id=? AND entity_id=?,N/A
+vault,entity_{entity_id},vault_{vault_id},N/A,insert_or_get_from_vault,INSERT INTO,N/A
+vault,entity_{entity_id},vault_{vault_id},N/A,upsert_or_get_from_vault,INSERT INTO (fallback update),encrypted_data expires_at
+vault,entity_{entity_id},vault_{vault_id},N/A,delete_from_vault,WHERE vault_id=? AND entity_id=?,N/A
+vault,entity_{entity_id},vault_{vault_id},N/A,update_vault_data,WHERE vault_id=? AND entity_id=?,encrypted_data expires_at
+entity,entity_{entity_id},entity_{entity_id},N/A,find_by_entity_id,WHERE entity_id = ?,N/A
+entity,entity_{entity_id},entity_{entity_id},N/A,insert_entity,INSERT INTO,N/A
+Add an SDK type field when creating an External Vault Processor.

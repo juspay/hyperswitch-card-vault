@@ -43,7 +43,7 @@ impl super::KeyProvider for InternalKeyManager {
             GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
 
         // DEPRECATED lazy provisioning: read first so the deprecation signal only fires when the
-        // add flow actually has to create the merchant. Clients should call `POST /entity/create`
+        // add flow actually has to create the merchant. Clients should call `POST /entity`
         // explicitly; once this warning stops appearing the fallback can be removed and the add
         // flow switched to `find_by_entity_id`.
         let merchant = match tenant_app_state
@@ -56,7 +56,7 @@ impl super::KeyProvider for InternalKeyManager {
                 logger::warn!(
                     entity_id = %entity_id,
                     deprecation = "add_flow_auto_create",
-                    "merchant auto-created during add flow; clients should call POST /entity/create explicitly"
+                    "merchant auto-created during add flow; clients should call POST /entity explicitly"
                 );
                 merchant::find_or_create(tenant_app_state, &entity_id, &master_encryption).await?
             }

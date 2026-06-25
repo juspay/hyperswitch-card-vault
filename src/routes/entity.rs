@@ -9,7 +9,7 @@ use crate::{
     routes::data::types::{Status, Validation},
 };
 
-/// Request body for `POST /entity/create`.
+/// Request body for `POST /entity`.
 #[derive(Debug, Deserialize)]
 pub struct CreateEntityRequest {
     pub entity_id: String,
@@ -29,7 +29,7 @@ impl Validation for CreateEntityRequest {
     }
 }
 
-/// Response body for `POST /entity/create`.
+/// Response body for `POST /entity`.
 #[derive(Debug, Serialize)]
 pub struct CreateEntityResponse {
     pub status: Status,
@@ -37,7 +37,7 @@ pub struct CreateEntityResponse {
     pub created_at: time::PrimitiveDateTime,
 }
 
-/// `POST /entity/create` — explicitly and idempotently provisions the key-holder record for
+/// `POST /entity` — explicitly and idempotently provisions the key-holder record for
 /// `entity_id`. The backing table is chosen by configuration: the `merchant` table under the
 /// internal key manager, or the `entity` table under the external key manager. Returns the
 /// existing record unchanged if it already exists.

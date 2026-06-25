@@ -190,7 +190,7 @@ pub async fn server_builder(
         )
         // Explicit provisioning endpoint. Config decides the backing table: `merchant` under the
         // internal key manager, `entity` under the external key manager.
-        .route("/entity/create", post(routes::entity::create_entity));
+        .route("/entity", post(routes::entity::create_entity));
 
     #[cfg(feature = "middleware")]
     {
