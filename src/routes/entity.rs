@@ -6,7 +6,7 @@ use crate::{
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError},
     logger,
-    routes::data::types::{Status, Validation},
+    routes::data::types::Validation,
 };
 
 /// Request body for `POST /entity`.
@@ -32,7 +32,6 @@ impl Validation for CreateEntityRequest {
 /// Response body for `POST /entity`.
 #[derive(Debug, Serialize)]
 pub struct CreateEntityResponse {
-    pub status: Status,
     pub entity_id: String,
     /// RFC 3339, UTC, millisecond precision (e.g. `2026-06-24T19:27:37.552Z`) to match the
     /// timestamp format used by the other APIs.
@@ -72,7 +71,6 @@ pub async fn create_entity(
         .await?;
 
     let response = Json(CreateEntityResponse {
-        status: Status::Ok,
         entity_id: created.entity_id,
         created_at: created.created_at,
     });
