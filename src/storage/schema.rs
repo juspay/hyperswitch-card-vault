@@ -63,6 +63,7 @@ diesel::table! {
         secondary_key -> Varchar,
         partition_key -> Varchar,
         source -> Varchar,
+        update_by -> Varchar,
     }
 }
 

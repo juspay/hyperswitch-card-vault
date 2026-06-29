@@ -148,6 +148,7 @@ pub(crate) struct ReverseLookup {
     pub secondary_key: String,
     pub partition_key: String,
     pub source: String,
+    pub update_by: String,
 }
 
 #[derive(Debug, Clone, Insertable)]
@@ -157,6 +158,7 @@ pub(crate) struct ReverseLookupNew {
     pub secondary_key: String,
     pub partition_key: String,
     pub source: String,
+    pub update_by: String,
 }
 
 impl From<ReverseLookupNew> for ReverseLookup {
@@ -166,6 +168,7 @@ impl From<ReverseLookupNew> for ReverseLookup {
             secondary_key: value.secondary_key,
             partition_key: value.partition_key,
             source: value.source,
+            update_by: value.update_by,
         }
     }
 }
