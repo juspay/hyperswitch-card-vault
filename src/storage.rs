@@ -319,7 +319,7 @@ pub(crate) trait FingerprintInterface {
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 ///
 /// ReverseLookupInterface:
 ///
