@@ -11,6 +11,24 @@ pub mod date_time {
         let utc_date_time = OffsetDateTime::now_utc();
         PrimitiveDateTime::new(utc_date_time.date(), utc_date_time.time())
     }
+
+    /// Serialize a [`PrimitiveDateTime`] (assumed to be UTC) as an ISO 8601 / RFC 3339 string
+    /// with millisecond precision and a `Z` offset, e.g. `2026-06-24T19:27:37.552Z` — matching
+    /// the timestamp format used across the Hyperswitch APIs. Intended for use with
+    /// `#[serde(serialize_with = "crate::utils::date_time::serialize")]`.
+    pub fn serialize<S>(date_time: &PrimitiveDateTime, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let format = time::macros::format_description!(
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
+        );
+        let formatted = date_time
+            .assume_utc()
+            .format(&format)
+            .map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&formatted)
+    }
 }
 
 /// Record the header's fields in request's trace

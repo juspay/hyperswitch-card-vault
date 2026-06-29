@@ -33,27 +33,9 @@ impl Validation for CreateEntityRequest {
 #[derive(Debug, Serialize)]
 pub struct CreateEntityResponse {
     pub entity_id: String,
-    /// RFC 3339, UTC, millisecond precision (e.g. `2026-06-24T19:27:37.552Z`) to match the
-    /// timestamp format used by the other APIs.
-    #[serde(serialize_with = "serialize_rfc3339_millis")]
+    /// ISO 8601 / RFC 3339, UTC, millisecond precision (e.g. `2026-06-24T19:27:37.552Z`).
+    #[serde(serialize_with = "crate::utils::date_time::serialize")]
     pub created_at: time::PrimitiveDateTime,
-}
-
-fn serialize_rfc3339_millis<S>(
-    created_at: &time::PrimitiveDateTime,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let format = time::macros::format_description!(
-        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
-    );
-    let formatted = created_at
-        .assume_utc()
-        .format(&format)
-        .map_err(serde::ser::Error::custom)?;
-    serializer.serialize_str(&formatted)
 }
 
 /// `POST /entity` — explicitly and idempotently provisions the key-holder record for
