@@ -7,5 +7,3 @@ CREATE TABLE IF NOT EXISTS reverse_lookup (
     source VARCHAR NOT NULL,
     update_by VARCHAR NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS lookup_id_index ON reverse_lookup (lookup_id);
