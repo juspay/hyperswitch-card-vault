@@ -401,7 +401,9 @@ impl GlobalConfig {
             let prefix = secrets.redis_key_prefix.trim();
             if prefix.is_empty() {
                 return Err(error::ConfigurationError::InvalidConfigurationValueError(
-                    format!("tenant `{tenant_id}`: redis_key_prefix required with kv + multi-tenant"),
+                    format!(
+                        "tenant `{tenant_id}`: redis_key_prefix required with kv + multi-tenant"
+                    ),
                 ));
             }
             if !seen.insert(prefix) {

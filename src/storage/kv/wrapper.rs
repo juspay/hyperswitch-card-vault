@@ -118,12 +118,7 @@ where
                 // *is* the Redis key, the field is the entity type, so a
                 // successful HSETNX proves no prior writer claimed it.
                 let result = redis_conn
-                    .serialize_and_set_hash_field_if_not_exist(
-                        &key.into(),
-                        field,
-                        value,
-                        Some(ttl),
-                    )
+                    .serialize_and_set_hash_field_if_not_exist(&key.into(), field, value, Some(ttl))
                     .await
                     .bridge()?;
 
