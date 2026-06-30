@@ -43,7 +43,8 @@ fn redis_error_from_ref(err: &RedisError) -> RedisError {
 }
 
 /// Bridges `error_stack` 0.4 `Report<RedisError>` → 0.5.
-trait BridgeRedis<T> {    fn bridge(self) -> error_stack::Result<T, RedisError>;
+trait BridgeRedis<T> {
+    fn bridge(self) -> error_stack::Result<T, RedisError>;
 }
 
 impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
@@ -154,18 +155,20 @@ where
                 crate::metric_attributes!(("operation", operation.clone())),
             );
         })
-        .inspect_err(|err: &error_stack::Report<RedisError>| match err.current_context() {
-            RedisError::NotFound => {
-                debug!(kv_operation = %operation, status = "not_found");
-            }
-            other => {
-                logger::error!(kv_operation = %operation, status = "error", error = ?other);
-                metrics::KV_OPERATION_FAILED.add(
-                    1,
-                    crate::metric_attributes!(("operation", operation.clone())),
-                );
-            }
-        })
+        .inspect_err(
+            |err: &error_stack::Report<RedisError>| match err.current_context() {
+                RedisError::NotFound => {
+                    debug!(kv_operation = %operation, status = "not_found");
+                }
+                other => {
+                    logger::error!(kv_operation = %operation, status = "error", error = ?other);
+                    metrics::KV_OPERATION_FAILED.add(
+                        1,
+                        crate::metric_attributes!(("operation", operation.clone())),
+                    );
+                }
+            },
+        )
 }
 
 async fn push_to_drainer_stream<R>(

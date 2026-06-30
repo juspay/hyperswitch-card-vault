@@ -128,7 +128,8 @@ impl RuntimeConfigManager {
             Ok(b) => Arc::new(b),
             Err(error) => {
                 crate::logger::error!(
-                    ?error, key,
+                    ?error,
+                    key,
                     "Failed to fetch runtime config bundle from endpoint"
                 );
                 return None;
@@ -137,7 +138,9 @@ impl RuntimeConfigManager {
 
         #[cfg(feature = "caching")]
         if let RuntimeConfigState::Enabled { cache, .. } = &self.state {
-            cache.insert(BUNDLE_CACHE_KEY.to_string(), Arc::clone(&bundle)).await;
+            cache
+                .insert(BUNDLE_CACHE_KEY.to_string(), Arc::clone(&bundle))
+                .await;
         }
 
         bundle

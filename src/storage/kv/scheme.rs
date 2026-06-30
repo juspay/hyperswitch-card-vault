@@ -16,9 +16,7 @@ use crate::storage::scheme::StorageScheme;
 /// Backward-compatible deserialization accepts `"disabled"` / `"enabled"` /
 /// `"soft_kill"` (bare string or `{"kv_state": "..."}`) **or** the legacy
 /// `{"enable_kv": bool, "soft_kill": bool}` object.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, strum::Display, strum::EnumString,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, strum::Display, strum::EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum KvState {
     #[default]
@@ -72,16 +70,15 @@ impl<'de> serde::Deserialize<'de> for KvState {
                             return Err(de::Error::unknown_field(
                                 other,
                                 &["enable_kv", "soft_kill", "kv_state"],
-                            ))
+                            ));
                         }
                     }
                 }
 
                 // New form takes precedence.
                 if let Some(state_str) = kv_state {
-                    return KvState::from_str(&state_str).map_err(|_| {
-                        de::Error::custom(format!("unknown kv_state: {state_str}"))
-                    });
+                    return KvState::from_str(&state_str)
+                        .map_err(|_| de::Error::custom(format!("unknown kv_state: {state_str}")));
                 }
 
                 // Legacy form.

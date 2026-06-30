@@ -8,7 +8,5 @@ task_local! {
 
 /// Read the current request-id, or an empty string when no scope is active.
 pub(crate) fn current_request_id() -> String {
-    REQUEST_ID
-        .try_with(|v| v.clone())
-        .unwrap_or_default()
+    REQUEST_ID.try_with(|v| v.clone()).unwrap_or_default()
 }

@@ -209,7 +209,6 @@ impl Storage {
         );
         state
     }
-
 }
 
 #[cfg(feature = "kv")]
