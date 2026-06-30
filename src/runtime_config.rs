@@ -42,14 +42,16 @@ impl RuntimeConfigManager {
     ) -> error_stack::Result<reqwest::header::HeaderMap, error::ConfigurationError> {
         let mut map = reqwest::header::HeaderMap::new();
         for (name, value) in headers {
-            let hname = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                .change_context(error::ConfigurationError::InvalidConfigurationValueError(format!(
+            let hname = reqwest::header::HeaderName::from_bytes(name.as_bytes()).change_context(
+                error::ConfigurationError::InvalidConfigurationValueError(format!(
                     "invalid runtime_config header name `{name}`"
-                )))?;
-            let mut hval = reqwest::header::HeaderValue::from_str(value.peek())
-                .change_context(error::ConfigurationError::InvalidConfigurationValueError(format!(
+                )),
+            )?;
+            let mut hval = reqwest::header::HeaderValue::from_str(value.peek()).change_context(
+                error::ConfigurationError::InvalidConfigurationValueError(format!(
                     "invalid runtime_config header value for `{name}`"
-                )))?;
+                )),
+            )?;
             hval.set_sensitive(true);
             map.insert(hname, hval);
         }
