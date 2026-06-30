@@ -401,6 +401,8 @@ impl std::fmt::Display for Env {
 pub struct RuntimeConfigEndpoint {
     pub base_url: String,
     pub api_key: hyperswitch_masking::Secret<String>,
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, hyperswitch_masking::Secret<String>>,
 }
 
 /// Runtime configuration source.
