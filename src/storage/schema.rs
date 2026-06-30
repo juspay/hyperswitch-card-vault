@@ -59,7 +59,7 @@ diesel::table! {
 
 diesel::table! {
     reverse_lookup (lookup_id) {
-        lookup_id -> Bytea,
+        lookup_id -> Varchar,
         secondary_key -> Varchar,
         partition_key -> Varchar,
         source -> Varchar,

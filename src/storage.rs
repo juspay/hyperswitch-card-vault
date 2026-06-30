@@ -332,7 +332,7 @@ pub(crate) trait ReverseLookupInterface {
     /// Fetch a reverse lookup record by its lookup_id.
     async fn find_by_lookup_id(
         &self,
-        lookup_id: &[u8],
+        lookup_id: &str,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>>;
 
     /// Insert a new reverse lookup record into the database.

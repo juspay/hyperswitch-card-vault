@@ -337,7 +337,7 @@ impl super::ReverseLookupInterface for Storage {
 
     async fn find_by_lookup_id(
         &self,
-        lookup_id: &[u8],
+        lookup_id: &str,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 

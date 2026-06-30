@@ -144,7 +144,7 @@ impl<'a> LockerNew<'a> {
 #[diesel(table_name = schema::reverse_lookup, primary_key(lookup_id))]
 #[expect(dead_code)]
 pub(crate) struct ReverseLookup {
-    pub lookup_id: Vec<u8>,
+    pub lookup_id: String,
     pub secondary_key: String,
     pub partition_key: String,
     pub source: String,
@@ -154,7 +154,7 @@ pub(crate) struct ReverseLookup {
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::reverse_lookup)]
 pub(crate) struct ReverseLookupNew {
-    pub lookup_id: Vec<u8>,
+    pub lookup_id: String,
     pub secondary_key: String,
     pub partition_key: String,
     pub source: String,
