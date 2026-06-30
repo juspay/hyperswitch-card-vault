@@ -319,6 +319,29 @@ pub(crate) trait FingerprintInterface {
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
 }
 
+#[expect(dead_code)]
+///
+/// ReverseLookupInterface:
+///
+/// Interface for interacting with the reverse_lookup database table.
+/// The table maps an external lookup_id to the partition key and
+/// secondary key along with the source of insertion.
+pub(crate) trait ReverseLookupInterface {
+    type Error;
+
+    /// Fetch a reverse lookup record by its lookup_id.
+    async fn find_by_lookup_id(
+        &self,
+        lookup_id: &str,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>>;
+
+    /// Insert a new reverse lookup record into the database.
+    async fn insert_reverse_lookup(
+        &self,
+        new: types::ReverseLookupNew,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>>;
+}
+
 ///
 /// EntityInterface:
 ///

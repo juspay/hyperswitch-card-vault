@@ -141,6 +141,39 @@ impl<'a> LockerNew<'a> {
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable)]
+#[diesel(table_name = schema::reverse_lookup, primary_key(lookup_id))]
+#[expect(dead_code)]
+pub(crate) struct ReverseLookup {
+    pub lookup_id: String,
+    pub secondary_key: String,
+    pub partition_key: String,
+    pub source: String,
+    pub update_by: String,
+}
+
+#[derive(Debug, Clone, Insertable)]
+#[diesel(table_name = schema::reverse_lookup)]
+pub(crate) struct ReverseLookupNew {
+    pub lookup_id: String,
+    pub secondary_key: String,
+    pub partition_key: String,
+    pub source: String,
+    pub update_by: String,
+}
+
+impl From<ReverseLookupNew> for ReverseLookup {
+    fn from(value: ReverseLookupNew) -> Self {
+        Self {
+            lookup_id: value.lookup_id,
+            secondary_key: value.secondary_key,
+            partition_key: value.partition_key,
+            source: value.source,
+            update_by: value.update_by,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
