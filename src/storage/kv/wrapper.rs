@@ -118,7 +118,11 @@ where
                 // *is* the Redis key, so a successful SETNX proves no prior
                 // writer claimed it. No SADD set needed.
                 let result = redis_conn
-                    .serialize_and_set_hash_field_if_not_exist(&key.into(), value, Some(i64::from(ttl)))
+                    .serialize_and_set_hash_field_if_not_exist(
+                        &key.into(),
+                        value,
+                        Some(i64::from(ttl)),
+                    )
                     .await
                     .bridge()?;
 
