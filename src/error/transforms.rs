@@ -345,6 +345,10 @@ impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
             }
+            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
+            super::StorageError::ValueNotFound(_) => Self::NotFoundError,
+            super::StorageError::KVError
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
