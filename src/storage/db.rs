@@ -305,7 +305,7 @@ impl super::FingerprintInterface for Storage {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id: fingerprint_id.clone(),
                 // Overwritten by `insert_plain_resource` via `set_storage_scheme`.
-                updated_by: StorageScheme::PostgresOnly,
+                updated_by: StorageScheme::RedisKv,
             };
             let partition_key = super::kv::PartitionKey::Fingerprint {
                 fingerprint_hash: fingerprint_hash.peek().as_slice(),
