@@ -173,34 +173,69 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        // `data_hash` is a non-PK lookup, so reverse lookups always hit Postgres.
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let partition_key = super::kv::PartitionKey::Hash { data_hash };
 
-        let output = types::HashTable::table()
-            .filter(schema::hash_table::data_hash.eq(data_hash))
-            .get_result::<types::HashTable>(&mut conn)
-            .await
-            .optional()?;
+            return super::kv::find_optional_plain_resource::<types::HashTableNew>(
+                self,
+                partition_key,
+            )
+            .await;
+        }
 
-        Ok(output)
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output = types::HashTable::table()
+                .filter(schema::hash_table::data_hash.eq(data_hash))
+                .get_result::<types::HashTable>(&mut conn)
+                .await
+                .optional()?;
+
+            Ok(output)
+        }
     }
 
     async fn insert_hash(
         &self,
         data_hash: Vec<u8>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
-
-        let output: types::HashTable = diesel::insert_into(types::HashTable::table())
-            .values(types::HashTableNew {
+        #[cfg(feature = "kv")]
+        {
+            let model = types::HashTableNew {
                 hash_id: utils::generate_uuid(),
-                data_hash,
+                data_hash: data_hash.clone(),
                 updated_by: StorageScheme::PostgresOnly,
-            })
-            .get_result(&mut conn)
-            .await?;
+            };
+            let partition_key = super::kv::PartitionKey::Hash {
+                data_hash: &data_hash,
+            };
 
-        Ok(output)
+            return super::kv::insert_plain_resource::<types::HashTableNew>(
+                self,
+                model,
+                partition_key,
+            )
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::HashTable = diesel::insert_into(types::HashTable::table())
+                .values(types::HashTableNew {
+                    hash_id: utils::generate_uuid(),
+                    data_hash,
+                    updated_by: StorageScheme::PostgresOnly,
+                })
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output)
+        }
     }
 }
 
