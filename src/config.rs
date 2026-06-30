@@ -46,6 +46,8 @@ pub struct GlobalConfig {
     pub redis: Option<RedisSettings>,
     #[serde(default)]
     pub runtime_config: RuntimeConfig,
+    #[cfg(feature = "kv")]
+    pub kv: KvConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -127,6 +129,12 @@ pub struct TenantSecrets {
 
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
+
+    /// Redis key prefix for this tenant.  Empty (default) ⇒ keys are not
+    /// namespaced, matching hyperswitch's public-tenant convention.
+    #[cfg(feature = "redis")]
+    #[serde(default)]
+    pub redis_key_prefix: String,
 }
 
 fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -203,7 +211,9 @@ impl GlobalConfig {
             .add_source(
                 config::Environment::with_prefix("LOCKER")
                     .separator("__")
-                    .try_parsing(true),
+                    .try_parsing(true)
+                    .list_separator(",")
+                    .with_list_parse_key(RUNTIME_CONFIG_KEYS_PATH),
             )
             .build()?;
 
@@ -365,6 +375,37 @@ impl GlobalConfig {
     }
 }
 
+#[cfg(feature = "kv")]
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct KvConfig {
+    /// Suffix appended to the drainer stream name (e.g. `"DRAINER_STREAM"` →
+    /// `{shard_N}_DRAINER_STREAM`).
+    pub drainer_stream_suffix: String,
+    /// Number of partitions (shards) for the drainer stream.
+    pub drainer_num_partitions: u8,
+    /// TTL (seconds) for keys written to Redis KV.
+    pub ttl_for_kv: u32,
+    /// File-based fallback for enabling KV when `runtime_config.mode` is
+    /// `"disabled"`.  When the runtime config endpoint is enabled, the
+    /// endpoint's `locker.enable_kv` value takes precedence.
+    #[serde(default)]
+    pub enable_kv: bool,
+    /// File-based fallback for soft-kill mode (gradual rollout).
+    #[serde(default)]
+    pub soft_kill: bool,
+}
+
+#[cfg(feature = "kv")]
+impl KvConfig {
+    /// Build the Redis Stream name for a given shard key.
+    ///
+    /// Format: `{shard_key}_DRAINER_STREAM` — no tenant-id prefix, no schema
+    /// segment.  This matches the hyperswitch drainer consumer's expectation.
+    pub fn drainer_stream_name(&self, shard_key: &str) -> String {
+        format!("{{{}}}_{}", shard_key, self.drainer_stream_suffix)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Env {
     Development,
@@ -397,6 +438,13 @@ impl std::fmt::Display for Env {
     }
 }
 
+/// Config path (dotted) for the `keys` field inside `[runtime_config]`.
+///
+/// Used by the env-source builder to teach `config` crate's list parser
+/// that `LOCKER__RUNTIME_CONFIG__KEYS=a,b` should become `Vec<String>`
+/// instead of a single `String`.
+const RUNTIME_CONFIG_KEYS_PATH: &str = "runtime_config.keys";
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct RuntimeConfigEndpoint {
     pub base_url: String,
@@ -415,6 +463,12 @@ pub enum RuntimeConfig {
         ttl_seconds: u64,
         #[serde(default = "default_runtime_config_cache_max_capacity")]
         cache_max_capacity: u64,
+        /// Keys to prefetch/warm at startup and on each periodic refresh tick.
+        ///
+        /// Env-overridable via `LOCKER__RUNTIME_CONFIG__KEYS=key1,key2`.
+        /// Absent keys are simply not prewarmed — `get::<T>()` still lazy-fetches.
+        #[serde(default)]
+        keys: Vec<String>,
     },
 }
 

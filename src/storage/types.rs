@@ -8,6 +8,7 @@ use diesel::{
 use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
 use super::schema;
+use super::scheme::StorageScheme;
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
@@ -54,6 +55,7 @@ pub(super) struct LockerInner {
     created_at: time::PrimitiveDateTime,
     hash_id: String,
     ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
 impl From<LockerInner> for Locker {
@@ -66,6 +68,7 @@ impl From<LockerInner> for Locker {
             created_at: value.created_at,
             hash_id: value.hash_id,
             ttl: value.ttl,
+            updated_by: value.updated_by,
         }
     }
 }
@@ -79,6 +82,7 @@ pub struct Locker {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
 #[derive(Debug)]
@@ -122,6 +126,7 @@ pub struct LockerNew<'a> {
     pub enc_data: Encrypted,
     pub hash_id: &'a str,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
 impl<'a> LockerNew<'a> {
@@ -136,25 +141,28 @@ impl<'a> LockerNew<'a> {
             enc_data,
             hash_id,
             ttl: *request.ttl,
+            updated_by: StorageScheme::PostgresOnly,
         }
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
+    pub updated_by: StorageScheme,
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::fingerprint)]
 pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: StorageScheme,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -194,11 +202,12 @@ impl std::ops::Deref for CardNumber {
     }
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
 pub(super) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: StorageScheme,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -209,19 +218,21 @@ pub(super) struct EntityTableNew {
     pub enc_key_id: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
 #[diesel(table_name = schema::hash_table)]
 pub(super) struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
+    pub updated_by: StorageScheme,
 }
 
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression)]
+#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
+#[serde(transparent)]
 pub struct Encrypted {
     inner: Secret<Vec<u8>>,
 }

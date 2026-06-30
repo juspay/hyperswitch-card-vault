@@ -42,7 +42,11 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
             }
-            super::StorageError::NotFoundError => Self::NotFoundError,
+            super::StorageError::NotFoundError
+            | super::StorageError::ValueNotFound(_)
+            | super::StorageError::DuplicateValue { .. }
+            | super::StorageError::KVError
+            | super::StorageError::SerializationFailed => Self::NotFoundError,
         }
     }
 }
@@ -62,7 +66,12 @@ impl<'a> From<&'a super::StorageError> for super::VaultDBError {
                 Self::DBInsertError
             }
             super::StorageError::DeleteError => Self::DBDeleteError,
-            super::StorageError::NotFoundError => Self::NotFoundError,
+            super::StorageError::NotFoundError | super::StorageError::ValueNotFound(_) => {
+                Self::NotFoundError
+            }
+            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
+            super::StorageError::KVError
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -82,6 +91,10 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
                 Self::DBInsertError
             }
             super::StorageError::NotFoundError => Self::DBFilterError,
+            super::StorageError::ValueNotFound(_) => Self::DBFilterError,
+            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
+            super::StorageError::KVError
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -102,6 +115,10 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
             | super::StorageError::EncryptionError
             | super::StorageError::NotFoundError => Self::UnknownError,
             super::StorageError::ReplicaPoolNotConfigured => Self::DBReplicaNotConfigured,
+            super::StorageError::ValueNotFound(_) => Self::UnknownError,
+            super::StorageError::DuplicateValue { .. } => Self::DBWriteError,
+            super::StorageError::KVError
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -113,7 +130,9 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
             | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
-            super::StorageError::FindError | super::StorageError::NotFoundError => {
+            super::StorageError::FindError
+            | super::StorageError::NotFoundError
+            | super::StorageError::ValueNotFound(_) => {
                 Self::DBFilterError
             }
             super::StorageError::DecryptionError
@@ -122,6 +141,9 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
             }
+            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
+            super::StorageError::KVError
+            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -260,7 +282,12 @@ impl<'a> From<&'a super::StorageError> for super::EntityDBError {
             | super::StorageError::PoolClientFailure
             | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
-            super::StorageError::NotFoundError => Self::NotFoundError,
+            super::StorageError::NotFoundError | super::StorageError::ValueNotFound(_) => {
+                Self::NotFoundError
+            }
+            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
+            super::StorageError::KVError
+            | super::StorageError::SerializationFailed => Self::UnknownError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
