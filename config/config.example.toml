@@ -39,7 +39,7 @@ locker_private_key = "" # the locker private key to used used and the private ke
 # configure master_key and public_key for each tenant
 # master_key - used for database encryption this could be aes encrypted by key custodian
 # public_key - used for signature verification and encryption of response payload which is sent back to tenant
-hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
+hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public", redis_key_prefix = "" }
 
 # To protect secret/sensitive values like:
 # - database.passwod
@@ -113,6 +113,22 @@ unresponsive_check_interval = 2    # how often to check for unresponsiveness (se
 max_feed_count = 200               # max commands fed to the server at once
 max_failure_threshold_seconds = 5  # max seconds Redis may be unreachable before it's failed
 
+# KV (write-through Redis) configuration — global drainer settings (only used with the `kv` feature)
+[kv]
+drainer_stream_suffix = "DRAINER_STREAM"  # suffix for the drainer stream name
+drainer_num_partitions = 16        # number of shard partitions
+ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
+enable_kv = false                  # file-based fallback: enable KV when runtime_config is disabled
+soft_kill = false                  # file-based fallback: gradual rollout (inserts → PG, reads → Redis-first)
+
+# KV enablement is controlled at runtime via the `locker.enable_kv` runtime-config
+# key (see [runtime_config] below).  When the runtime config endpoint is enabled,
+# its value takes precedence over `enable_kv` here.  When `runtime_config.mode` is
+# `"disabled"`, the `enable_kv` / `soft_kill` fields above are used as a fallback.
+# The endpoint should return JSON such as:
+#   {"enable_kv": true, "soft_kill": false}
+# `soft_kill=true` enables gradual rollout (inserts → Postgres, reads → Redis-first).
+
 # Metrics configuration: export metrics for monitoring.
 # - disabled: no metrics exported
 # - otlp: configure endpoint, endpoint_timeout_secs, metrics_export_interval_secs
@@ -134,6 +150,9 @@ metrics_export_interval_secs = 60  # How often to export metrics (seconds)
 # mode = "enabled"        # Options: "disabled", "enabled"
 # ttl_seconds = 30
 # cache_max_capacity = 32
+# Keys to prefetch/warm at startup and periodically refresh (optional).
+# Env: LOCKER__RUNTIME_CONFIG__KEYS=locker.use_read_replica,locker.enable_kv
+# keys = ["locker.use_read_replica", "locker.enable_kv"]
 
 # Endpoint needs to be specified if mode is "enabled"
 # [runtime_config.endpoint]

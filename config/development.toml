@@ -51,6 +51,11 @@ unresponsive_check_interval = 2
 max_feed_count = 200
 max_failure_threshold_seconds = 5
 
+[kv]
+drainer_stream_suffix = "DRAINER_STREAM"
+drainer_num_partitions = 16
+ttl_for_kv = 900
+
 [metrics]
 mode = "disabled"
 

@@ -3,6 +3,8 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use hyperswitch_masking::{ExposeInterface, Secret};
+#[cfg(feature = "kv")]
+use hyperswitch_masking::PeekInterface;
 
 use super::{
     MerchantInterface, Storage, schema, types,
@@ -12,6 +14,7 @@ use super::{
 use crate::{
     crypto::encryption_manager::managers::aes,
     error::{self, ContainerError, ResultContainerExt},
+    storage::scheme::StorageScheme,
 };
 
 impl MerchantInterface for Storage {
@@ -106,7 +109,6 @@ impl super::LockerInterface for Storage {
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
-        // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
         let output: types::LockerInner = types::LockerInner::table()
             .filter(
                 schema::locker::locker_id
@@ -171,6 +173,7 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
+        // `data_hash` is a non-PK lookup, so reverse lookups always hit Postgres.
         let mut conn = self.get_conn().await?;
 
         let output = types::HashTable::table()
@@ -192,6 +195,7 @@ impl super::HashInterface for Storage {
             .values(types::HashTableNew {
                 hash_id: utils::generate_uuid(),
                 data_hash,
+                updated_by: StorageScheme::PostgresOnly,
             })
             .get_result(&mut conn)
             .await?;
@@ -220,6 +224,7 @@ impl super::TestInterface for Storage {
                         .values(types::HashTableNew {
                             hash_id: "test".to_string(),
                             data_hash: b"0".to_vec(),
+                            updated_by: StorageScheme::PostgresOnly,
                         })
                         .execute(x)
                         .await
@@ -261,15 +266,32 @@ impl super::FingerprintInterface for Storage {
         &self,
         fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let fp_bytes = fingerprint_hash.peek().clone();
+            let partition_key = super::kv::PartitionKey::Fingerprint {
+                fingerprint_hash: &fp_bytes,
+            };
 
-        let output = types::Fingerprint::table()
-            .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash))
-            .get_result::<types::Fingerprint>(&mut conn)
-            .await
-            .optional()?;
+            return super::kv::find_optional_plain_resource::<types::FingerprintTableNew>(
+                self,
+                partition_key,
+            )
+            .await;
+        }
 
-        Ok(output)
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output = types::Fingerprint::table()
+                .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash))
+                .get_result::<types::Fingerprint>(&mut conn)
+                .await
+                .optional()?;
+
+            Ok(output)
+        }
     }
 
     async fn insert_fingerprint(
@@ -277,17 +299,40 @@ impl super::FingerprintInterface for Storage {
         fingerprint_hash: Secret<Vec<u8>>,
         fingerprint_id: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let model = types::FingerprintTableNew {
+                fingerprint_hash: fingerprint_hash.clone(),
+                fingerprint_id: fingerprint_id.clone(),
+                updated_by: StorageScheme::PostgresOnly,
+            };
+            let partition_key = super::kv::PartitionKey::Fingerprint {
+                fingerprint_hash: fingerprint_hash.peek().as_slice(),
+            };
 
-        let output: types::Fingerprint = diesel::insert_into(types::Fingerprint::table())
-            .values(types::FingerprintTableNew {
-                fingerprint_hash,
-                fingerprint_id,
-            })
-            .get_result(&mut conn)
-            .await?;
+            return super::kv::insert_plain_resource::<types::FingerprintTableNew>(
+                self,
+                model,
+                partition_key,
+            )
+            .await;
+        }
 
-        Ok(output)
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::Fingerprint = diesel::insert_into(types::Fingerprint::table())
+                .values(types::FingerprintTableNew {
+                    fingerprint_hash,
+                    fingerprint_id,
+                    updated_by: StorageScheme::PostgresOnly,
+                })
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output)
+        }
     }
 }
 
