@@ -54,7 +54,7 @@ impl RuntimeConfigManager {
             #[cfg_attr(not(feature = "caching"), allow(unused_variables))]
             RuntimeConfig::Enabled {
                 endpoint,
-                ttl_seconds,
+                ttl_seconds: _,
                 cache_max_capacity,
                 refresh_interval_seconds,
             } => {
@@ -75,7 +75,6 @@ impl RuntimeConfigManager {
                         refresh_interval_seconds: *refresh_interval_seconds,
                         #[cfg(feature = "caching")]
                         cache: moka::future::CacheBuilder::new(*cache_max_capacity)
-                            .time_to_live(Duration::from_secs(*ttl_seconds))
                             .build(),
                     },
                 }
@@ -83,6 +82,7 @@ impl RuntimeConfigManager {
         })
     }
 
+    #[cfg(feature = "caching")]
     #[inline]
     fn deserialize_config<T: serde::de::DeserializeOwned>(key: &str, raw: &str) -> Option<T> {
         match serde_json::from_str::<T>(raw) {
@@ -94,59 +94,27 @@ impl RuntimeConfigManager {
         }
     }
 
-    /// Fetch a config value by key. On cache miss, fetches the entire bundle.
+    /// Fetch a config value by key. Cache-only — the prefetch task is the
+    /// sole fetcher, so the hot path never blocks on the config endpoint.
+    /// A miss (cold start, or key absent from the endpoint) returns `None`,
+    /// and callers fall back to TOML defaults.
     pub async fn get_config<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-        let (endpoint_url, api_key, client) = match &self.state {
-            RuntimeConfigState::Disabled => {
-                crate::logger::debug!(key, "Runtime config is disabled, returning None");
-                return None;
-            }
-            RuntimeConfigState::Enabled {
-                endpoint_url,
-                api_key,
-                client,
-                ..
-            } => (endpoint_url, api_key, client),
-        };
-
-        // Try the cached bundle first.
         #[cfg(feature = "caching")]
-        if let RuntimeConfigState::Enabled { cache, .. } = &self.state {
-            if let Some(bundle) = cache.get(BUNDLE_CACHE_KEY).await {
-                crate::logger::debug!(key, "Runtime config bundle cache hit");
-                if let Some(raw) = bundle.get(key) {
-                    return Self::deserialize_config(key, raw);
-                }
-                crate::logger::warn!(key, "Key not present in runtime config bundle");
+        {
+            let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
                 return None;
-            }
-            crate::logger::debug!("Runtime config bundle cache miss, fetching from endpoint");
+            };
+
+            let bundle = cache.get(BUNDLE_CACHE_KEY).await?;
+            let raw = bundle.get(key)?;
+            Self::deserialize_config(key, raw)
         }
 
-        // Cold miss: fetch the bundle.
-        let bundle = match Self::fetch_bundle(endpoint_url, api_key, client).await {
-            Ok(b) => Arc::new(b),
-            Err(error) => {
-                crate::logger::error!(
-                    ?error,
-                    key,
-                    "Failed to fetch runtime config bundle from endpoint"
-                );
-                return None;
-            }
-        };
-
-        #[cfg(feature = "caching")]
-        if let RuntimeConfigState::Enabled { cache, .. } = &self.state {
-            cache
-                .insert(BUNDLE_CACHE_KEY.to_string(), Arc::clone(&bundle))
-                .await;
+        #[cfg(not(feature = "caching"))]
+        {
+            let _ = key;
+            None
         }
-
-        bundle
-            .get(key)
-            .map(|raw| Self::deserialize_config(key, raw))
-            .unwrap_or(None)
     }
 
     /// Fetch a config item by its trait-declared key.
