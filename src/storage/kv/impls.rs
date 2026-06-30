@@ -1,9 +1,6 @@
 //! KV trait implementations for each table.
 
-use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl,
-    associations::HasTable,
-};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
 use hyperswitch_masking::PeekInterface;
 
@@ -15,9 +12,13 @@ use super::{
     resource::{KvFindOptional, KvWriteError, PlainKeyed, StorageResource},
     serializable_query::generate_insert_query,
 };
-use crate::error::FingerprintDBError;
-use crate::storage::Storage;
-use crate::storage::types::{Fingerprint, FingerprintTableNew};
+use crate::{
+    error::FingerprintDBError,
+    storage::{
+        Storage,
+        types::{Fingerprint, FingerprintTableNew},
+    },
+};
 
 impl EntityType for FingerprintTableNew {
     const ENTITY_TYPE: &'static str = "fingerprint";
@@ -68,7 +69,8 @@ impl StorageResource for FingerprintTableNew {
 
     fn insert_drainer_query(
         &self,
-    ) -> error_stack::Result<super::serializable_query::SerializableQuery, crate::error::StorageError> {
+    ) -> error_stack::Result<super::serializable_query::SerializableQuery, crate::error::StorageError>
+    {
         generate_insert_query::<crate::storage::schema::fingerprint::table, _>(self.clone())
     }
 

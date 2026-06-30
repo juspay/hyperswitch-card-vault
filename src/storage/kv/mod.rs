@@ -16,10 +16,10 @@ pub(crate) mod scheme;
 pub(crate) mod serializable_query;
 pub(crate) mod wrapper;
 
-pub(crate) use super::scheme::StorageScheme;
 pub(crate) use partition_key::PartitionKey;
+#[cfg(feature = "kv")]
+pub(crate) use resource::{find_optional_plain_resource, insert_plain_resource};
 pub(crate) use scheme::TableKvSettings;
 pub(crate) use wrapper::{KvStoreContext, RedisConnInterface};
 
-#[cfg(feature = "kv")]
-pub(crate) use resource::{find_optional_plain_resource, insert_plain_resource};
+pub(crate) use super::scheme::StorageScheme;

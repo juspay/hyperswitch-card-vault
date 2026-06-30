@@ -70,8 +70,9 @@ impl<'a> From<&'a super::StorageError> for super::VaultDBError {
                 Self::NotFoundError
             }
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
+            super::StorageError::KVError | super::StorageError::SerializationFailed => {
+                Self::UnknownError
+            }
         }
     }
 }
@@ -93,8 +94,9 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
             super::StorageError::NotFoundError => Self::DBFilterError,
             super::StorageError::ValueNotFound(_) => Self::DBFilterError,
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
+            super::StorageError::KVError | super::StorageError::SerializationFailed => {
+                Self::UnknownError
+            }
         }
     }
 }
@@ -117,8 +119,9 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
             super::StorageError::ReplicaPoolNotConfigured => Self::DBReplicaNotConfigured,
             super::StorageError::ValueNotFound(_) => Self::UnknownError,
             super::StorageError::DuplicateValue { .. } => Self::DBWriteError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
+            super::StorageError::KVError | super::StorageError::SerializationFailed => {
+                Self::UnknownError
+            }
         }
     }
 }
@@ -132,9 +135,7 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError
             | super::StorageError::NotFoundError
-            | super::StorageError::ValueNotFound(_) => {
-                Self::DBFilterError
-            }
+            | super::StorageError::ValueNotFound(_) => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
@@ -142,8 +143,9 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
                 Self::DBInsertError
             }
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
+            super::StorageError::KVError | super::StorageError::SerializationFailed => {
+                Self::UnknownError
+            }
         }
     }
 }
@@ -286,8 +288,9 @@ impl<'a> From<&'a super::StorageError> for super::EntityDBError {
                 Self::NotFoundError
             }
             super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
+            super::StorageError::KVError | super::StorageError::SerializationFailed => {
+                Self::UnknownError
+            }
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,

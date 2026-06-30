@@ -229,11 +229,7 @@ impl Storage {
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::TableKvSettings {
         // Try runtime config endpoint first.
-        if let Some(config) = self
-            .runtime_config_manager
-            .get::<KvRuntimeConfig>()
-            .await
-        {
+        if let Some(config) = self.runtime_config_manager.get::<KvRuntimeConfig>().await {
             let settings = kv::TableKvSettings::from(config);
             crate::logger::info!(
                 source = "runtime_config_endpoint",
@@ -276,11 +272,18 @@ impl Storage {
 impl kv::RedisConnInterface for Storage {
     fn get_redis_conn(
         &self,
-    ) -> error_stack::Result<std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>, hyperswitch_redis_interface::errors::RedisError> {
+    ) -> error_stack::Result<
+        std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>,
+        hyperswitch_redis_interface::errors::RedisError,
+    > {
         self.redis
             .as_ref()
             .map(|r| r.get_redis_conn())
-            .ok_or_else(|| error_stack::Report::new(hyperswitch_redis_interface::errors::RedisError::RedisConnectionError))
+            .ok_or_else(|| {
+                error_stack::Report::new(
+                    hyperswitch_redis_interface::errors::RedisError::RedisConnectionError,
+                )
+            })
     }
 }
 

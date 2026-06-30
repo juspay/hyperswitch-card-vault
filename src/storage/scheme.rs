@@ -70,10 +70,7 @@ impl FromStr for StorageScheme {
 // ── Diesel ToSql / FromSql impls ─────────────────────────────────────────────
 
 impl ToSql<Text, Pg> for StorageScheme {
-    fn to_sql<'b>(
-        &'b self,
-        out: &mut serialize::Output<'b, '_, Pg>,
-    ) -> serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Pg>) -> serialize::Result {
         let s: &str = match self {
             Self::PostgresOnly => "postgres_only",
             Self::RedisKv => "redis_kv",

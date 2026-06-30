@@ -62,8 +62,8 @@ impl TenantAppState {
         // Create the tenant-specific redis handle early so it can be shared
         // between Storage (for KV) and TenantAppState (for direct use).
         #[cfg(feature = "redis")]
-        let tenant_redis =
-            shared_redis.map(|store| store.clone_with_prefix(&tenant_config.tenant_secrets.redis_key_prefix));
+        let tenant_redis = shared_redis
+            .map(|store| store.clone_with_prefix(&tenant_config.tenant_secrets.redis_key_prefix));
 
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(

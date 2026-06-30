@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use hyperswitch_redis_interface::{
-    RedisConnectionPool,
-    errors::RedisError,
-    types::SaddReply,
-};
+use hyperswitch_redis_interface::{RedisConnectionPool, errors::RedisError, types::SaddReply};
 
 #[allow(async_fn_in_trait)]
 pub(crate) trait UniqueConstraints {

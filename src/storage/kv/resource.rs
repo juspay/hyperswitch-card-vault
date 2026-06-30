@@ -13,8 +13,10 @@ use super::{
     serializable_query::SerializableQuery,
     wrapper::{KvOperation, KvResult, kv_wrapper},
 };
-use crate::error::{ContainerError, RedisErrorExt, StorageError};
-use crate::storage::Storage;
+use crate::{
+    error::{ContainerError, RedisErrorExt, StorageError},
+    storage::Storage,
+};
 
 /// A table's KV value type — serde-able, written to Redis, replayed to PG by the drainer.
 pub(crate) trait StorageResource:
@@ -63,10 +65,7 @@ fn kv_write_error<E: From<KvWriteError> + error_stack::Context>(
     ContainerError::from(E::from(e))
 }
 
-async fn decide(
-    store: &Storage,
-    op: Op,
-) -> StorageScheme {
+async fn decide(store: &Storage, op: Op) -> StorageScheme {
     let settings = store.kv_settings().await;
     decide_storage_scheme(settings, op).await
 }
@@ -82,8 +81,7 @@ where
     let scheme = decide(store, Op::Find).await;
 
     if matches!(scheme, StorageScheme::RedisKv) {
-        let result =
-            kv_wrapper::<M, M>(store, KvOperation::<M>::Get, partition_key.clone()).await;
+        let result = kv_wrapper::<M, M>(store, KvOperation::<M>::Get, partition_key.clone()).await;
 
         if let Ok(KvResult::Get(v)) = result {
             return Ok(Some(M::into_domain(v)));
@@ -131,9 +129,7 @@ where
 
         return match reply.try_into_setnx() {
             Ok(SetnxReply::KeySet) => Ok(M::into_domain(model)),
-            Ok(SetnxReply::KeyNotSet) => {
-                Err(kv_write_error::<M::Error>(KvWriteError::Duplicate))
-            }
+            Ok(SetnxReply::KeyNotSet) => Err(kv_write_error::<M::Error>(KvWriteError::Duplicate)),
             Err(e) => Err(kv_write_error::<M::Error>(KvWriteError::Backend(
                 Report::new(e).change_context(StorageError::KVError),
             ))),

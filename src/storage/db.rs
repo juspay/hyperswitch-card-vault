@@ -2,9 +2,9 @@ use diesel::{
     BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use hyperswitch_masking::{ExposeInterface, Secret};
 #[cfg(feature = "kv")]
 use hyperswitch_masking::PeekInterface;
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use super::{
     MerchantInterface, Storage, schema, types,

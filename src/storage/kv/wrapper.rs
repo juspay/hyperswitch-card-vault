@@ -19,9 +19,7 @@ use crate::logger;
 
 /// Provides access to the Redis connection pool.
 pub(crate) trait RedisConnInterface {
-    fn get_redis_conn(
-        &self,
-    ) -> error_stack::Result<Arc<RedisConnectionPool>, RedisError>;
+    fn get_redis_conn(&self) -> error_stack::Result<Arc<RedisConnectionPool>, RedisError>;
 }
 
 /// Store context required by the KV wrapper beyond a Redis connection.
@@ -148,19 +146,21 @@ where
         .await
         .inspect(|_| {
             debug!(kv_operation = %operation, status = "success");
-            metrics::KV_OPERATION_SUCCESSFUL
-                .add(1, crate::metric_attributes!(("operation", operation.clone())));
+            metrics::KV_OPERATION_SUCCESSFUL.add(
+                1,
+                crate::metric_attributes!(("operation", operation.clone())),
+            );
         })
-        .inspect_err(|err| {
-            match err.current_context() {
-                RedisError::NotFound => {
-                    debug!(kv_operation = %operation, status = "not_found");
-                }
-                other => {
-                    logger::error!(kv_operation = %operation, status = "error", error = ?other);
-                    metrics::KV_OPERATION_FAILED
-                        .add(1, crate::metric_attributes!(("operation", operation.clone())));
-                }
+        .inspect_err(|err| match err.current_context() {
+            RedisError::NotFound => {
+                debug!(kv_operation = %operation, status = "not_found");
+            }
+            other => {
+                logger::error!(kv_operation = %operation, status = "error", error = ?other);
+                metrics::KV_OPERATION_FAILED.add(
+                    1,
+                    crate::metric_attributes!(("operation", operation.clone())),
+                );
             }
         })
 }

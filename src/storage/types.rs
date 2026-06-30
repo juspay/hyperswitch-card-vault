@@ -7,8 +7,7 @@ use diesel::{
 };
 use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
-use super::schema;
-use super::scheme::StorageScheme;
+use super::{schema, scheme::StorageScheme};
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,

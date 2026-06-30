@@ -107,10 +107,7 @@ impl RuntimeConfigManager {
     pub async fn get_config<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
         let (endpoint_url, api_key, client) = match &self.state {
             RuntimeConfigState::Disabled => {
-                crate::logger::debug!(
-                    key,
-                    "Runtime config is disabled, returning None"
-                );
+                crate::logger::debug!(key, "Runtime config is disabled, returning None");
                 return None;
             }
             RuntimeConfigState::Enabled {
@@ -179,7 +176,11 @@ impl RuntimeConfigManager {
                     crate::logger::debug!(key, "Prefetched runtime config key");
                 }
                 Err(error) => {
-                    crate::logger::warn!(?error, key, "Failed to prefetch runtime config key, continuing");
+                    crate::logger::warn!(
+                        ?error,
+                        key,
+                        "Failed to prefetch runtime config key, continuing"
+                    );
                 }
             }
         }

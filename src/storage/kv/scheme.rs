@@ -3,9 +3,7 @@ use tracing::info;
 use crate::storage::scheme::StorageScheme;
 
 /// KV settings resolved at runtime from `locker.enable_kv`.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
 pub(crate) struct TableKvSettings {
     #[serde(default)]
     pub storage_scheme: StorageScheme,
