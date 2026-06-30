@@ -83,8 +83,7 @@ impl RuntimeConfigManager {
                         keys: keys.clone(),
                         refresh_interval_seconds: *refresh_interval_seconds,
                         #[cfg(feature = "caching")]
-                        cache: moka::future::CacheBuilder::new(*cache_max_capacity)
-                            .build(),
+                        cache: moka::future::CacheBuilder::new(*cache_max_capacity).build(),
                     },
                 }
             }
