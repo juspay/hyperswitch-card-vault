@@ -158,10 +158,11 @@ metrics_export_interval_secs = 60  # How often to export metrics (seconds)
 
 # Runtime configuration endpoint
 # [runtime_config]
-# mode = "enabled"        # Options: "disabled", "enabled"
-# ttl_seconds = 30              # Cache TTL for the config bundle (seconds)
-# refresh_interval_seconds = 30  # Background prefetch interval (seconds)
+# mode = "enabled"
+# ttl_seconds = 30
+# refresh_interval_seconds = 30
 # cache_max_capacity = 32
+# keys = ["locker.use_read_replica", "locker.enable_kv"]
 
 # Endpoint needs to be specified if mode is "enabled"
 # [runtime_config.endpoint]

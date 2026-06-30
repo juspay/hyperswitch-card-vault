@@ -1,47 +1,54 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use error_stack::ResultExt;
-use hyperswitch_masking::{PeekInterface, Secret};
+#[cfg(feature = "caching")]
+use hyperswitch_masking::PeekInterface;
+use hyperswitch_masking::Secret;
 
 use crate::{config::RuntimeConfig, error};
 
+#[cfg(feature = "caching")]
 const API_KEY_HEADER_NAME: &str = "X-Internal-Api-Key";
 
-/// Cache key for the single cached config-bundle entry.
-#[cfg(feature = "caching")]
-const BUNDLE_CACHE_KEY: &str = "__runtime_config_bundle__";
-
-/// Binds a runtime-config key string to its deserialized type.
+/// Binds a runtime-config key string to the type that deserializes its value.
 pub trait RuntimeConfigItem: serde::de::DeserializeOwned {
-    /// The config endpoint key, e.g. `"locker.use_read_replica"`.
     const KEY: &'static str;
 }
 
-/// "All configs" endpoint response: config key → JSON-string value.
-type ConfigBundle = HashMap<String, String>;
+/// Response format from the runtime config endpoint:
+/// ```json
+/// {"key": "runtime_config", "value": "{\"use_read_replica\":true}"}
+/// ```
+#[cfg(feature = "caching")]
+#[derive(Debug, serde::Deserialize)]
+struct RuntimeConfigResponse {
+    #[expect(dead_code)]
+    key: String,
+    value: String,
+}
 
 #[derive(Clone)]
 enum RuntimeConfigState {
     Disabled,
+    #[cfg_attr(not(feature = "caching"), allow(dead_code))]
     Enabled {
         endpoint_url: String,
         api_key: Secret<String>,
         client: reqwest::Client,
+        keys: Vec<String>,
         refresh_interval_seconds: u64,
         #[cfg(feature = "caching")]
-        cache: moka::future::Cache<String, Arc<ConfigBundle>>,
+        cache: moka::future::Cache<String, String>,
     },
 }
 
-/// Manages fetching and caching of runtime configs. The entire bundle is
-/// fetched in one endpoint call and cached as a single moka entry.
+/// Manages fetching and caching of runtime configs.
 #[derive(Clone)]
 pub struct RuntimeConfigManager {
     state: RuntimeConfigState,
 }
 
 impl RuntimeConfigManager {
-    /// Construct a new runtime config manager.
     pub fn new(
         config: &RuntimeConfig,
         client_idle_timeout: u64,
@@ -56,6 +63,7 @@ impl RuntimeConfigManager {
                 endpoint,
                 ttl_seconds: _,
                 cache_max_capacity,
+                keys,
                 refresh_interval_seconds,
             } => {
                 let client = reqwest::Client::builder()
@@ -72,6 +80,7 @@ impl RuntimeConfigManager {
                         endpoint_url: endpoint.base_url.clone(),
                         api_key: endpoint.api_key.clone(),
                         client,
+                        keys: keys.clone(),
                         refresh_interval_seconds: *refresh_interval_seconds,
                         #[cfg(feature = "caching")]
                         cache: moka::future::CacheBuilder::new(*cache_max_capacity)
@@ -94,10 +103,11 @@ impl RuntimeConfigManager {
         }
     }
 
-    /// Fetch a config value by key. Cache-only — the prefetch task is the
-    /// sole fetcher, so the hot path never blocks on the config endpoint.
-    /// A miss (cold start, or key absent from the endpoint) returns `None`,
-    /// and callers fall back to TOML defaults.
+    /// Fetch a runtime config value by key, deserialized to the requested type.
+    ///
+    /// Cache-only: the prefetch task is the sole fetcher, so the hot path
+    /// never blocks on the endpoint. A miss returns `None` and callers fall
+    /// back to TOML defaults.
     pub async fn get_config<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
         #[cfg(feature = "caching")]
         {
@@ -105,58 +115,27 @@ impl RuntimeConfigManager {
                 return None;
             };
 
-            let bundle = cache.get(BUNDLE_CACHE_KEY).await?;
-            let raw = bundle.get(key)?;
-            Self::deserialize_config(key, raw)
+            if let Some(val) = cache.get(key).await {
+                return Self::deserialize_config(key, &val);
+            }
         }
 
         #[cfg(not(feature = "caching"))]
         {
             let _ = key;
-            None
+            let _ = &self.state;
         }
+
+        None
     }
 
-    /// Fetch a config item by its trait-declared key.
+    /// Fetch a runtime config item by its trait-declared key.
     pub async fn get<T: RuntimeConfigItem>(&self) -> Option<T> {
         self.get_config::<T>(T::KEY).await
     }
 
-    /// Warm the cache. No-op when runtime config is `Disabled`.
-    async fn prefetch_bundle(&self) {
-        let RuntimeConfigState::Enabled {
-            endpoint_url,
-            api_key,
-            client,
-            ..
-        } = &self.state
-        else {
-            return;
-        };
-
-        match Self::fetch_bundle(endpoint_url, api_key, client).await {
-            Ok(bundle) => {
-                crate::logger::debug!(
-                    num_configs = bundle.len(),
-                    "Prefetched runtime config bundle"
-                );
-                #[cfg(feature = "caching")]
-                if let RuntimeConfigState::Enabled { cache, .. } = &self.state {
-                    cache
-                        .insert(BUNDLE_CACHE_KEY.to_string(), Arc::new(bundle))
-                        .await;
-                }
-            }
-            Err(error) => {
-                crate::logger::warn!(
-                    ?error,
-                    "Failed to prefetch runtime config bundle, continuing"
-                );
-            }
-        }
-    }
-
     /// Spawn a background prefetch task. Returns `None` when disabled.
+    #[cfg(feature = "caching")]
     pub fn spawn_prefetch_task(self: &Arc<Self>) -> Option<tokio::task::JoinHandle<()>> {
         let refresh_interval = match &self.state {
             RuntimeConfigState::Disabled => return None,
@@ -169,30 +148,59 @@ impl RuntimeConfigManager {
         let manager = Arc::clone(self);
         crate::logger::info!(
             refresh_interval_secs = refresh_interval.as_secs(),
-            "Spawning runtime config bundle prefetch task"
+            "Spawning runtime config prefetch task"
         );
 
         Some(tokio::spawn(async move {
-            // Warm the cache immediately at startup.
-            manager.prefetch_bundle().await;
+            manager.prefetch_keys().await;
 
             let mut ticker = tokio::time::interval(refresh_interval);
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
             loop {
                 ticker.tick().await;
-                manager.prefetch_bundle().await;
+                manager.prefetch_keys().await;
             }
         }))
     }
 
-    /// Fetch the entire config bundle from the endpoint.
-    async fn fetch_bundle(
+    #[cfg(feature = "caching")]
+    async fn prefetch_keys(&self) {
+        let RuntimeConfigState::Enabled {
+            endpoint_url,
+            api_key,
+            client,
+            keys,
+            cache,
+            ..
+        } = &self.state
+        else {
+            return;
+        };
+
+        for key in keys {
+            match Self::fetch(endpoint_url, api_key, client, key).await {
+                Ok(raw) => {
+                    cache.insert(key.clone(), raw).await;
+                }
+                Err(error) => {
+                    crate::logger::warn!(
+                        ?error, key,
+                        "Failed to prefetch runtime config key, continuing"
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "caching")]
+    async fn fetch(
         endpoint_url: &str,
         api_key: &Secret<String>,
         client: &reqwest::Client,
-    ) -> error_stack::Result<ConfigBundle, error::ConfigurationError> {
-        let url = format!("{}/all", endpoint_url.trim_end_matches('/'));
+        key: &str,
+    ) -> error_stack::Result<String, error::ConfigurationError> {
+        let url = format!("{}/{}", endpoint_url.trim_end_matches('/'), key);
 
         let response = client
             .get(&url)
@@ -212,17 +220,21 @@ impl RuntimeConfigManager {
             ));
         }
 
-        let bundle: ConfigBundle = response.json().await.change_context(
+        let parsed: RuntimeConfigResponse = response.json().await.change_context(
             error::ConfigurationError::InvalidConfigurationValueError(
-                "Failed to parse runtime config bundle response".into(),
+                "Failed to parse runtime config response".into(),
             ),
         )?;
 
-        crate::logger::info!(
-            num_configs = bundle.len(),
-            "Retrieved runtime config bundle"
-        );
+        crate::logger::info!(%key, config = ?parsed, "Retrieved runtime config");
 
-        Ok(bundle)
+        Ok(parsed.value)
+    }
+}
+
+#[cfg(not(feature = "caching"))]
+impl RuntimeConfigManager {
+    pub fn spawn_prefetch_task(self: &Arc<Self>) -> Option<tokio::task::JoinHandle<()>> {
+        None
     }
 }

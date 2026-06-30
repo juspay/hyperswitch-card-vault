@@ -529,7 +529,8 @@ pub enum RuntimeConfig {
         ttl_seconds: u64,
         #[serde(default = "default_runtime_config_cache_max_capacity")]
         cache_max_capacity: u64,
-        /// Background prefetch cadence (seconds), independent of cache TTL.
+        #[serde(default)]
+        keys: Vec<String>,
         #[serde(default = "default_runtime_config_refresh_interval_seconds")]
         refresh_interval_seconds: u64,
     },
