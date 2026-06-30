@@ -259,13 +259,13 @@ pub async fn server_builder(
     );
 
     // set_x_request_id → from_fn scope (innermost runs last → extension is populated)
-    router = router.layer(
-        ServiceBuilder::new()
-            .set_x_request_id(MakeUuidV7)
-            .propagate_x_request_id()
-            .layer(axum::middleware::from_fn(
-                #[cfg(feature = "kv")]
-                {
+    #[cfg(feature = "kv")]
+    {
+        router = router.layer(
+            ServiceBuilder::new()
+                .set_x_request_id(MakeUuidV7)
+                .propagate_x_request_id()
+                .layer(axum::middleware::from_fn(
                     |req: axum::extract::Request, next: axum::middleware::Next| async move {
                         let request_id = req
                             .extensions()
@@ -282,16 +282,19 @@ pub async fn server_builder(
                         crate::storage::kv::request_id::REQUEST_ID
                             .scope(request_id, next.run(req))
                             .await
-                    }
-                },
-                #[cfg(not(feature = "kv"))]
-                {
-                    |req: axum::extract::Request, next: axum::middleware::Next| async move {
-                        next.run(req).await
-                    }
-                },
-            )),
-    );
+                    },
+                )),
+        );
+    }
+
+    #[cfg(not(feature = "kv"))]
+    {
+        router = router.layer(
+            ServiceBuilder::new()
+                .set_x_request_id(MakeUuidV7)
+                .propagate_x_request_id(),
+        );
+    }
 
     // Register default headers layer last so it wraps all routes, ensuring x-version is present on all responses.
     #[cfg(feature = "vergen")]

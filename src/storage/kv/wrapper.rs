@@ -4,7 +4,7 @@ use error_stack::ResultExt;
 use hyperswitch_redis_interface::{
     RedisConnectionPool,
     errors::RedisError,
-    types::{RedisEntryId, SetnxReply},
+    types::{HsetnxReply, RedisEntryId},
 };
 use serde::de;
 use tracing::debug;
@@ -59,21 +59,21 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
 
 /// Operation to perform on Redis.
 pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
-    SetNx(&'a S, SerializableQuery),
-    Get,
+    HSetNx(&'a str, &'a S, SerializableQuery),
+    HGet(&'a str),
 }
 
 /// The result of a KV operation.
 #[derive(Debug)]
 pub(crate) enum KvResult<T: de::DeserializeOwned> {
-    Get(T),
-    SetNx(SetnxReply),
+    HGet(T),
+    HSetNx(HsetnxReply),
 }
 
 impl<T: de::DeserializeOwned> KvResult<T> {
-    pub(crate) fn try_into_setnx(self) -> Result<SetnxReply, RedisError> {
+    pub(crate) fn try_into_hsetnx(self) -> Result<HsetnxReply, RedisError> {
         match self {
-            Self::SetNx(v) => Ok(v),
+            Self::HSetNx(v) => Ok(v),
             _ => Err(RedisError::UnknownResult),
         }
     }
@@ -85,8 +85,8 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::SetNx(_, _) => f.write_str("Setnx"),
-            Self::Get => f.write_str("Get"),
+            Self::HSetNx(_, _, _) => f.write_str("HSetNx"),
+            Self::HGet(_) => f.write_str("HGet"),
         }
     }
 }
@@ -111,22 +111,23 @@ where
 
     let result = async {
         match op {
-            KvOperation::SetNx(value, query) => {
+            KvOperation::HSetNx(field, value, query) => {
                 debug!(kv_operation = %operation, ?value);
 
-                // SETNX is the atomic uniqueness guard — the fingerprint hash
-                // *is* the Redis key, so a successful SETNX proves no prior
-                // writer claimed it. No SADD set needed.
+                // HSETNX is the atomic uniqueness guard: the fingerprint hash
+                // *is* the Redis key, the field is the entity type, so a
+                // successful HSETNX proves no prior writer claimed it.
                 let result = redis_conn
                     .serialize_and_set_hash_field_if_not_exist(
                         &key.into(),
+                        field,
                         value,
-                        Some(i64::from(ttl)),
+                        Some(ttl),
                     )
                     .await
                     .bridge()?;
 
-                if matches!(result, SetnxReply::KeySet) {
+                if matches!(result, HsetnxReply::KeySet) {
                     // If the drainer push fails, the Redis key remains (TTL-bounded)
                     // with no drainer entry — it blocks re-insert as a duplicate
                     // for the TTL window and never reaches Postgres. We accept this
@@ -134,18 +135,18 @@ where
                     // KV_FAILED_TO_PUSH_TO_DRAINER. A best-effort DEL on failure was
                     // rejected: it adds a race window and a second failure mode.
                     push_to_drainer_stream::<S>(store, query, partition_key).await?;
-                    Ok(KvResult::SetNx(result))
+                    Ok(KvResult::HSetNx(result))
                 } else {
-                    Ok(KvResult::SetNx(SetnxReply::KeyNotSet))
+                    Ok(KvResult::HSetNx(HsetnxReply::KeyNotSet))
                 }
             }
 
-            KvOperation::Get => {
+            KvOperation::HGet(field) => {
                 let result = redis_conn
-                    .get_and_deserialize_key(&key.into(), type_name)
+                    .get_hash_field_and_deserialize(&key.into(), field, type_name)
                     .await
                     .bridge()?;
-                Ok(KvResult::Get(result))
+                Ok(KvResult::HGet(result))
             }
         }
     };

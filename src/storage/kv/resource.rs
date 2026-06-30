@@ -1,7 +1,7 @@
 //! Generic KV resource trait, key-shape markers, and CRUD helpers.
 
 use error_stack::Report;
-use hyperswitch_redis_interface::types::SetnxReply;
+use hyperswitch_redis_interface::types::HsetnxReply;
 use tracing::instrument;
 
 use super::{
@@ -82,9 +82,14 @@ where
     let scheme = decide(store, Op::Find).await;
 
     if matches!(scheme, StorageScheme::RedisKv) {
-        let result = kv_wrapper::<M, M>(store, KvOperation::<M>::Get, partition_key.clone()).await;
+        let result = kv_wrapper::<M, M>(
+            store,
+            KvOperation::<M>::HGet(M::ENTITY_TYPE),
+            partition_key.clone(),
+        )
+        .await;
 
-        if let Ok(KvResult::Get(v)) = result {
+        if let Ok(KvResult::HGet(v)) = result {
             Ok(Some(M::into_domain(v)))
         } else {
             // Redis miss or error — fall through to Postgres.
@@ -125,7 +130,7 @@ where
 
         let reply = kv_wrapper::<(), M>(
             store,
-            KvOperation::SetNx(&model, drainer_query),
+            KvOperation::HSetNx(M::ENTITY_TYPE, &model, drainer_query),
             partition_key,
         )
         .await
@@ -136,9 +141,9 @@ where
             ))
         })?;
 
-        return match reply.try_into_setnx() {
-            Ok(SetnxReply::KeySet) => Ok(M::into_domain(model)),
-            Ok(SetnxReply::KeyNotSet) => Err(kv_write_error::<M::Error>(KvWriteError::Duplicate)),
+        return match reply.try_into_hsetnx() {
+            Ok(HsetnxReply::KeySet) => Ok(M::into_domain(model)),
+            Ok(HsetnxReply::KeyNotSet) => Err(kv_write_error::<M::Error>(KvWriteError::Duplicate)),
             Err(e) => Err(kv_write_error::<M::Error>(KvWriteError::Backend(
                 Report::new(e).change_context(StorageError::KVError),
             ))),

@@ -388,40 +388,28 @@ impl GlobalConfig {
     }
 
     /// Require non-empty, unique `redis_key_prefix` per tenant when `kv` is
-    /// compiled and >1 tenant exists. Runs regardless of `kv_state` (KV can be
-    /// enabled at runtime via the endpoint).
+    /// compiled, Redis is configured, and >1 tenant exists.
     #[cfg(feature = "kv")]
     fn validate_kv_tenant_prefixes(&self) -> Result<(), error::ConfigurationError> {
-        let tenants: Vec<_> = self.tenant_secrets.iter().collect();
-
-        if tenants.len() <= 1 {
+        #[cfg(feature = "redis")]
+        if self.redis.is_none() || self.tenant_secrets.len() <= 1 {
             return Ok(());
         }
 
         let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
-        for (tenant_id, secrets) in tenants {
-            #[cfg(feature = "redis")]
-            {
-                let prefix = secrets.redis_key_prefix.trim();
-                if prefix.is_empty() {
-                    return Err(error::ConfigurationError::InvalidConfigurationValueError(
-                        format!(
-                            "tenant `{tenant_id}` has an empty redis_key_prefix; \
-                             a non-empty unique prefix is required with multiple tenants + kv"
-                        ),
-                    ));
-                }
-                if !seen.insert(prefix) {
-                    return Err(error::ConfigurationError::InvalidConfigurationValueError(
-                        format!("duplicate redis_key_prefix `{prefix}` across tenants"),
-                    ));
-                }
+        for (tenant_id, secrets) in self.tenant_secrets.iter() {
+            let prefix = secrets.redis_key_prefix.trim();
+            if prefix.is_empty() {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!("tenant `{tenant_id}`: redis_key_prefix required with kv + multi-tenant"),
+                ));
             }
-
-            #[cfg(not(feature = "redis"))]
-            let _ = tenant_id;
+            if !seen.insert(prefix) {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!("duplicate redis_key_prefix `{prefix}`"),
+                ));
+            }
         }
-
         Ok(())
     }
 }

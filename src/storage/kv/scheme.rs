@@ -4,8 +4,7 @@ use tracing::debug;
 
 use crate::storage::scheme::StorageScheme;
 
-/// Tri-state KV master switch, replacing `enable_kv`/`soft_kill` so the
-/// invalid `enable_kv=false, soft_kill=true` is unrepresentable.
+/// Tri-state KV master switch.
 ///
 /// # Durability invariant
 ///
@@ -13,9 +12,8 @@ use crate::storage::scheme::StorageScheme;
 /// fingerprint can expire in Redis before the drainer replays to Postgres,
 /// yielding a duplicate logical fingerprint.
 ///
-/// Backward-compatible deserialization accepts `"disabled"` / `"enabled"` /
-/// `"soft_kill"` (bare string or `{"kv_state": "..."}`) **or** the legacy
-/// `{"enable_kv": bool, "soft_kill": bool}` object.
+/// Deserialization accepts `"disabled"` / `"enabled"` / `"soft_kill"` as a
+/// bare string or `{"kv_state": "..."}` object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, strum::Display, strum::EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum KvState {
@@ -40,10 +38,7 @@ impl<'de> serde::Deserialize<'de> for KvState {
             type Value = KvState;
 
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str(
-                    "a kv_state string (\"disabled\"/\"enabled\"/\"soft_kill\") \
-                     or a legacy {enable_kv, soft_kill} object",
-                )
+                f.write_str(r#"a kv_state string ("disabled"/"enabled"/"soft_kill") or {"kv_state": "..."}"#)
             }
 
             fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
@@ -55,39 +50,19 @@ impl<'de> serde::Deserialize<'de> for KvState {
                 self.visit_str(&v)
             }
 
-            /// Accepts bare string, `{"kv_state": "..."}`, or legacy `{"enable_kv", "soft_kill"}`.
             fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-                let mut enable_kv: Option<bool> = None;
-                let mut soft_kill = false;
                 let mut kv_state: Option<String> = None;
 
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
-                        "enable_kv" => enable_kv = Some(map.next_value()?),
-                        "soft_kill" => soft_kill = map.next_value()?,
                         "kv_state" => kv_state = Some(map.next_value()?),
-                        other => {
-                            return Err(de::Error::unknown_field(
-                                other,
-                                &["enable_kv", "soft_kill", "kv_state"],
-                            ));
-                        }
+                        other => return Err(de::Error::unknown_field(other, &["kv_state"])),
                     }
                 }
 
-                // New form takes precedence.
-                if let Some(state_str) = kv_state {
-                    return KvState::from_str(&state_str)
-                        .map_err(|_| de::Error::custom(format!("unknown kv_state: {state_str}")));
-                }
-
-                // Legacy form.
-                let enable_kv = enable_kv.ok_or_else(|| de::Error::missing_field("enable_kv"))?;
-                Ok(match (enable_kv, soft_kill) {
-                    (false, _) => KvState::Disabled,
-                    (true, false) => KvState::Enabled,
-                    (true, true) => KvState::SoftKill,
-                })
+                let state = kv_state.ok_or_else(|| de::Error::missing_field("kv_state"))?;
+                KvState::from_str(&state)
+                    .map_err(|_| de::Error::custom(format!("unknown kv_state: {state}")))
             }
         }
 
