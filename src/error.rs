@@ -72,15 +72,19 @@ pub enum StorageError {
     UpdateError,
     #[error("Read replica pool is not configured")]
     ReplicaPoolNotConfigured,
+    #[cfg(feature = "kv")]
     #[error("DuplicateValue: {entity} already exists {key:?}")]
     DuplicateValue {
         entity: &'static str,
         key: Option<String>,
     },
+    #[cfg(feature = "kv")]
     #[error("KV error")]
     KVError,
+    #[cfg(feature = "kv")]
     #[error("ValueNotFound: {0}")]
     ValueNotFound(String),
+    #[cfg(feature = "kv")]
     #[error("Serialization failure")]
     SerializationFailed,
 }

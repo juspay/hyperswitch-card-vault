@@ -178,7 +178,7 @@ impl From<ReverseLookupNew> for ReverseLookup {
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
@@ -250,7 +250,7 @@ pub(super) struct EntityTableNew {
     pub enc_key_id: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::hash_table)]
 pub(super) struct HashTableNew {
     pub hash_id: String,
@@ -261,10 +261,9 @@ pub(super) struct HashTableNew {
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
-#[serde(transparent)]
 pub struct Encrypted {
     inner: Secret<Vec<u8>>,
 }

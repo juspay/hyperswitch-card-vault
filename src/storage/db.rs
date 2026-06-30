@@ -173,7 +173,7 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        // `data_hash` is a non-PK lookup, so reverse lookups always hit Postgres.
+        // Non-PK lookup — always Postgres.
         let mut conn = self.get_conn().await?;
 
         let output = types::HashTable::table()
@@ -304,6 +304,7 @@ impl super::FingerprintInterface for Storage {
             let model = types::FingerprintTableNew {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id: fingerprint_id.clone(),
+                // Overwritten by `insert_plain_resource` via `set_storage_scheme`.
                 updated_by: StorageScheme::PostgresOnly,
             };
             let partition_key = super::kv::PartitionKey::Fingerprint {

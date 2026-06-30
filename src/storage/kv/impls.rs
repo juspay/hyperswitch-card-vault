@@ -2,11 +2,9 @@
 
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
-use hyperswitch_masking::PeekInterface;
 
 use super::{
     StorageScheme,
-    constraints::UniqueConstraints,
     entity::EntityType,
     partition_key::{KvStorePartition, PartitionKey},
     resource::{KvFindOptional, KvWriteError, PlainKeyed, StorageResource},
@@ -27,26 +25,6 @@ impl EntityType for FingerprintTableNew {
 impl KvStorePartition for Fingerprint {}
 
 impl KvStorePartition for FingerprintTableNew {}
-
-impl UniqueConstraints for Fingerprint {
-    fn unique_constraints(&self) -> Vec<String> {
-        vec![hex::encode(self.fingerprint_hash.peek())]
-    }
-
-    fn table_name(&self) -> &str {
-        "fingerprint"
-    }
-}
-
-impl UniqueConstraints for FingerprintTableNew {
-    fn unique_constraints(&self) -> Vec<String> {
-        vec![hex::encode(self.fingerprint_hash.peek())]
-    }
-
-    fn table_name(&self) -> &str {
-        "fingerprint"
-    }
-}
 
 impl PlainKeyed for FingerprintTableNew {}
 

@@ -57,6 +57,7 @@ max_failure_threshold_seconds = 5
 drainer_stream_suffix = "DRAINER_STREAM"
 drainer_num_partitions = 16
 ttl_for_kv = 900
+kv_state = "disabled"
 
 [metrics]
 mode = "prometheus"

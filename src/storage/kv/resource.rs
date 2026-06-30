@@ -6,7 +6,6 @@ use tracing::instrument;
 
 use super::{
     StorageScheme,
-    constraints::UniqueConstraints,
     entity::EntityType,
     partition_key::{KvStorePartition, PartitionKey},
     scheme::{Op, decide_storage_scheme},
@@ -24,7 +23,6 @@ pub(crate) trait StorageResource:
     + serde::de::DeserializeOwned
     + std::fmt::Debug
     + KvStorePartition
-    + UniqueConstraints
     + EntityType
     + Sync
     + Send
@@ -42,6 +40,9 @@ pub(crate) trait StorageResource:
 }
 
 /// Find-optional DB op for KV-routed tables.
+///
+/// `StorageResource` is a super-trait bound: implementing `KvFindOptional`
+/// implies `StorageResource`, so callers need only name `KvFindOptional`.
 pub(crate) trait KvFindOptional: StorageResource {
     async fn storage_find_optional(
         store: &Storage,
@@ -66,8 +67,8 @@ fn kv_write_error<E: From<KvWriteError> + error_stack::Context>(
 }
 
 async fn decide(store: &Storage, op: Op) -> StorageScheme {
-    let settings = store.kv_settings().await;
-    decide_storage_scheme(settings, op).await
+    let state = store.kv_settings().await;
+    decide_storage_scheme(state, op)
 }
 
 #[instrument(skip(store, partition_key), fields(resource = M::ENTITY_TYPE))]
@@ -76,7 +77,7 @@ pub(crate) async fn find_optional_plain_resource<M>(
     partition_key: PartitionKey<'_>,
 ) -> Result<Option<M::Domain>, ContainerError<M::Error>>
 where
-    M: StorageResource + PlainKeyed + KvFindOptional,
+    M: PlainKeyed + KvFindOptional,
 {
     let scheme = decide(store, Op::Find).await;
 
@@ -84,14 +85,22 @@ where
         let result = kv_wrapper::<M, M>(store, KvOperation::<M>::Get, partition_key.clone()).await;
 
         if let Ok(KvResult::Get(v)) = result {
-            return Ok(Some(M::into_domain(v)));
+            Ok(Some(M::into_domain(v)))
+        } else {
+            // Redis miss or error — fall through to Postgres.
+            M::storage_find_optional(store, &partition_key).await
         }
+    } else {
+        M::storage_find_optional(store, &partition_key).await
     }
-
-    M::storage_find_optional(store, &partition_key).await
 }
 
 /// Insert via SetNx. KeyNotSet → Duplicate (no PG fallback). PostgresOnly → storage_insert.
+///
+/// In the `RedisKv` path the returned domain object is built from the *model*
+/// (not a DB row), so its serial PK (`id`) is unpopulated (`0`). The PK is
+/// assigned by the drainer on replay. Callers must not read `id` — use
+/// `fingerprint_id` (the caller-supplied nanoid) instead.
 #[instrument(skip(store, model, partition_key), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn insert_plain_resource<M>(
     store: &Storage,

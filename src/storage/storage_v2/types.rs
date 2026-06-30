@@ -20,7 +20,7 @@ pub struct Vault {
     pub updated_by: StorageScheme,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::vault)]
 pub struct VaultNew {
     pub vault_id: Secret<String>,

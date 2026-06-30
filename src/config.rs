@@ -47,6 +47,7 @@ pub struct GlobalConfig {
     #[serde(default)]
     pub runtime_config: RuntimeConfig,
     #[cfg(feature = "kv")]
+    #[serde(default)]
     pub kv: KvConfig,
 }
 
@@ -56,6 +57,9 @@ pub struct TenantConfig {
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
     pub external_key_manager: ExternalKeyManagerConfig,
+    /// Redis key namespace for this tenant (moved from `TenantSecrets`).
+    #[cfg(feature = "redis")]
+    pub redis_key_prefix: String,
 }
 
 impl TenantConfig {
@@ -65,16 +69,23 @@ impl TenantConfig {
     /// Never, as tenant_id would already be validated from [`crate::custom_extractors::TenantId`] custom extractor
     ///
     pub fn from_global_config(global_config: &GlobalConfig, tenant_id: String) -> Self {
+        #[allow(clippy::unwrap_used)]
+        let tenant_secrets = global_config
+            .tenant_secrets
+            .get(&tenant_id)
+            .cloned()
+            .unwrap();
+
+        #[cfg(feature = "redis")]
+        let redis_key_prefix = tenant_secrets.redis_key_prefix.clone();
+
         Self {
-            tenant_id: tenant_id.clone(),
+            tenant_id,
             locker_secrets: global_config.secrets.clone(),
-            #[allow(clippy::unwrap_used)]
-            tenant_secrets: global_config
-                .tenant_secrets
-                .get(&tenant_id)
-                .cloned()
-                .unwrap(),
+            tenant_secrets,
             external_key_manager: global_config.external_key_manager.clone(),
+            #[cfg(feature = "redis")]
+            redis_key_prefix,
         }
     }
 }
@@ -130,8 +141,7 @@ pub struct TenantSecrets {
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
 
-    /// Redis key prefix for this tenant.  Empty (default) ⇒ keys are not
-    /// namespaced, matching hyperswitch's public-tenant convention.
+    /// Redis key prefix. Deserialization-only — app code reads `TenantConfig.redis_key_prefix`.
     #[cfg(feature = "redis")]
     #[serde(default)]
     pub redis_key_prefix: String,
@@ -211,9 +221,7 @@ impl GlobalConfig {
             .add_source(
                 config::Environment::with_prefix("LOCKER")
                     .separator("__")
-                    .try_parsing(true)
-                    .list_separator(",")
-                    .with_list_parse_key(RUNTIME_CONFIG_KEYS_PATH),
+                    .try_parsing(true),
             )
             .build()?;
 
@@ -363,6 +371,11 @@ impl GlobalConfig {
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
         self.runtime_config.validate()?;
+        #[cfg(feature = "kv")]
+        {
+            self.kv.validate()?;
+            self.validate_kv_tenant_prefixes()?;
+        }
         #[cfg(feature = "external_key_manager")]
         {
             self.external_key_manager.validate()?;
@@ -373,36 +386,106 @@ impl GlobalConfig {
 
         Ok(())
     }
+
+    /// Require non-empty, unique `redis_key_prefix` per tenant when `kv` is
+    /// compiled and >1 tenant exists. Runs regardless of `kv_state` (KV can be
+    /// enabled at runtime via the endpoint).
+    #[cfg(feature = "kv")]
+    fn validate_kv_tenant_prefixes(&self) -> Result<(), error::ConfigurationError> {
+        let tenants: Vec<_> = self.tenant_secrets.iter().collect();
+
+        if tenants.len() <= 1 {
+            return Ok(());
+        }
+
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for (tenant_id, secrets) in tenants {
+            #[cfg(feature = "redis")]
+            {
+                let prefix = secrets.redis_key_prefix.trim();
+                if prefix.is_empty() {
+                    return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                        format!(
+                            "tenant `{tenant_id}` has an empty redis_key_prefix; \
+                             a non-empty unique prefix is required with multiple tenants + kv"
+                        ),
+                    ));
+                }
+                if !seen.insert(prefix) {
+                    return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                        format!("duplicate redis_key_prefix `{prefix}` across tenants"),
+                    ));
+                }
+            }
+
+            #[cfg(not(feature = "redis"))]
+            let _ = tenant_id;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(feature = "kv")]
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct KvConfig {
-    /// Suffix appended to the drainer stream name (e.g. `"DRAINER_STREAM"` →
-    /// `{shard_N}_DRAINER_STREAM`).
+    /// Drainer stream suffix: `{shard_N}_{suffix}`.
+    #[serde(default = "default_drainer_stream_suffix")]
     pub drainer_stream_suffix: String,
-    /// Number of partitions (shards) for the drainer stream.
+    /// Drainer shard count. Must be `> 0` (validated in [`KvConfig::validate`]).
+    #[serde(default = "default_drainer_num_partitions")]
     pub drainer_num_partitions: u8,
-    /// TTL (seconds) for keys written to Redis KV.
+    /// TTL (seconds) for KV keys in Redis. Must exceed max drainer replay lag.
+    #[serde(default = "default_ttl_for_kv")]
     pub ttl_for_kv: u32,
-    /// File-based fallback for enabling KV when `runtime_config.mode` is
-    /// `"disabled"`.  When the runtime config endpoint is enabled, the
-    /// endpoint's `locker.enable_kv` value takes precedence.
+    /// KV master switch. Fallback default only; overridden by the runtime config
+    /// endpoint when `RuntimeConfig::Enabled`. Defaults to `Disabled`.
     #[serde(default)]
-    pub enable_kv: bool,
-    /// File-based fallback for soft-kill mode (gradual rollout).
-    #[serde(default)]
-    pub soft_kill: bool,
+    pub(crate) kv_state: crate::storage::kv::KvState,
+}
+
+#[cfg(feature = "kv")]
+fn default_drainer_stream_suffix() -> String {
+    "DRAINER_STREAM".to_string()
+}
+
+#[cfg(feature = "kv")]
+fn default_drainer_num_partitions() -> u8 {
+    16
+}
+
+#[cfg(feature = "kv")]
+fn default_ttl_for_kv() -> u32 {
+    900
+}
+
+#[cfg(feature = "kv")]
+impl Default for KvConfig {
+    fn default() -> Self {
+        Self {
+            drainer_stream_suffix: default_drainer_stream_suffix(),
+            drainer_num_partitions: default_drainer_num_partitions(),
+            ttl_for_kv: default_ttl_for_kv(),
+            kv_state: crate::storage::kv::KvState::default(),
+        }
+    }
 }
 
 #[cfg(feature = "kv")]
 impl KvConfig {
-    /// Build the Redis Stream name for a given shard key.
-    ///
-    /// Format: `{shard_key}_DRAINER_STREAM` — no tenant-id prefix, no schema
-    /// segment.  This matches the hyperswitch drainer consumer's expectation.
+    /// Format: `{shard_key}_{suffix}`.
     pub fn drainer_stream_name(&self, shard_key: &str) -> String {
         format!("{{{}}}_{}", shard_key, self.drainer_stream_suffix)
+    }
+
+    /// Reject `drainer_num_partitions == 0` (would panic on `crc32 % 0`).
+    pub fn validate(&self) -> Result<(), error::ConfigurationError> {
+        if self.drainer_num_partitions == 0 {
+            return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                "kv.drainer_num_partitions must be greater than 0".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -438,13 +521,6 @@ impl std::fmt::Display for Env {
     }
 }
 
-/// Config path (dotted) for the `keys` field inside `[runtime_config]`.
-///
-/// Used by the env-source builder to teach `config` crate's list parser
-/// that `LOCKER__RUNTIME_CONFIG__KEYS=a,b` should become `Vec<String>`
-/// instead of a single `String`.
-const RUNTIME_CONFIG_KEYS_PATH: &str = "runtime_config.keys";
-
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct RuntimeConfigEndpoint {
     pub base_url: String,
@@ -463,12 +539,9 @@ pub enum RuntimeConfig {
         ttl_seconds: u64,
         #[serde(default = "default_runtime_config_cache_max_capacity")]
         cache_max_capacity: u64,
-        /// Keys to prefetch/warm at startup and on each periodic refresh tick.
-        ///
-        /// Env-overridable via `LOCKER__RUNTIME_CONFIG__KEYS=key1,key2`.
-        /// Absent keys are simply not prewarmed — `get::<T>()` still lazy-fetches.
-        #[serde(default)]
-        keys: Vec<String>,
+        /// Background prefetch cadence (seconds), independent of cache TTL.
+        #[serde(default = "default_runtime_config_refresh_interval_seconds")]
+        refresh_interval_seconds: u64,
     },
 }
 
@@ -478,6 +551,10 @@ fn default_runtime_config_ttl_seconds() -> u64 {
 
 fn default_runtime_config_cache_max_capacity() -> u64 {
     32
+}
+
+fn default_runtime_config_refresh_interval_seconds() -> u64 {
+    30
 }
 
 impl RuntimeConfig {

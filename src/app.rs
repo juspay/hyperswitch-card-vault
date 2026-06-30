@@ -59,11 +59,9 @@ impl TenantAppState {
         #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
-        // Create the tenant-specific redis handle early so it can be shared
-        // between Storage (for KV) and TenantAppState (for direct use).
         #[cfg(feature = "redis")]
         let tenant_redis = shared_redis
-            .map(|store| store.clone_with_prefix(&tenant_config.tenant_secrets.redis_key_prefix));
+            .map(|store| store.clone_with_prefix(tenant_config.redis_key_prefix.trim()));
 
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
@@ -157,8 +155,7 @@ async fn shutdown_signal() {
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
 ) -> Result<(), error::ConfigurationError> {
-    // Warm + periodically refresh runtime-config keys so the moka cache never
-    // goes cold.  No-op when runtime config is Disabled.
+    // Warm + periodically refresh the runtime-config cache. No-op when disabled.
     let _prefetch_handle = global_app_state
         .runtime_config_manager
         .spawn_prefetch_task();
@@ -261,10 +258,39 @@ pub async fn server_builder(
             ),
     );
 
+    // set_x_request_id → from_fn scope (innermost runs last → extension is populated)
     router = router.layer(
         ServiceBuilder::new()
             .set_x_request_id(MakeUuidV7)
-            .propagate_x_request_id(),
+            .propagate_x_request_id()
+            .layer(axum::middleware::from_fn(
+                #[cfg(feature = "kv")]
+                {
+                    |req: axum::extract::Request, next: axum::middleware::Next| async move {
+                        let request_id = req
+                            .extensions()
+                            .get::<tower_http::request_id::RequestId>()
+                            .and_then(|rid| rid.header_value().to_str().ok())
+                            .or_else(|| {
+                                req.headers()
+                                    .get("x-request-id")
+                                    .and_then(|h| h.to_str().ok())
+                            })
+                            .map(ToString::to_string)
+                            .unwrap_or_default();
+
+                        crate::storage::kv::request_id::REQUEST_ID
+                            .scope(request_id, next.run(req))
+                            .await
+                    }
+                },
+                #[cfg(not(feature = "kv"))]
+                {
+                    |req: axum::extract::Request, next: axum::middleware::Next| async move {
+                        next.run(req).await
+                    }
+                },
+            )),
     );
 
     // Register default headers layer last so it wraps all routes, ensuring x-version is present on all responses.
