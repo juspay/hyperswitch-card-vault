@@ -115,8 +115,10 @@ impl RuntimeConfigManager {
             };
 
             if let Some(val) = cache.get(key).await {
+                crate::logger::debug!(key, "Runtime config cache hit");
                 return Self::deserialize_config(key, &val);
             }
+            crate::logger::debug!(key, "Runtime config cache miss");
         }
 
         #[cfg(not(feature = "caching"))]
@@ -180,17 +182,23 @@ impl RuntimeConfigManager {
         match Self::fetch_all(endpoint_url, endpoint_path, api_key, client).await {
             Ok(items) => {
                 for item in &items {
-                    crate::logger::info!(
+                    crate::logger::debug!(
                         key = %item.key,
                         value = %item.value,
-                        "Prefetched runtime config"
+                        "Runtime config cache entry upserted"
                     );
                     cache.insert(item.key.clone(), item.value.clone()).await;
                 }
+                crate::logger::info!(
+                    fetched_count = items.len(),
+                    cache_entry_count = cache.entry_count(),
+                    "Runtime config cache updated"
+                );
             }
             Err(e) => {
                 crate::logger::warn!(
                     error = ?e,
+                    cache_entry_count = cache.entry_count(),
                     "Failed to prefetch runtime config bundle, keeping last-known-good"
                 );
             }
@@ -204,7 +212,9 @@ impl RuntimeConfigManager {
         api_key: &Secret<String>,
         client: &reqwest::Client,
     ) -> error_stack::Result<Vec<RuntimeConfigResponse>, error::ConfigurationError> {
-        let url = format!("{}{}", endpoint_url.trim_end_matches('/'), endpoint_path);
+        let url = format!( "{}/{}", endpoint_url.trim_end_matches('/'), endpoint_path.trim_start_matches('/') );
+
+        crate::logger::debug!(url = %url, "Fetching runtime config bundle");
 
         let response = client
             .get(&url)
