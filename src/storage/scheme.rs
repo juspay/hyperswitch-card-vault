@@ -2,31 +2,19 @@
 //!
 //! Always compiled (not `kv`-gated): `updated_by: StorageScheme` appears in
 //! every row struct.  KV decision logic lives in [`super::kv::scheme`].
-//! Diesel `ToSql`/`FromSql` delegate to `strum` `Display`/`FromStr`.
+//! Diesel `ToSql`/`FromSql` delegate to `strum` `Display`/`FromStr`; `Queryable`
+//! comes free from the derived `FromSqlRow`.
 
 use diesel::{
     backend::Backend,
-    deserialize::{self, FromSql, Queryable},
+    deserialize::{self, FromSql},
     pg::Pg,
     serialize::{self, ToSql},
     sql_types::Text,
 };
 
 /// Per-tenant storage scheme (vendored from `MerchantStorageScheme`).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    diesel::expression::AsExpression,
-    serde::Deserialize,
-    serde::Serialize,
-    strum::Display,
-    strum::EnumString,
-    strum::AsRefStr,
-)]
+#[derive( Debug, Clone, Copy, PartialEq, Eq, Default, diesel::expression::AsExpression, diesel::deserialize::FromSqlRow, serde::Deserialize, serde::Serialize, strum::Display, strum::EnumString, strum::AsRefStr, )]
 #[diesel(sql_type = Text)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -46,15 +34,6 @@ impl FromSql<Text, Pg> for StorageScheme {
     fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
         let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
         s.parse::<Self>()
-            .map_err(Box::<dyn std::error::Error + Send + Sync>::from)
-    }
-}
-
-// Manual `Queryable` (mirrors the `Encrypted` pattern in `types.rs`).
-impl Queryable<Text, Pg> for StorageScheme {
-    type Row = String;
-    fn build(row: Self::Row) -> deserialize::Result<Self> {
-        row.parse::<Self>()
             .map_err(Box::<dyn std::error::Error + Send + Sync>::from)
     }
 }
