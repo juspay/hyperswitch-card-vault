@@ -148,21 +148,15 @@ where
             KvOperation::HSetNx(field, value, query) => {
                 debug!(kv_operation = %operation, ?value);
 
-                // HSETNX is the atomic uniqueness guard: the fingerprint hash
-                // *is* the Redis key, the field is the entity type, so a
-                // successful HSETNX proves no prior writer claimed it.
                 let result = redis_conn
                     .serialize_and_set_hash_field_if_not_exist(&key.into(), field, value, Some(ttl))
                     .await
                     .bridge()?;
 
                 if matches!(result, HsetnxReply::KeySet) {
-                    // If the drainer push fails, the Redis key remains (TTL-bounded)
-                    // with no drainer entry — it blocks re-insert as a duplicate
-                    // for the TTL window and never reaches Postgres. We accept this
-                    // (matching hyperswitch's eventual-consistency model); alert on
-                    // KV_FAILED_TO_PUSH_TO_DRAINER. A best-effort DEL on failure was
-                    // rejected: it adds a race window and a second failure mode.
+                    // On drainer-push failure the Redis key remains (TTL-bounded) with no
+                    // drainer entry — accepted per eventual-consistency model; alert on
+                    // KV_FAILED_TO_PUSH_TO_DRAINER.
                     push_to_drainer_stream::<S>(store, query, partition_key).await?;
                     Ok(KvResult::HSetNx(result))
                 } else {

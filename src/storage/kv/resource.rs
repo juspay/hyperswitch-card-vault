@@ -39,10 +39,7 @@ pub(crate) trait StorageResource:
     ) -> Result<Self::Domain, ContainerError<Self::Error>>;
 }
 
-/// Find-optional DB op for KV-routed tables.
-///
-/// `StorageResource` is a super-trait bound: implementing `KvFindOptional`
-/// implies `StorageResource`, so callers need only name `KvFindOptional`.
+/// DB find op for KV-routed tables. `StorageResource` is a super-trait bound.
 pub(crate) trait KvFindOptional: StorageResource {
     async fn storage_find_optional(
         store: &Storage,
@@ -50,10 +47,9 @@ pub(crate) trait KvFindOptional: StorageResource {
     ) -> Result<Option<Self::Domain>, ContainerError<Self::Error>>;
 }
 
-/// Marker for plain-keyed tables (Redis Get/SetNx).
+/// Marker for plain-keyed tables (Redis HGet/HSetNx).
 pub(crate) trait PlainKeyed {}
 
-/// Errors from the generic KV insert helper.
 #[derive(Debug)]
 pub(crate) enum KvWriteError {
     Duplicate,
@@ -81,31 +77,27 @@ where
 {
     let scheme = decide(store, Op::Find).await;
 
-    if matches!(scheme, StorageScheme::RedisKv) {
-        let result = kv_wrapper::<M, M>(
-            store,
-            KvOperation::<M>::HGet(M::ENTITY_TYPE),
-            partition_key.clone(),
-        )
-        .await;
+    match scheme {
+        StorageScheme::RedisKv => {
+            let result = kv_wrapper::<M, M>(
+                store,
+                KvOperation::<M>::HGet(M::ENTITY_TYPE),
+                partition_key.clone(),
+            )
+            .await;
 
-        if let Ok(KvResult::HGet(v)) = result {
-            Ok(Some(M::into_domain(v)))
-        } else {
-            // Redis miss or error — fall through to Postgres.
-            M::storage_find_optional(store, &partition_key).await
+            if let Ok(KvResult::HGet(v)) = result {
+                Ok(Some(M::into_domain(v)))
+            } else {
+                M::storage_find_optional(store, &partition_key).await
+            }
         }
-    } else {
-        M::storage_find_optional(store, &partition_key).await
+        StorageScheme::PostgresOnly => M::storage_find_optional(store, &partition_key).await,
     }
 }
 
-/// Insert via SetNx. KeyNotSet → Duplicate (no PG fallback). PostgresOnly → storage_insert.
-///
-/// In the `RedisKv` path the returned domain object is built from the *model*
-/// (not a DB row), so its serial PK (`id`) is unpopulated (`0`). The PK is
-/// assigned by the drainer on replay. Callers must not read `id` — use
-/// `fingerprint_id` (the caller-supplied nanoid) instead.
+/// Insert via HSetNx. KeyNotSet → Duplicate. PostgresOnly → storage_insert.
+/// In the RedisKv path the returned object's serial `id` is 0 (assigned by the drainer on replay).
 #[instrument(skip(store, model, partition_key), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn insert_plain_resource<M>(
     store: &Storage,
@@ -119,31 +111,34 @@ where
 
     model.set_storage_scheme(scheme);
 
-    if matches!(scheme, StorageScheme::RedisKv) {
-        let key_str = partition_key.to_string();
+    match scheme {
+        StorageScheme::RedisKv => {
+            let key_str = partition_key.to_string();
 
-        let drainer_query = model
-            .insert_drainer_query()
-            .map_err(|e| kv_write_error::<M::Error>(KvWriteError::Backend(e)))?;
+            let drainer_query = model
+                .insert_drainer_query()
+                .map_err(|e| kv_write_error::<M::Error>(KvWriteError::Backend(e)))?;
 
-        let reply = kv_wrapper::<(), M>(
-            store,
-            KvOperation::HSetNx(M::ENTITY_TYPE, &model, drainer_query),
-            partition_key,
-        )
-        .await
-        .map_err(|e| {
-            kv_write_error::<M::Error>(KvWriteError::Backend(e.to_redis_failed_response(&key_str)))
-        })?;
+            let reply = kv_wrapper::<(), M>(
+                store,
+                KvOperation::HSetNx(M::ENTITY_TYPE, &model, drainer_query),
+                partition_key,
+            )
+            .await
+            .map_err(|e| {
+                kv_write_error::<M::Error>(KvWriteError::Backend(e.to_redis_failed_response(&key_str)))
+            })?;
 
-        return match reply.try_into_hsetnx() {
-            Ok(HsetnxReply::KeySet) => Ok(M::into_domain(model)),
-            Ok(HsetnxReply::KeyNotSet) => Err(kv_write_error::<M::Error>(KvWriteError::Duplicate)),
-            Err(e) => Err(kv_write_error::<M::Error>(KvWriteError::Backend(
-                Report::new(e).change_context(KvError::Backend),
-            ))),
-        };
+            match reply.try_into_hsetnx() {
+                Ok(HsetnxReply::KeySet) => Ok(M::into_domain(model)),
+                Ok(HsetnxReply::KeyNotSet) => {
+                    Err(kv_write_error::<M::Error>(KvWriteError::Duplicate))
+                }
+                Err(e) => Err(kv_write_error::<M::Error>(KvWriteError::Backend(
+                    Report::new(e).change_context(KvError::Backend),
+                ))),
+            }
+        }
+        StorageScheme::PostgresOnly => model.storage_insert(store).await,
     }
-
-    model.storage_insert(store).await
 }

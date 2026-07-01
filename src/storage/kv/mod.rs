@@ -4,6 +4,7 @@ pub(crate) mod entity;
 #[cfg(feature = "kv")]
 pub(crate) mod impls;
 pub(crate) mod metrics;
+#[cfg(feature = "kv")]
 pub(crate) mod partition_key;
 #[cfg(feature = "kv")]
 pub(crate) mod request_id;
@@ -13,6 +14,7 @@ pub(crate) mod scheme;
 pub(crate) mod serializable_query;
 pub(crate) mod wrapper;
 
+#[cfg(feature = "kv")]
 pub(crate) use partition_key::PartitionKey;
 #[cfg(feature = "kv")]
 pub(crate) use resource::{find_optional_plain_resource, insert_plain_resource};

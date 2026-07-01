@@ -15,12 +15,8 @@ pub trait RuntimeConfigItem: serde::de::DeserializeOwned {
     const KEY: &'static str;
 }
 
-/// Response format from the runtime config endpoint:
-/// ```json
-/// {"key": "locker.config", "value": "[{\"key\":\"...\",\"value\":\"...\"}]"}
-/// ```
-/// The outer `value` is a JSON-string containing an array of `{key, value}` items,
-/// each representing a single config entry.
+/// Response: `{"key": "...", "value": "[{\"key\":\"...\",\"value\":\"...\"}]"}` —
+/// `value` is a JSON-string containing the array of config items.
 #[cfg(feature = "caching")]
 #[derive(Debug, serde::Deserialize)]
 struct RuntimeConfigResponse {
@@ -102,11 +98,7 @@ impl RuntimeConfigManager {
         }
     }
 
-    /// Fetch a runtime config value by key, deserialized to the requested type.
-    ///
-    /// Cache-only: the prefetch task is the sole fetcher, so the hot path
-    /// never blocks on the endpoint. A miss returns `None` and callers fall
-    /// back to TOML defaults.
+    /// Cache-only read. Miss returns `None` (caller falls back to TOML defaults).
     pub async fn get_config<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
         #[cfg(feature = "caching")]
         {
@@ -234,14 +226,14 @@ impl RuntimeConfigManager {
             ));
         }
 
-        // Outer response: {"key": "...", "value": "[...]"}
+        // Outer: {"key": "...", "value": "[...]"}
         let outer: RuntimeConfigResponse = response.json().await.change_context(
             error::ConfigurationError::InvalidConfigurationValueError(
                 "Failed to parse runtime config response".into(),
             ),
         )?;
 
-        // Inner: value is a JSON string containing an array of {key, value} items
+        // Inner: `value` is a JSON string containing an array of config items.
         serde_json::from_str::<Vec<RuntimeConfigResponse>>(&outer.value).change_context(
             error::ConfigurationError::InvalidConfigurationValueError(
                 "Failed to parse runtime config bundle from response value".into(),

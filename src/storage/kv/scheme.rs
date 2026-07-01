@@ -6,11 +6,8 @@ use crate::storage::scheme::StorageScheme;
 
 /// Tri-state KV master switch.
 ///
-/// # Durability invariant
-///
 /// `ttl_for_kv` must exceed max drainer replay lag — otherwise a KV-only
-/// fingerprint can expire in Redis before the drainer replays to Postgres,
-/// yielding a duplicate logical fingerprint.
+/// fingerprint can expire in Redis before reaching Postgres.
 ///
 /// Deserialization accepts `"disabled"` / `"enabled"` / `"soft_kill"` as a
 /// bare string or `{"kv_state": "..."}` object.
@@ -96,12 +93,7 @@ pub(crate) fn decide_storage_scheme(state: KvState, operation: Op) -> StorageSch
                 Op::Insert => StorageScheme::PostgresOnly,
                 Op::Find => StorageScheme::RedisKv,
             };
-            debug!(
-                kv_state = "soft_kill",
-                decided_scheme = %scheme,
-                operation = %operation,
-                "soft-kill routing: inserts bypass Redis, reads prefer Redis"
-            );
+            debug!(%scheme, %operation, "soft-kill routing");
             scheme
         }
     }

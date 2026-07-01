@@ -1,9 +1,6 @@
 //! The [`StorageScheme`] enum — which storage backend wrote a row.
-//!
-//! Always compiled (not `kv`-gated): `updated_by: StorageScheme` appears in
-//! every row struct.  KV decision logic lives in [`super::kv::scheme`].
-//! Diesel `ToSql`/`FromSql` delegate to `strum` `Display`/`FromStr`; `Queryable`
-//! comes free from the derived `FromSqlRow`.
+//! Always compiled (not kv-gated): `updated_by` appears in every row struct.
+//! KV decision logic lives in [`super::kv::scheme`].
 
 use diesel::{
     backend::Backend,
@@ -13,7 +10,7 @@ use diesel::{
     sql_types::Text,
 };
 
-/// Per-tenant storage scheme (vendored from `MerchantStorageScheme`).
+/// Per-tenant storage scheme.
 #[derive(
     Debug,
     Clone,
