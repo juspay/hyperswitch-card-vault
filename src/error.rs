@@ -11,7 +11,7 @@ mod transforms;
 pub use container::*;
 pub use custom_error::*;
 #[cfg(feature = "kv")]
-pub use kv::RedisErrorExt;
+pub use kv::{KvError, RedisErrorExt};
 use reqwest::StatusCode;
 
 #[derive(Debug, thiserror::Error)]
@@ -72,21 +72,6 @@ pub enum StorageError {
     UpdateError,
     #[error("Read replica pool is not configured")]
     ReplicaPoolNotConfigured,
-    #[cfg(feature = "kv")]
-    #[error("DuplicateValue: {entity} already exists {key:?}")]
-    DuplicateValue {
-        entity: &'static str,
-        key: Option<String>,
-    },
-    #[cfg(feature = "kv")]
-    #[error("KV error")]
-    KVError,
-    #[cfg(feature = "kv")]
-    #[error("ValueNotFound: {0}")]
-    ValueNotFound(String),
-    #[cfg(feature = "kv")]
-    #[error("Serialization failure")]
-    SerializationFailed,
 }
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]

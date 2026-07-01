@@ -43,11 +43,6 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
                 Self::DBInsertError
             }
             super::StorageError::NotFoundError => Self::NotFoundError,
-            #[cfg(feature = "kv")]
-            super::StorageError::ValueNotFound(_)
-            | super::StorageError::DuplicateValue { .. }
-            | super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::NotFoundError,
         }
     }
 }
@@ -68,14 +63,6 @@ impl<'a> From<&'a super::StorageError> for super::VaultDBError {
             }
             super::StorageError::DeleteError => Self::DBDeleteError,
             super::StorageError::NotFoundError => Self::NotFoundError,
-            #[cfg(feature = "kv")]
-            super::StorageError::ValueNotFound(_) => Self::NotFoundError,
-            #[cfg(feature = "kv")]
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            #[cfg(feature = "kv")]
-            super::StorageError::KVError | super::StorageError::SerializationFailed => {
-                Self::UnknownError
-            }
         }
     }
 }
@@ -95,14 +82,6 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
                 Self::DBInsertError
             }
             super::StorageError::NotFoundError => Self::DBFilterError,
-            #[cfg(feature = "kv")]
-            super::StorageError::ValueNotFound(_) => Self::DBFilterError,
-            #[cfg(feature = "kv")]
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            #[cfg(feature = "kv")]
-            super::StorageError::KVError | super::StorageError::SerializationFailed => {
-                Self::UnknownError
-            }
         }
     }
 }
@@ -123,14 +102,6 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
             | super::StorageError::EncryptionError
             | super::StorageError::NotFoundError => Self::UnknownError,
             super::StorageError::ReplicaPoolNotConfigured => Self::DBReplicaNotConfigured,
-            #[cfg(feature = "kv")]
-            super::StorageError::ValueNotFound(_) => Self::UnknownError,
-            #[cfg(feature = "kv")]
-            super::StorageError::DuplicateValue { .. } => Self::DBWriteError,
-            #[cfg(feature = "kv")]
-            super::StorageError::KVError | super::StorageError::SerializationFailed => {
-                Self::UnknownError
-            }
         }
     }
 }
@@ -145,19 +116,11 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::FindError | super::StorageError::NotFoundError => {
                 Self::DBFilterError
             }
-            #[cfg(feature = "kv")]
-            super::StorageError::ValueNotFound(_) => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
-            }
-            #[cfg(feature = "kv")]
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            #[cfg(feature = "kv")]
-            super::StorageError::KVError | super::StorageError::SerializationFailed => {
-                Self::UnknownError
             }
         }
     }
@@ -298,14 +261,6 @@ impl<'a> From<&'a super::StorageError> for super::EntityDBError {
             | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::NotFoundError => Self::NotFoundError,
-            #[cfg(feature = "kv")]
-            super::StorageError::ValueNotFound(_) => Self::NotFoundError,
-            #[cfg(feature = "kv")]
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            #[cfg(feature = "kv")]
-            super::StorageError::KVError | super::StorageError::SerializationFailed => {
-                Self::UnknownError
-            }
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
@@ -359,14 +314,6 @@ impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
             | super::StorageError::DeleteError => Self::UnknownError,
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
-            }
-            #[cfg(feature = "kv")]
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            #[cfg(feature = "kv")]
-            super::StorageError::ValueNotFound(_) => Self::NotFoundError,
-            #[cfg(feature = "kv")]
-            super::StorageError::KVError | super::StorageError::SerializationFailed => {
-                Self::UnknownError
             }
         }
     }

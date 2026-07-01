@@ -11,7 +11,7 @@ use super::{
     serializable_query::generate_insert_query,
 };
 use crate::{
-    error::FingerprintDBError,
+    error::{FingerprintDBError, KvError},
     storage::{
         Storage,
         types::{Fingerprint, FingerprintTableNew},
@@ -47,7 +47,7 @@ impl StorageResource for FingerprintTableNew {
 
     fn insert_drainer_query(
         &self,
-    ) -> error_stack::Result<super::serializable_query::SerializableQuery, crate::error::StorageError>
+    ) -> error_stack::Result<super::serializable_query::SerializableQuery, crate::error::KvError>
     {
         generate_insert_query::<crate::storage::schema::fingerprint::table, _>(self.clone())
     }
@@ -78,6 +78,16 @@ impl KvFindOptional for FingerprintTableNew {
             .await
             .optional()?;
         Ok(output)
+    }
+}
+
+impl From<&KvError> for FingerprintDBError {
+    fn from(e: &KvError) -> Self {
+        match e {
+            KvError::DuplicateValue { .. } => Self::Duplicate,
+            KvError::ValueNotFound(_) => Self::DBFilterError,
+            KvError::Backend | KvError::SerializationFailed => Self::UnknownError,
+        }
     }
 }
 

@@ -13,7 +13,7 @@ use super::{
     wrapper::{KvOperation, KvResult, kv_wrapper},
 };
 use crate::{
-    error::{ContainerError, RedisErrorExt, StorageError},
+    error::{ContainerError, KvError, RedisErrorExt},
     storage::Storage,
 };
 
@@ -32,7 +32,7 @@ pub(crate) trait StorageResource:
 
     fn into_domain(self) -> Self::Domain;
     fn set_storage_scheme(&mut self, scheme: StorageScheme);
-    fn insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, StorageError>;
+    fn insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError>;
     async fn storage_insert(
         self,
         store: &Storage,
@@ -57,7 +57,7 @@ pub(crate) trait PlainKeyed {}
 #[derive(Debug)]
 pub(crate) enum KvWriteError {
     Duplicate,
-    Backend(Report<StorageError>),
+    Backend(Report<KvError>),
 }
 
 fn kv_write_error<E: From<KvWriteError> + error_stack::Context>(
@@ -123,9 +123,7 @@ where
         let key_str = partition_key.to_string();
 
         let drainer_query = model.insert_drainer_query().map_err(|e| {
-            kv_write_error::<M::Error>(KvWriteError::Backend(
-                e.change_context(StorageError::KVError),
-            ))
+            kv_write_error::<M::Error>(KvWriteError::Backend(e))
         })?;
 
         let reply = kv_wrapper::<(), M>(
@@ -136,8 +134,7 @@ where
         .await
         .map_err(|e| {
             kv_write_error::<M::Error>(KvWriteError::Backend(
-                e.to_redis_failed_response(&key_str)
-                    .change_context(StorageError::KVError),
+                e.to_redis_failed_response(&key_str),
             ))
         })?;
 
@@ -145,7 +142,7 @@ where
             Ok(HsetnxReply::KeySet) => Ok(M::into_domain(model)),
             Ok(HsetnxReply::KeyNotSet) => Err(kv_write_error::<M::Error>(KvWriteError::Duplicate)),
             Err(e) => Err(kv_write_error::<M::Error>(KvWriteError::Backend(
-                Report::new(e).change_context(StorageError::KVError),
+                Report::new(e).change_context(KvError::Backend),
             ))),
         };
     }
