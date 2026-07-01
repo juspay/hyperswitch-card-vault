@@ -1,2 +1,2 @@
-# Needed because postresql does not allow 'DROP/CREATE INDEX CONCURRENTLY' inside a transaction block
+# Needed because postgresql does not allow 'DROP/CREATE INDEX CONCURRENTLY' inside a transaction block
 run_in_transaction = false
