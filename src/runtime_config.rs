@@ -212,7 +212,11 @@ impl RuntimeConfigManager {
         api_key: &Secret<String>,
         client: &reqwest::Client,
     ) -> error_stack::Result<Vec<RuntimeConfigResponse>, error::ConfigurationError> {
-        let url = format!( "{}/{}", endpoint_url.trim_end_matches('/'), endpoint_path.trim_start_matches('/') );
+        let url = format!(
+            "{}/{}",
+            endpoint_url.trim_end_matches('/'),
+            endpoint_path.trim_start_matches('/')
+        );
 
         crate::logger::debug!(url = %url, "Fetching runtime config bundle");
 
