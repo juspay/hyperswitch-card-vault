@@ -225,18 +225,18 @@ impl RuntimeConfigManager {
         }
 
         // Outer response: {"key": "...", "value": "[...]"}
-        let outer: RuntimeConfigResponse = response
-            .json()
-            .await
-            .change_context(error::ConfigurationError::InvalidConfigurationValueError(
+        let outer: RuntimeConfigResponse = response.json().await.change_context(
+            error::ConfigurationError::InvalidConfigurationValueError(
                 "Failed to parse runtime config response".into(),
-            ))?;
+            ),
+        )?;
 
         // Inner: value is a JSON string containing an array of {key, value} items
-        serde_json::from_str::<Vec<RuntimeConfigResponse>>(&outer.value)
-            .change_context(error::ConfigurationError::InvalidConfigurationValueError(
+        serde_json::from_str::<Vec<RuntimeConfigResponse>>(&outer.value).change_context(
+            error::ConfigurationError::InvalidConfigurationValueError(
                 "Failed to parse runtime config bundle from response value".into(),
-            ))
+            ),
+        )
     }
 }
 

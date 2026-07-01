@@ -122,9 +122,9 @@ where
     if matches!(scheme, StorageScheme::RedisKv) {
         let key_str = partition_key.to_string();
 
-        let drainer_query = model.insert_drainer_query().map_err(|e| {
-            kv_write_error::<M::Error>(KvWriteError::Backend(e))
-        })?;
+        let drainer_query = model
+            .insert_drainer_query()
+            .map_err(|e| kv_write_error::<M::Error>(KvWriteError::Backend(e)))?;
 
         let reply = kv_wrapper::<(), M>(
             store,
@@ -133,9 +133,7 @@ where
         )
         .await
         .map_err(|e| {
-            kv_write_error::<M::Error>(KvWriteError::Backend(
-                e.to_redis_failed_response(&key_str),
-            ))
+            kv_write_error::<M::Error>(KvWriteError::Backend(e.to_redis_failed_response(&key_str)))
         })?;
 
         return match reply.try_into_hsetnx() {

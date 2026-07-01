@@ -3,7 +3,10 @@ use hyperswitch_redis_interface::errors::RedisError;
 #[derive(Debug, thiserror::Error)]
 pub enum KvError {
     #[error("DuplicateValue: {entity} already exists {key:?}")]
-    DuplicateValue { entity: &'static str, key: Option<String> },
+    DuplicateValue {
+        entity: &'static str,
+        key: Option<String>,
+    },
     #[error("KV backend error")]
     Backend,
     #[error("ValueNotFound: {0}")]

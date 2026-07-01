@@ -196,9 +196,7 @@ impl SerializableQuery {
     }
 }
 
-pub(crate) fn generate_insert_query<T, N>(
-    new: N,
-) -> error_stack::Result<SerializableQuery, KvError>
+pub(crate) fn generate_insert_query<T, N>(new: N) -> error_stack::Result<SerializableQuery, KvError>
 where
     T: HasTable<Table = T> + Table + Send + 'static,
     N: Insertable<T> + EntityType,
