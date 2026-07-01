@@ -1,9 +1,7 @@
 use std::{sync::Arc, {collections::HashMap, time::Duration}};
 
 use error_stack::ResultExt;
-#[cfg(feature = "caching")]
-use hyperswitch_masking::PeekInterface;
-use hyperswitch_masking::Secret;
+use hyperswitch_masking::{PeekInterface, Secret};
 
 use crate::{config::RuntimeConfig, error};
 

@@ -515,6 +515,8 @@ pub struct RuntimeConfigEndpoint {
     pub api_key: hyperswitch_masking::Secret<String>,
     #[serde(default)]
     pub path: String,
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, hyperswitch_masking::Secret<String>>,
 }
 
 /// Runtime configuration source.
