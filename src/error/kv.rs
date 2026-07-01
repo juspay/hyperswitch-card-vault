@@ -32,7 +32,41 @@ impl RedisErrorExt for error_stack::Report<RedisError> {
                     key: Some(key.to_string()),
                 })
             }
-            _ => self.change_context(KvError::Backend),
+            RedisError::InvalidConfiguration(_)
+            | RedisError::SetFailed
+            | RedisError::SetExFailed
+            | RedisError::SetExpiryFailed
+            | RedisError::GetFailed
+            | RedisError::DeleteFailed
+            | RedisError::StreamAppendFailed
+            | RedisError::StreamReadFailed
+            | RedisError::GetLengthFailed
+            | RedisError::StreamDeleteFailed
+            | RedisError::StreamTrimFailed
+            | RedisError::StreamAcknowledgeFailed
+            | RedisError::StreamEmptyOrNotAvailable
+            | RedisError::ConsumerGroupCreateFailed
+            | RedisError::ConsumerGroupDestroyFailed
+            | RedisError::ConsumerGroupRemoveConsumerFailed
+            | RedisError::ConsumerGroupSetIdFailed
+            | RedisError::ConsumerGroupClaimFailed
+            | RedisError::JsonSerializationFailed
+            | RedisError::JsonDeserializationFailed
+            | RedisError::SetHashFailed
+            | RedisError::SetHashFieldFailed
+            | RedisError::GetHashFieldFailed
+            | RedisError::InvalidRedisEntryId
+            | RedisError::RedisConnectionError
+            | RedisError::SubscribeError
+            | RedisError::PublishError
+            | RedisError::OnMessageError
+            | RedisError::UnknownResult
+            | RedisError::AppendElementsToListFailed
+            | RedisError::GetListElementsFailed
+            | RedisError::GetListLengthFailed
+            | RedisError::PopListElementsFailed
+            | RedisError::IncrementHashFieldFailed
+            | RedisError::ScriptExecutionFailed => self.change_context(KvError::Backend),
         }
     }
 }

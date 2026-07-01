@@ -38,7 +38,41 @@ fn redis_error_from_ref(err: &RedisError) -> RedisError {
         RedisError::NotFound => RedisError::NotFound,
         RedisError::SetNxFailed => RedisError::SetNxFailed,
         RedisError::SetAddMembersFailed => RedisError::SetAddMembersFailed,
-        _ => RedisError::UnknownResult,
+        RedisError::InvalidConfiguration(_)
+        | RedisError::SetFailed
+        | RedisError::SetExFailed
+        | RedisError::SetExpiryFailed
+        | RedisError::GetFailed
+        | RedisError::DeleteFailed
+        | RedisError::StreamAppendFailed
+        | RedisError::StreamReadFailed
+        | RedisError::GetLengthFailed
+        | RedisError::StreamDeleteFailed
+        | RedisError::StreamTrimFailed
+        | RedisError::StreamAcknowledgeFailed
+        | RedisError::StreamEmptyOrNotAvailable
+        | RedisError::ConsumerGroupCreateFailed
+        | RedisError::ConsumerGroupDestroyFailed
+        | RedisError::ConsumerGroupRemoveConsumerFailed
+        | RedisError::ConsumerGroupSetIdFailed
+        | RedisError::ConsumerGroupClaimFailed
+        | RedisError::JsonSerializationFailed
+        | RedisError::JsonDeserializationFailed
+        | RedisError::SetHashFailed
+        | RedisError::SetHashFieldFailed
+        | RedisError::GetHashFieldFailed
+        | RedisError::InvalidRedisEntryId
+        | RedisError::RedisConnectionError
+        | RedisError::SubscribeError
+        | RedisError::PublishError
+        | RedisError::OnMessageError
+        | RedisError::UnknownResult
+        | RedisError::AppendElementsToListFailed
+        | RedisError::GetListElementsFailed
+        | RedisError::GetListLengthFailed
+        | RedisError::PopListElementsFailed
+        | RedisError::IncrementHashFieldFailed
+        | RedisError::ScriptExecutionFailed => RedisError::UnknownResult,
     }
 }
 
