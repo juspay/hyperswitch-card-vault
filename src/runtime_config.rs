@@ -184,7 +184,8 @@ impl RuntimeConfigManager {
                 }
                 Err(error) => {
                     crate::logger::warn!(
-                        ?error, key,
+                        ?error,
+                        key,
                         "Failed to prefetch runtime config key, continuing"
                     );
                 }
