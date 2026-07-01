@@ -3,17 +3,17 @@
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
 
-use crate::storage::kv::{
-    StorageScheme,
-    entity::EntityType,
-    partition_key::{KvStorePartition, PartitionKey},
-    resource::{KvFindOptional, KvWriteError, PlainKeyed, StorageResource},
-    serializable_query::generate_insert_query,
-};
 use crate::{
     error::{FingerprintDBError, KvError},
     storage::{
         Storage,
+        kv::{
+            StorageScheme,
+            entity::EntityType,
+            partition_key::{KvStorePartition, PartitionKey},
+            resource::{KvFindOptional, KvWriteError, PlainKeyed, StorageResource},
+            serializable_query::generate_insert_query,
+        },
         types::{Fingerprint, FingerprintTableNew},
     },
 };
@@ -45,7 +45,8 @@ impl StorageResource for FingerprintTableNew {
 
     fn insert_drainer_query(
         &self,
-    ) -> error_stack::Result<crate::storage::kv::serializable_query::SerializableQuery, KvError> {
+    ) -> error_stack::Result<crate::storage::kv::serializable_query::SerializableQuery, KvError>
+    {
         generate_insert_query::<crate::storage::schema::fingerprint::table, _>(self.clone())
     }
 

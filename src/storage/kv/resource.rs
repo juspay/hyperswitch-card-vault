@@ -126,7 +126,9 @@ where
             )
             .await
             .map_err(|e| {
-                kv_write_error::<M::Error>(KvWriteError::Backend(e.to_redis_failed_response(&key_str)))
+                kv_write_error::<M::Error>(KvWriteError::Backend(
+                    e.to_redis_failed_response(&key_str),
+                ))
             })?;
 
             match reply.try_into_hsetnx() {
