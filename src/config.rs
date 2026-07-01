@@ -515,6 +515,11 @@ impl std::fmt::Display for Env {
 pub struct RuntimeConfigEndpoint {
     pub base_url: String,
     pub api_key: hyperswitch_masking::Secret<String>,
+    /// Path appended to `base_url` for the single batched fetch.
+    /// The endpoint at `{base_url}{path}` must return a flat JSON object
+    /// mapping config keys to their JSON-string values.
+    #[serde(default)]
+    pub path: String,
 }
 
 /// Runtime configuration source.
@@ -529,8 +534,6 @@ pub enum RuntimeConfig {
         ttl_seconds: u64,
         #[serde(default = "default_runtime_config_cache_max_capacity")]
         cache_max_capacity: u64,
-        #[serde(default)]
-        keys: Vec<String>,
         #[serde(default = "default_runtime_config_refresh_interval_seconds")]
         refresh_interval_seconds: u64,
     },
