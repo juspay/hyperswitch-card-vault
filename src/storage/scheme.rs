@@ -14,7 +14,21 @@ use diesel::{
 };
 
 /// Per-tenant storage scheme (vendored from `MerchantStorageScheme`).
-#[derive( Debug, Clone, Copy, PartialEq, Eq, Default, diesel::expression::AsExpression, diesel::deserialize::FromSqlRow, serde::Deserialize, serde::Serialize, strum::Display, strum::EnumString, strum::AsRefStr, )]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    diesel::expression::AsExpression,
+    diesel::deserialize::FromSqlRow,
+    serde::Deserialize,
+    serde::Serialize,
+    strum::Display,
+    strum::EnumString,
+    strum::AsRefStr,
+)]
 #[diesel(sql_type = Text)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
