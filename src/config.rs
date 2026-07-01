@@ -57,7 +57,7 @@ pub struct TenantConfig {
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
     pub external_key_manager: ExternalKeyManagerConfig,
-    /// Redis key namespace for this tenant (moved from `TenantSecrets`).
+    /// Redis key namespace for this tenant.
     #[cfg(feature = "redis")]
     pub redis_key_prefix: String,
 }
@@ -141,7 +141,7 @@ pub struct TenantSecrets {
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
 
-    /// Redis key prefix. Deserialization-only — app code reads `TenantConfig.redis_key_prefix`.
+    /// Redis key prefix (deser-only; app reads `TenantConfig.redis_key_prefix`).
     #[cfg(feature = "redis")]
     #[serde(default)]
     pub redis_key_prefix: String,
@@ -387,8 +387,7 @@ impl GlobalConfig {
         Ok(())
     }
 
-    /// Require non-empty, unique `redis_key_prefix` per tenant when `kv` is
-    /// compiled, Redis is configured, and >1 tenant exists.
+    /// Require non-empty, unique `redis_key_prefix` per tenant when kv + redis + multi-tenant.
     #[cfg(feature = "kv")]
     fn validate_kv_tenant_prefixes(&self) -> Result<(), error::ConfigurationError> {
         #[cfg(feature = "redis")]
@@ -428,8 +427,7 @@ pub struct KvConfig {
     /// TTL (seconds) for KV keys in Redis. Must exceed max drainer replay lag.
     #[serde(default = "default_ttl_for_kv")]
     pub ttl_for_kv: u32,
-    /// KV master switch. Fallback default only; overridden by the runtime config
-    /// endpoint when `RuntimeConfig::Enabled`. Defaults to `Disabled`.
+    /// KV master switch. Overridden by runtime config when enabled.
     #[serde(default)]
     pub(crate) kv_state: crate::storage::kv::KvState,
 }
@@ -468,7 +466,7 @@ impl KvConfig {
         format!("{{{}}}_{}", shard_key, self.drainer_stream_suffix)
     }
 
-    /// Reject `drainer_num_partitions == 0` (would panic on `crc32 % 0`).
+    /// Reject `drainer_num_partitions == 0` (crc32 % 0 panics).
     pub fn validate(&self) -> Result<(), error::ConfigurationError> {
         if self.drainer_num_partitions == 0 {
             return Err(error::ConfigurationError::InvalidConfigurationValueError(
@@ -515,9 +513,6 @@ impl std::fmt::Display for Env {
 pub struct RuntimeConfigEndpoint {
     pub base_url: String,
     pub api_key: hyperswitch_masking::Secret<String>,
-    /// Path appended to `base_url` for the single batched fetch.
-    /// The endpoint at `{base_url}{path}` must return a flat JSON object
-    /// mapping config keys to their JSON-string values.
     #[serde(default)]
     pub path: String,
 }

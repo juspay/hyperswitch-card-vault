@@ -84,7 +84,6 @@ trait BridgeRedis<T> {
 impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
     fn bridge(self) -> error_stack::Result<T, RedisError> {
         self.map_err(|e| {
-            // Preserve the 0.4 report's diagnostic chain as a printable attachment.
             error_stack::Report::new(redis_error_from_ref(e.current_context()))
                 .attach_printable(format!("{e:?}"))
         })

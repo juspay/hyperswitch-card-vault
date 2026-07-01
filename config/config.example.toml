@@ -174,3 +174,7 @@ metrics_export_interval_secs = 60  # How often to export metrics (seconds)
 #    "value": "[{\"key\":\"locker.use_read_replica\",\"value\":\"{\\\"use_read_replica\\\":true}\"},
 #               {\"key\":\"locker.enable_kv\",\"value\":\"{\\\"kv_state\\\":\\\"enabled\\\"}\"}]"}
 
+# Optional static headers sent on every runtime config pull request (omit entirely to send none)
+# [runtime_config.endpoint.headers]
+# accept = "application/json"
+

@@ -1,9 +1,6 @@
 //! Request-id propagation via a Tokio task-local.
-//!
-//! Set once per request by the `scope_request_id` middleware in `app.rs` and
-//! read by the KV drainer push. Task-locals do **not** cross `tokio::spawn`, so
-//! any KV write moved onto a spawned task will read an empty request-id; keep KV
-//! writes on the request task (as they are today).
+//! Set per-request by the `scope_request_id` middleware in `app.rs`.
+//! Task-locals do not cross `tokio::spawn`.
 
 use tokio::task_local;
 

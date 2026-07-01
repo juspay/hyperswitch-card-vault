@@ -304,7 +304,7 @@ impl super::FingerprintInterface for Storage {
             let model = types::FingerprintTableNew {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id: fingerprint_id.clone(),
-                // Overwritten by `insert_plain_resource` via `set_storage_scheme`.
+                // Overwritten by `insert_plain_resource`.
                 updated_by: StorageScheme::RedisKv,
             };
             let partition_key = super::kv::PartitionKey::Fingerprint {
@@ -348,9 +348,7 @@ impl super::EntityInterface for Storage {
         // Reads are routed to the read replica when enabled (#171).
         let mut conn = self.route_conn().await?;
 
-        // A missing row surfaces as `EntityDBError::NotFoundError` (see the `From<diesel>`
-        // classifier), which `find_or_create_entity` in the key manager checks via
-        // `is_not_found()`.
+        // Missing row → `EntityDBError::NotFoundError`, checked by `find_or_create_entity`.
         let output: types::Entity = types::Entity::table()
             .filter(schema::entity::entity_id.eq(entity_id))
             .get_result(&mut conn)
