@@ -9,6 +9,7 @@ ALTER TABLE hash_table
     ADD CONSTRAINT hash_table_data_hash_key
         UNIQUE (data_hash);
 
+-- In production environments with live traffic, run these index creations with CONCURRENTLY.
 CREATE UNIQUE INDEX IF NOT EXISTS hash_table_hash_id_key_idx
 ON hash_table (hash_id);
 
