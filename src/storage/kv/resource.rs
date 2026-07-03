@@ -73,6 +73,15 @@ pub(crate) trait KvDeletable: StorageResource {
     ) -> Result<usize, ContainerError<Self::Error>>;
 }
 
+/// Update DB op for KV-routed tables (vault only).
+pub(crate) trait KvUpdatable: StorageResource {
+    fn update_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError>;
+    async fn storage_update(
+        self,
+        store: &Storage,
+    ) -> Result<Self::Domain, ContainerError<Self::Error>>;
+}
+
 /// Errors from the generic KV insert helper.
 #[derive(Debug)]
 pub(crate) enum KvWriteError {
@@ -243,4 +252,59 @@ where
     }
 
     model.storage_insert(store).await
+}
+
+/// Update via Hset (vault only). PostgresOnly → `storage_update`.
+///
+/// Routing decision uses `Op::Insert` (the write op) — there is **no**
+/// reintroduced `Op::Update` probe. On `RedisKv`, the model is serialised
+/// and HSET unconditionally (overwrites the existing field), and the update
+/// query is pushed to the drainer stream for PG replay. On `PostgresOnly`,
+/// the model is passed directly to `storage_update`.
+///
+/// Serde errors are surfaced through the wrapper as
+/// `RedisError::JsonSerializationFailed` → `KvError::Backend` via
+/// `to_redis_failed_response`.
+#[instrument(skip(store, model, partition_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn update_hash_resource<M>(
+    store: &Storage,
+    mut model: M,
+    partition_key: PartitionKey<'_>,
+) -> Result<M::Domain, ContainerError<M::Error>>
+where
+    M: HashKeyed + KvUpdatable,
+{
+    let scheme = decide(store, Op::Insert).await;
+
+    model.set_storage_scheme(scheme);
+
+    if matches!(scheme, StorageScheme::RedisKv) {
+        let field = hash_field_key(&partition_key);
+        let key_str = partition_key.to_string();
+
+        let query = model
+            .update_drainer_query()
+            .map_err(|e| kv_write_error::<M::Error>(KvWriteError::Backend(e)))?;
+
+        let result = kv_wrapper::<(), M>(
+            store,
+            KvOperation::Hset(&field, &model, query),
+            partition_key,
+        )
+        .await
+        .map_err(|e| {
+            kv_write_error::<M::Error>(KvWriteError::Backend(e.to_redis_failed_response(&key_str)))
+        })?;
+
+        return result
+            .try_into_hset()
+            .map(|()| M::into_domain(model))
+            .map_err(|e| {
+                kv_write_error::<M::Error>(KvWriteError::Backend(
+                    Report::new(e).change_context(KvError::Backend),
+                ))
+            });
+    }
+
+    model.storage_update(store).await
 }

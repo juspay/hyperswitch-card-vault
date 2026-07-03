@@ -12,6 +12,10 @@ pub(crate) enum PartitionKey<'a> {
         merchant_id: &'a str,
         customer_id: &'a str,
     },
+    Vault {
+        vault_id: &'a str,
+        entity_id: &'a str,
+    },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
@@ -26,6 +30,10 @@ impl std::fmt::Display for PartitionKey<'_> {
                 merchant_id,
                 customer_id,
             } => f.write_str(&format!("locker_{merchant_id}_{customer_id}_{locker_id}")),
+            Self::Vault {
+                vault_id,
+                entity_id,
+            } => f.write_str(&format!("vault_{entity_id}_{vault_id}")),
         }
     }
 }
@@ -38,6 +46,7 @@ impl std::fmt::Display for PartitionKey<'_> {
 pub(crate) fn hash_field_key(partition_key: &PartitionKey<'_>) -> String {
     match partition_key {
         PartitionKey::Locker { locker_id, .. } => format!("locker_{locker_id}"),
+        PartitionKey::Vault { vault_id, .. } => format!("vault_{vault_id}"),
         // Fingerprint and Hash are plain-keyed; they use M::ENTITY_TYPE as the field.
         // A mismatch is a programming error, not a runtime condition — return a
         // stable sentinel rather than panicking in library code.

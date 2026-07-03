@@ -95,6 +95,10 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
 pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
     HSetNx(&'a str, &'a S, SerializableQuery),
     HGet(&'a str),
+    /// Unconditional HSET (overwrites existing field). Used for vault updates.
+    /// The wrapper owns serialization; a serde failure surfaces as
+    /// `RedisError::JsonSerializationFailed`.
+    Hset(&'a str, &'a S, SerializableQuery),
 }
 
 /// The result of a KV operation.
@@ -102,12 +106,20 @@ pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
 pub(crate) enum KvResult<T: de::DeserializeOwned> {
     HGet(T),
     HSetNx(HsetnxReply),
+    Hset,
 }
 
 impl<T: de::DeserializeOwned> KvResult<T> {
     pub(crate) fn try_into_hsetnx(self) -> Result<HsetnxReply, RedisError> {
         match self {
             Self::HSetNx(v) => Ok(v),
+            _ => Err(RedisError::UnknownResult),
+        }
+    }
+
+    pub(crate) fn try_into_hset(self) -> Result<(), RedisError> {
+        match self {
+            Self::Hset => Ok(()),
             _ => Err(RedisError::UnknownResult),
         }
     }
@@ -121,6 +133,7 @@ where
         match self {
             Self::HSetNx(_, _, _) => f.write_str("HSetNx"),
             Self::HGet(_) => f.write_str("HGet"),
+            Self::Hset(_, _, _) => f.write_str("Hset"),
         }
     }
 }
@@ -176,6 +189,27 @@ where
                     .await
                     .bridge()?;
                 Ok(KvResult::HGet(result))
+            }
+
+            KvOperation::Hset(field, value, query) => {
+                debug!(kv_operation = %operation, field = %field);
+
+                // HSET is unconditional — it always overwrites the field.
+                let serialized = serde_json::to_string(value)
+                    .change_context(RedisError::JsonSerializationFailed)?;
+
+                redis_conn
+                    .set_hash_fields(
+                        &key.into(),
+                        vec![(field.to_string(), serialized)],
+                        Some(i64::from(ttl)),
+                    )
+                    .await
+                    .bridge()?;
+
+                push_to_drainer_stream::<S>(store, query, partition_key).await?;
+
+                Ok(KvResult::Hset)
             }
         }
     };
