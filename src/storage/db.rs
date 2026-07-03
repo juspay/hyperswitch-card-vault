@@ -6,6 +6,8 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use hyperswitch_masking::PeekInterface;
 use hyperswitch_masking::{ExposeInterface, Secret};
 
+#[cfg(feature = "kv")]
+use super::kv::EntityType;
 use super::{
     MerchantInterface, Storage, schema, types,
     types::{StorageDecryption, StorageEncryption},
@@ -273,9 +275,10 @@ impl super::FingerprintInterface for Storage {
                 fingerprint_hash: &fp_bytes,
             };
 
-            return super::kv::find_optional_plain_resource::<types::FingerprintTableNew>(
+            // Store & return the Queryable model, not the New struct.
+            return super::kv::find_optional_resource_by_id::<types::Fingerprint>(
                 self,
-                partition_key,
+                super::kv::FindResourceBy::Id(types::Fingerprint::ENTITY_TYPE, partition_key),
             )
             .await;
         }
@@ -301,20 +304,24 @@ impl super::FingerprintInterface for Storage {
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let model = types::FingerprintTableNew {
+            // `id: 0` — serial unknown at KV-insert time, assigned by drainer on replay.
+            let model = types::Fingerprint {
+                id: 0,
                 fingerprint_hash: fingerprint_hash.clone(),
-                fingerprint_id: fingerprint_id.clone(),
-                // Overwritten by `insert_plain_resource`.
-                updated_by: StorageScheme::RedisKv,
+                fingerprint_id,
+                updated_by: StorageScheme::PostgresOnly,
             };
             let partition_key = super::kv::PartitionKey::Fingerprint {
                 fingerprint_hash: fingerprint_hash.peek().as_slice(),
             };
 
-            return super::kv::insert_plain_resource::<types::FingerprintTableNew>(
+            return super::kv::insert_resource::<types::Fingerprint>(
                 self,
                 model,
-                partition_key,
+                super::kv::InsertResourceParams {
+                    partition_key,
+                    identifier: types::Fingerprint::ENTITY_TYPE,
+                },
             )
             .await;
         }

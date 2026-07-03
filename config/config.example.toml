@@ -119,25 +119,18 @@ drainer_stream_suffix = "DRAINER_STREAM"  # suffix for the drainer stream name
 drainer_num_partitions = 16        # number of shard partitions (must be > 0)
 ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 
-# File-based fallback for the KV master switch, used ONLY when
-# `runtime_config.mode = "disabled"`.  When the runtime config endpoint is
-# enabled, the endpoint's value takes precedence (this field is ignored once the
-# endpoint is reachable).  Defaults to "disabled" (fail-closed).
-#   "disabled"  → all reads/writes go to Postgres
-#   "enabled"   → write-through Redis (writes → Redis + drainer; reads → Redis-first)
-#   "soft_kill" → gradual rollout (inserts → Postgres, reads → Redis-first)
-kv_state = "disabled"
-
-# KV enablement is controlled at runtime via the `locker.enable_kv` runtime-config
-# key (see [runtime_config] below).  When the runtime config endpoint is enabled,
-# its value takes precedence over `kv_state` here.  The endpoint may return either:
+# KV enablement is controlled SOLELY at runtime via the `locker.enable_kv` runtime-config
+# key (see [runtime_config] below).  There is no TOML fallback — a single source of truth
+# avoids drift.  When the endpoint is disabled or unreachable the service fails closed to
+# "disabled" (all reads/writes go to Postgres).  The endpoint may return either:
 #   a string: "disabled" | "enabled" | "soft_kill"
 #   or the legacy object: {"enable_kv": true, "soft_kill": false}
-# `soft_kill` enables gradual rollout (inserts → Postgres, reads → Redis-first).
+#   "enabled"   → write-through Redis (writes → Redis + drainer; reads → Redis-first)
+#   "soft_kill" → gradual rollout (inserts → Postgres, reads → Redis-first)
 
 # Per-tenant `redis_key_prefix` (under `[tenant_secrets.<id>]`) MUST be non-empty
-# and unique across tenants whenever `kv_state` is not "disabled", otherwise the
-# service fails to start.  The drainer must consume the prefixed
+# and unique across tenants whenever KV is enabled, otherwise the service fails to
+# start.  The drainer must consume the prefixed
 # `{prefix}{shard_N}_DRAINER_STREAM` for each tenant.
 
 # Metrics configuration: export metrics for monitoring.

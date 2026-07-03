@@ -1,7 +1,10 @@
-//! Generic KV resource trait, key-shape markers, and CRUD helpers.
+//! Generic KV resource trait, key-shape locators, and CRUD helpers.
+//!
+//! Stores and returns the Diesel Queryable model (not the `New` projection). Mirrors
+//! hyperswitch's `insert_resource` / `find_optional_resource_by_id`.
 
 use error_stack::Report;
-use hyperswitch_redis_interface::types::HsetnxReply;
+use hyperswitch_redis_interface::{errors::RedisError, types::HsetnxReply};
 use tracing::instrument;
 
 use super::{
@@ -17,8 +20,9 @@ use crate::{
     storage::Storage,
 };
 
-/// A table's KV value type — serde-able, written to Redis, replayed to PG by the drainer.
-pub(crate) trait StorageResource:
+/// A KV-routed table's Diesel Queryable model: stored in Redis, read back, returned to
+/// callers. Analog of hyperswitch `StorageModel<D>`.
+pub(crate) trait KvResource:
     serde::Serialize
     + serde::de::DeserializeOwned
     + std::fmt::Debug
@@ -26,40 +30,51 @@ pub(crate) trait StorageResource:
     + EntityType
     + Sync
     + Send
+    + Sized
 {
-    type Domain;
-    type Error: error_stack::Context + Send + Sync + 'static + From<KvWriteError>;
+    type Error: error_stack::Context + Send + Sync + 'static + for<'a> From<&'a KvError>;
 
-    fn into_domain(self) -> Self::Domain;
     fn set_storage_scheme(&mut self, scheme: StorageScheme);
-    fn insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError>;
-    async fn storage_insert(
-        self,
-        store: &Storage,
-    ) -> Result<Self::Domain, ContainerError<Self::Error>>;
-}
 
-/// DB find op for KV-routed tables. `StorageResource` is a super-trait bound.
-pub(crate) trait KvFindOptional: StorageResource {
+    /// Drainer INSERT — built from the `Insertable` `New` projection (the model is not
+    /// `Insertable`). Implementations rebuild the `New` struct from the model's fields.
+    fn insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError>;
+
+    async fn storage_insert(self, store: &Storage) -> Result<Self, ContainerError<Self::Error>>;
+
     async fn storage_find_optional(
         store: &Storage,
         pk: &PartitionKey<'_>,
-    ) -> Result<Option<Self::Domain>, ContainerError<Self::Error>>;
+    ) -> Result<Option<Self>, ContainerError<Self::Error>>;
 }
 
-/// Marker for plain-keyed tables (Redis HGet/HSetNx).
-pub(crate) trait PlainKeyed {}
-
-#[derive(Debug)]
-pub(crate) enum KvWriteError {
-    Duplicate,
-    Backend(Report<KvError>),
+pub(crate) struct InsertResourceParams<'a> {
+    pub partition_key: PartitionKey<'a>,
+    pub identifier: &'static str,
 }
 
-fn kv_write_error<E: From<KvWriteError> + error_stack::Context>(
-    e: KvWriteError,
-) -> ContainerError<E> {
-    ContainerError::from(E::from(e))
+/// Locator for a find. `Id` = plain-keyed (single HGet/HSetNx field).
+/// SEAM: add `LookupId(String)` for reverse-lookup tables with their first consumer.
+pub(crate) enum FindResourceBy<'a> {
+    Id(&'static str, PartitionKey<'a>),
+}
+
+fn kv_backend_error<E>(report: Report<KvError>) -> ContainerError<E>
+where
+    E: for<'a> From<&'a KvError> + error_stack::Context,
+{
+    let ctx: E = report.current_context().into();
+    ContainerError::from(report.change_context(ctx))
+}
+
+fn kv_duplicate_error<E>(entity: &'static str, key: &str) -> ContainerError<E>
+where
+    E: for<'a> From<&'a KvError> + error_stack::Context,
+{
+    kv_backend_error::<E>(Report::new(KvError::DuplicateValue {
+        entity,
+        key: Some(key.to_string()),
+    }))
 }
 
 async fn decide(store: &Storage, op: Op) -> StorageScheme {
@@ -67,78 +82,90 @@ async fn decide(store: &Storage, op: Op) -> StorageScheme {
     decide_storage_scheme(state, op)
 }
 
-#[instrument(skip(store, partition_key), fields(resource = M::ENTITY_TYPE))]
-pub(crate) async fn find_optional_plain_resource<M>(
-    store: &Storage,
-    partition_key: PartitionKey<'_>,
-) -> Result<Option<M::Domain>, ContainerError<M::Error>>
-where
-    M: PlainKeyed + KvFindOptional,
-{
-    let scheme = decide(store, Op::Find).await;
-
-    match scheme {
-        StorageScheme::RedisKv => {
-            let result = kv_wrapper::<M, M>(
-                store,
-                KvOperation::<M>::HGet(M::ENTITY_TYPE),
-                partition_key.clone(),
-            )
-            .await;
-
-            if let Ok(KvResult::HGet(v)) = result {
-                Ok(Some(M::into_domain(v)))
-            } else {
-                M::storage_find_optional(store, &partition_key).await
-            }
-        }
-        StorageScheme::PostgresOnly => M::storage_find_optional(store, &partition_key).await,
-    }
-}
-
-/// Insert via HSetNx. KeyNotSet → Duplicate. PostgresOnly → storage_insert.
-/// In the RedisKv path the returned object's serial `id` is 0 (assigned by the drainer on replay).
-#[instrument(skip(store, model, partition_key), fields(resource = M::ENTITY_TYPE))]
-pub(crate) async fn insert_plain_resource<M>(
+/// Insert via HSetNx. `KeyNotSet` → `Duplicate`. `PostgresOnly` → `storage_insert`.
+/// On the RedisKv path the model's serial `id` is unresolved (e.g. `0`); the drainer
+/// assigns it on PG replay. Callers only see the business id (`fingerprint_id`).
+#[instrument(skip(store, model, params), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn insert_resource<M>(
     store: &Storage,
     mut model: M,
-    partition_key: PartitionKey<'_>,
-) -> Result<M::Domain, ContainerError<M::Error>>
+    params: InsertResourceParams<'_>,
+) -> Result<M, ContainerError<M::Error>>
 where
-    M: StorageResource + PlainKeyed,
+    M: KvResource,
 {
     let scheme = decide(store, Op::Insert).await;
-
     model.set_storage_scheme(scheme);
 
     match scheme {
+        StorageScheme::PostgresOnly => model.storage_insert(store).await,
         StorageScheme::RedisKv => {
-            let key_str = partition_key.to_string();
-
             let drainer_query = model
                 .insert_drainer_query()
-                .map_err(|e| kv_write_error::<M::Error>(KvWriteError::Backend(e)))?;
+                .map_err(kv_backend_error::<M::Error>)?;
 
+            let key_str = params.partition_key.to_string();
             let reply = kv_wrapper::<(), M>(
                 store,
-                KvOperation::HSetNx(M::ENTITY_TYPE, &model, drainer_query),
-                partition_key,
+                KvOperation::HSetNx(params.identifier, &model, drainer_query),
+                params.partition_key,
             )
             .await
             .map_err(|e| {
-                kv_write_error::<M::Error>(KvWriteError::Backend(e.to_redis_failed_response(&key_str)))
+                kv_backend_error::<M::Error>(e.to_redis_failed_response(M::ENTITY_TYPE, &key_str))
             })?;
 
             match reply.try_into_hsetnx() {
-                Ok(HsetnxReply::KeySet) => Ok(M::into_domain(model)),
+                Ok(HsetnxReply::KeySet) => Ok(model),
                 Ok(HsetnxReply::KeyNotSet) => {
-                    Err(kv_write_error::<M::Error>(KvWriteError::Duplicate))
+                    Err(kv_duplicate_error::<M::Error>(M::ENTITY_TYPE, &key_str))
                 }
-                Err(e) => Err(kv_write_error::<M::Error>(KvWriteError::Backend(
+                Err(e) => Err(kv_backend_error::<M::Error>(
                     Report::new(e).change_context(KvError::Backend),
-                ))),
+                )),
             }
         }
-        StorageScheme::PostgresOnly => model.storage_insert(store).await,
+    }
+}
+
+/// Find by plain key. Redis hit → return model. `NotFound` → Postgres fallback.
+/// Other Redis errors are surfaced (not masked) to avoid duplicate inserts.
+#[instrument(skip(store, find_by), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn find_optional_resource_by_id<M>(
+    store: &Storage,
+    find_by: FindResourceBy<'_>,
+) -> Result<Option<M>, ContainerError<M::Error>>
+where
+    M: KvResource,
+{
+    let scheme = decide(store, Op::Find).await;
+    let FindResourceBy::Id(field, key) = find_by;
+
+    match scheme {
+        StorageScheme::PostgresOnly => M::storage_find_optional(store, &key).await,
+        StorageScheme::RedisKv => {
+            let key_str = key.to_string();
+            let result =
+                kv_wrapper::<M, M>(store, KvOperation::<M>::HGet(field), key.clone()).await;
+
+            match result {
+                Ok(KvResult::HGet(v)) => Ok(Some(v)),
+                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                    // Redis miss → fall back to Postgres (mirrors hyperswitch's
+                    // `try_redis_get_else_try_database_get`). In SoftKill this means
+                    // the key was never written to Redis, so we read from DB.
+                    super::metrics::KV_MISS
+                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    M::storage_find_optional(store, &key).await
+                }
+                Err(e) => Err(kv_backend_error::<M::Error>(
+                    e.to_redis_failed_response(M::ENTITY_TYPE, &key_str),
+                )),
+                Ok(KvResult::HSetNx(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected HSetNx result for an HGet operation"),
+                )),
+            }
+        }
     }
 }

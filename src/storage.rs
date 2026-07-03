@@ -187,27 +187,20 @@ impl Storage {
         }
     }
 
-    /// Resolve `KvState` from runtime config, falling back to `[kv] kv_state`.
-    /// Fail-closed: missing/failed fetch → `Disabled`.
+    /// Resolve `KvState` from the runtime-config endpoint only, fail-closed to `Disabled`.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::KvState {
-        if let Some(state) = self.runtime_config_manager.get::<kv::KvState>().await {
-            crate::logger::info!(
-                source = "runtime_config_endpoint",
-                kv_state = %state,
-                "KV state resolved from runtime config endpoint"
-            );
-            return state;
-        }
-
-        // Fall back to TOML `kv_state` (defaults to `Disabled`).
-        let state = self.kv_config.kv_state;
-        crate::logger::info!(
-            source = "toml_fallback",
-            kv_state = %state,
-            "KV state resolved from TOML fallback (runtime config disabled or unreachable)"
-        );
-        state
+        self.runtime_config_manager
+            .get::<kv::KvState>()
+            .await
+            .unwrap_or_else(|| {
+                crate::logger::info!(
+                    source = "fail_closed_default",
+                    kv_state = %kv::KvState::Disabled,
+                    "KV state unresolved from runtime config; defaulting to Disabled"
+                );
+                kv::KvState::Disabled
+            })
     }
 }
 

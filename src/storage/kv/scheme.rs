@@ -84,6 +84,10 @@ impl std::fmt::Display for Op {
 }
 
 /// Effective storage scheme for an operation.
+///
+/// `SoftKill` + `Find` → `RedisKv`: check Redis first; on `NotFound` fall back to Postgres
+/// (handled by `find_optional_resource_by_id`). `SoftKill` + `Insert` → `PostgresOnly`:
+/// writes bypass Redis, so no new drainer entries are produced during rollout.
 pub(crate) fn decide_storage_scheme(state: KvState, operation: Op) -> StorageScheme {
     match state {
         KvState::Disabled => StorageScheme::PostgresOnly,

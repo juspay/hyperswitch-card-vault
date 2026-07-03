@@ -15,9 +15,13 @@ pub(crate) mod serializable_query;
 pub(crate) mod wrapper;
 
 #[cfg(feature = "kv")]
+pub(crate) use entity::EntityType;
+#[cfg(feature = "kv")]
 pub(crate) use partition_key::PartitionKey;
 #[cfg(feature = "kv")]
-pub(crate) use resource::{find_optional_plain_resource, insert_plain_resource};
+pub(crate) use resource::{
+    FindResourceBy, InsertResourceParams, find_optional_resource_by_id, insert_resource,
+};
 pub(crate) use scheme::KvState;
 pub(crate) use wrapper::{KvStoreContext, RedisConnInterface};
 

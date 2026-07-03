@@ -427,9 +427,8 @@ pub struct KvConfig {
     /// TTL (seconds) for KV keys in Redis. Must exceed max drainer replay lag.
     #[serde(default = "default_ttl_for_kv")]
     pub ttl_for_kv: u32,
-    /// KV master switch. Overridden by runtime config when enabled.
-    #[serde(default)]
-    pub(crate) kv_state: crate::storage::kv::KvState,
+    // KV enablement is sourced solely from the runtime-config endpoint (`locker.enable_kv`),
+    // fail-closed to `Disabled`. No TOML fallback — single source of truth.
 }
 
 #[cfg(feature = "kv")]
@@ -454,7 +453,6 @@ impl Default for KvConfig {
             drainer_stream_suffix: default_drainer_stream_suffix(),
             drainer_num_partitions: default_drainer_num_partitions(),
             ttl_for_kv: default_ttl_for_kv(),
-            kv_state: crate::storage::kv::KvState::default(),
         }
     }
 }
@@ -514,9 +512,9 @@ pub struct RuntimeConfigEndpoint {
     pub base_url: String,
     pub api_key: hyperswitch_masking::Secret<String>,
     #[serde(default)]
-    pub path: String,
-    #[serde(default)]
     pub headers: std::collections::HashMap<String, hyperswitch_masking::Secret<String>>,
+    #[serde(default)]
+    pub path: String,
 }
 
 /// Runtime configuration source.

@@ -234,7 +234,8 @@ impl std::ops::Deref for CardNumber {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
+// Not serialized to Redis — the Queryable model (`Fingerprint` above) is the stored value.
+#[derive(Debug, Clone, serde::Deserialize, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
 pub(super) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,

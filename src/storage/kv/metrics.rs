@@ -8,3 +8,4 @@ counter_metric!(pub(crate) KV_OPERATION_SUCCESSFUL, KV_METER);
 counter_metric!(pub(crate) KV_OPERATION_FAILED, KV_METER);
 counter_metric!(pub(crate) KV_PUSHED_TO_DRAINER, KV_METER);
 counter_metric!(pub(crate) KV_FAILED_TO_PUSH_TO_DRAINER, KV_METER);
+counter_metric!(pub(crate) KV_MISS, KV_METER);

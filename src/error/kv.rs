@@ -17,18 +17,26 @@ pub enum KvError {
 
 pub trait RedisErrorExt {
     #[track_caller]
-    fn to_redis_failed_response(self, key: &str) -> error_stack::Report<KvError>;
+    fn to_redis_failed_response(
+        self,
+        entity: &'static str,
+        key: &str,
+    ) -> error_stack::Report<KvError>;
 }
 
 impl RedisErrorExt for error_stack::Report<RedisError> {
-    fn to_redis_failed_response(self, key: &str) -> error_stack::Report<KvError> {
+    fn to_redis_failed_response(
+        self,
+        entity: &'static str,
+        key: &str,
+    ) -> error_stack::Report<KvError> {
         match self.current_context() {
             RedisError::NotFound => self.change_context(KvError::ValueNotFound(format!(
                 "Data does not exist for key {key}",
             ))),
             RedisError::SetNxFailed | RedisError::SetAddMembersFailed => {
                 self.change_context(KvError::DuplicateValue {
-                    entity: "redis",
+                    entity,
                     key: Some(key.to_string()),
                 })
             }
