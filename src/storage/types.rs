@@ -145,6 +145,55 @@ impl<'a> LockerNew<'a> {
     }
 }
 
+/// Owned version of `LockerNew` for KV (Redis) operations.
+///
+/// `LockerNew<'a>` borrows `hash_id: &'a str`, so it cannot satisfy
+/// `DeserializeOwned`. This struct owns all fields and is serde-able for
+/// write-through Redis.
+#[cfg(feature = "kv")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
+#[diesel(table_name = schema::locker)]
+pub struct LockerKvValue {
+    pub locker_id: Secret<String>,
+    pub merchant_id: String,
+    pub customer_id: String,
+    pub enc_data: Encrypted,
+    pub hash_id: String,
+    pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
+}
+
+#[cfg(feature = "kv")]
+impl<'a> From<&LockerNew<'a>> for LockerKvValue {
+    fn from(new: &LockerNew<'a>) -> Self {
+        Self {
+            locker_id: new.locker_id.clone(),
+            merchant_id: new.merchant_id.clone(),
+            customer_id: new.customer_id.clone(),
+            enc_data: new.enc_data.clone(),
+            hash_id: new.hash_id.to_string(),
+            ttl: new.ttl,
+            updated_by: new.updated_by,
+        }
+    }
+}
+
+#[cfg(feature = "kv")]
+impl From<LockerKvValue> for Locker {
+    fn from(v: LockerKvValue) -> Self {
+        Self {
+            locker_id: v.locker_id,
+            merchant_id: v.merchant_id,
+            customer_id: v.customer_id,
+            data: v.enc_data.into(),
+            created_at: time::PrimitiveDateTime::MIN,
+            hash_id: v.hash_id,
+            ttl: v.ttl,
+            updated_by: v.updated_by,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::reverse_lookup, primary_key(lookup_id))]
 #[expect(dead_code)]
@@ -261,9 +310,10 @@ pub(super) struct HashTableNew {
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression)]
+#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
+#[serde(transparent)]
 pub struct Encrypted {
     inner: Secret<Vec<u8>>,
 }

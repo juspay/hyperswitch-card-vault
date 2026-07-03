@@ -2,3 +2,4 @@
 
 pub(crate) mod fingerprint;
 pub(crate) mod hash_table;
+pub(crate) mod locker;

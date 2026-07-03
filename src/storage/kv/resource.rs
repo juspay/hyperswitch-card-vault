@@ -7,7 +7,7 @@ use tracing::instrument;
 use super::{
     StorageScheme,
     entity::EntityType,
-    partition_key::{KvStorePartition, PartitionKey},
+    partition_key::{KvStorePartition, PartitionKey, hash_field_key},
     scheme::{Op, decide_storage_scheme},
     serializable_query::SerializableQuery,
     wrapper::{KvOperation, KvResult, kv_wrapper},
@@ -51,7 +51,27 @@ pub(crate) trait KvFindOptional: StorageResource {
 }
 
 /// Marker for plain-keyed tables (Redis Get/SetNx).
-pub(crate) trait PlainKeyed {}
+pub(crate) trait PlainKeyed: StorageResource {}
+
+/// Marker for hash-keyed tables (Redis HGet/HSetNx).
+pub(crate) trait HashKeyed: StorageResource {}
+
+/// Non-optional find DB op for KV-routed tables (locker, vault, reverse_lookup).
+pub(crate) trait KvFind: StorageResource {
+    async fn storage_find(
+        store: &Storage,
+        pk: &PartitionKey<'_>,
+    ) -> Result<Self::Domain, ContainerError<Self::Error>>;
+}
+
+/// Delete DB op for KV-routed tables (locker, vault). Postgres-only — not routed
+/// through the KV wrapper. Callers invoke `storage_delete` directly.
+pub(crate) trait KvDeletable: StorageResource {
+    async fn storage_delete(
+        store: &Storage,
+        pk: &PartitionKey<'_>,
+    ) -> Result<usize, ContainerError<Self::Error>>;
+}
 
 /// Errors from the generic KV insert helper.
 #[derive(Debug)]
@@ -113,7 +133,7 @@ pub(crate) async fn insert_plain_resource<M>(
     partition_key: PartitionKey<'_>,
 ) -> Result<M::Domain, ContainerError<M::Error>>
 where
-    M: StorageResource + PlainKeyed,
+    M: PlainKeyed,
 {
     let scheme = decide(store, Op::Insert).await;
 
@@ -129,6 +149,83 @@ where
         let reply = kv_wrapper::<(), M>(
             store,
             KvOperation::HSetNx(M::ENTITY_TYPE, &model, drainer_query),
+            partition_key,
+        )
+        .await
+        .map_err(|e| {
+            kv_write_error::<M::Error>(KvWriteError::Backend(e.to_redis_failed_response(&key_str)))
+        })?;
+
+        return match reply.try_into_hsetnx() {
+            Ok(HsetnxReply::KeySet) => Ok(M::into_domain(model)),
+            Ok(HsetnxReply::KeyNotSet) => Err(kv_write_error::<M::Error>(KvWriteError::Duplicate)),
+            Err(e) => Err(kv_write_error::<M::Error>(KvWriteError::Backend(
+                Report::new(e).change_context(KvError::Backend),
+            ))),
+        };
+    }
+
+    model.storage_insert(store).await
+}
+
+/// Find by composite key (HGet). Redis miss/error falls through to `storage_find`.
+///
+/// Unlike `find_optional_plain_resource`, this is a **non-optional** find: a Redis
+/// hit returns the domain object directly; a Redis miss or error falls through
+/// to the Postgres `storage_find` path, which itself returns `Err` on not-found.
+#[instrument(skip(store, partition_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn find_hash_resource<M>(
+    store: &Storage,
+    partition_key: PartitionKey<'_>,
+) -> Result<M::Domain, ContainerError<M::Error>>
+where
+    M: HashKeyed + KvFind,
+{
+    let scheme = decide(store, Op::Find).await;
+
+    if matches!(scheme, StorageScheme::RedisKv) {
+        let field = hash_field_key(&partition_key);
+        let result =
+            kv_wrapper::<M, M>(store, KvOperation::<M>::HGet(&field), partition_key.clone()).await;
+
+        if let Ok(KvResult::HGet(v)) = result {
+            return Ok(M::into_domain(v));
+        }
+    }
+
+    M::storage_find(store, &partition_key).await
+}
+
+/// Insert via HSetNx with a dynamic field. KeyNotSet → Duplicate (no PG fallback).
+/// PostgresOnly → `storage_insert`.
+///
+/// The field is derived from the partition key via `hash_field_key` (vs
+/// `insert_plain_resource` which uses `M::ENTITY_TYPE`). In the `RedisKv` path
+/// the returned domain object has `id = 0` until the drainer replays to PG.
+#[instrument(skip(store, model, partition_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn insert_hash_resource<M>(
+    store: &Storage,
+    mut model: M,
+    partition_key: PartitionKey<'_>,
+) -> Result<M::Domain, ContainerError<M::Error>>
+where
+    M: HashKeyed,
+{
+    let scheme = decide(store, Op::Insert).await;
+
+    model.set_storage_scheme(scheme);
+
+    if matches!(scheme, StorageScheme::RedisKv) {
+        let field = hash_field_key(&partition_key);
+        let key_str = partition_key.to_string();
+
+        let drainer_query = model
+            .insert_drainer_query()
+            .map_err(|e| kv_write_error::<M::Error>(KvWriteError::Backend(e)))?;
+
+        let reply = kv_wrapper::<(), M>(
+            store,
+            KvOperation::HSetNx(&field, &model, drainer_query),
             partition_key,
         )
         .await

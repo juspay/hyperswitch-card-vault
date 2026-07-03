@@ -15,7 +15,10 @@ pub(crate) mod wrapper;
 
 pub(crate) use partition_key::PartitionKey;
 #[cfg(feature = "kv")]
-pub(crate) use resource::{find_optional_plain_resource, insert_plain_resource};
+pub(crate) use resource::{
+    KvDeletable, find_hash_resource, find_optional_plain_resource, insert_hash_resource,
+    insert_plain_resource,
+};
 pub(crate) use scheme::KvState;
 pub(crate) use wrapper::{KvStoreContext, RedisConnInterface};
 

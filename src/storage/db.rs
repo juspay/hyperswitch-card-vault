@@ -1,3 +1,5 @@
+#[cfg(feature = "kv")]
+use super::kv::KvDeletable;
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable,
 };
@@ -91,14 +93,35 @@ impl super::LockerInterface for Storage {
         &self,
         new: types::LockerNew<'_>,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let model = types::LockerKvValue::from(&new);
+            let locker_id = new.locker_id.expose().to_string();
+            let partition_key = super::kv::PartitionKey::Locker {
+                locker_id: &locker_id,
+                merchant_id: &new.merchant_id,
+                customer_id: &new.customer_id,
+            };
 
-        let output: types::LockerInner = diesel::insert_into(types::LockerInner::table())
-            .values(new)
-            .get_result(&mut conn)
-            .await?;
+            return super::kv::insert_hash_resource::<types::LockerKvValue>(
+                self,
+                model,
+                partition_key,
+            )
+            .await;
+        }
 
-        Ok(output.into())
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::LockerInner = diesel::insert_into(types::LockerInner::table())
+                .values(new)
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn find_by_locker_id_merchant_id_customer_id(
@@ -107,19 +130,35 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let locker_id_str = locker_id.expose();
+            let partition_key = super::kv::PartitionKey::Locker {
+                locker_id: &locker_id_str,
+                merchant_id,
+                customer_id,
+            };
 
-        let output: types::LockerInner = types::LockerInner::table()
-            .filter(
-                schema::locker::locker_id
-                    .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
-            )
-            .get_result(&mut conn)
-            .await?;
+            return super::kv::find_hash_resource::<types::LockerKvValue>(self, partition_key)
+                .await;
+        }
 
-        Ok(output.into())
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::LockerInner = types::LockerInner::table()
+                .filter(
+                    schema::locker::locker_id
+                        .eq(locker_id.expose())
+                        .and(schema::locker::merchant_id.eq(merchant_id))
+                        .and(schema::locker::customer_id.eq(customer_id)),
+                )
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn find_optional_by_hash_id_merchant_id_customer_id(
@@ -128,6 +167,7 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<Option<types::Locker>, ContainerError<Self::Error>> {
+        // Secondary lookup by hash_id — always Postgres (no KV reverse lookup).
         let mut conn = self.get_conn().await?;
 
         let output = types::LockerInner::table()
@@ -150,19 +190,35 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let locker_id_str = locker_id.expose();
+            let partition_key = super::kv::PartitionKey::Locker {
+                locker_id: &locker_id_str,
+                merchant_id,
+                customer_id,
+            };
 
-        let output = diesel::delete(types::LockerInner::table())
-            .filter(
-                schema::locker::locker_id
-                    .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
-            )
-            .execute(&mut conn)
-            .await?;
+            // Delete is Postgres-only — direct call, not routed through the KV wrapper.
+            return types::LockerKvValue::storage_delete(self, &partition_key).await;
+        }
 
-        Ok(output)
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output = diesel::delete(types::LockerInner::table())
+                .filter(
+                    schema::locker::locker_id
+                        .eq(locker_id.expose())
+                        .and(schema::locker::merchant_id.eq(merchant_id))
+                        .and(schema::locker::customer_id.eq(customer_id)),
+                )
+                .execute(&mut conn)
+                .await?;
+
+            Ok(output)
+        }
     }
 }
 
