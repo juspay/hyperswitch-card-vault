@@ -1,4 +1,4 @@
-use std::{sync::Arc, {collections::HashMap, time::Duration}};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
