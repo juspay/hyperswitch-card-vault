@@ -42,11 +42,7 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
             }
-            super::StorageError::NotFoundError
-            | super::StorageError::ValueNotFound(_)
-            | super::StorageError::DuplicateValue { .. }
-            | super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::NotFoundError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
         }
     }
 }
@@ -66,12 +62,7 @@ impl<'a> From<&'a super::StorageError> for super::VaultDBError {
                 Self::DBInsertError
             }
             super::StorageError::DeleteError => Self::DBDeleteError,
-            super::StorageError::NotFoundError | super::StorageError::ValueNotFound(_) => {
-                Self::NotFoundError
-            }
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
         }
     }
 }
@@ -91,10 +82,6 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
                 Self::DBInsertError
             }
             super::StorageError::NotFoundError => Self::DBFilterError,
-            super::StorageError::ValueNotFound(_) => Self::DBFilterError,
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -115,10 +102,6 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
             | super::StorageError::EncryptionError
             | super::StorageError::NotFoundError => Self::UnknownError,
             super::StorageError::ReplicaPoolNotConfigured => Self::DBReplicaNotConfigured,
-            super::StorageError::ValueNotFound(_) => Self::UnknownError,
-            super::StorageError::DuplicateValue { .. } => Self::DBWriteError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -130,9 +113,7 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
             | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
-            super::StorageError::FindError
-            | super::StorageError::NotFoundError
-            | super::StorageError::ValueNotFound(_) => {
+            super::StorageError::FindError | super::StorageError::NotFoundError => {
                 Self::DBFilterError
             }
             super::StorageError::DecryptionError
@@ -141,9 +122,6 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
             super::StorageError::InsertError | super::StorageError::UpdateError => {
                 Self::DBInsertError
             }
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
         }
     }
 }
@@ -282,12 +260,7 @@ impl<'a> From<&'a super::StorageError> for super::EntityDBError {
             | super::StorageError::PoolClientFailure
             | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
-            super::StorageError::NotFoundError | super::StorageError::ValueNotFound(_) => {
-                Self::NotFoundError
-            }
-            super::StorageError::DuplicateValue { .. } => Self::DBInsertError,
-            super::StorageError::KVError
-            | super::StorageError::SerializationFailed => Self::UnknownError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
@@ -323,6 +296,42 @@ impl<'a> From<&'a super::EntityDBError> for super::ApiError {
             super::EntityDBError::Duplicate => Self::DatabaseInsertFailed("entity"),
             super::EntityDBError::UnknownError => Self::UnknownError,
             super::EntityDBError::NotFoundError => Self::NotFoundError,
+        }
+    }
+}
+
+error_transform!(super::StorageError => super::ReverseLookupDBError);
+impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
+    fn from(value: &'a super::StorageError) -> Self {
+        match value {
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            super::StorageError::FindError => Self::DBFilterError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
+            super::StorageError::DecryptionError
+            | super::StorageError::EncryptionError
+            | super::StorageError::DeleteError => Self::UnknownError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
+        }
+    }
+}
+
+error_transform!(super::ReverseLookupDBError => super::ApiError);
+impl<'a> From<&'a super::ReverseLookupDBError> for super::ApiError {
+    fn from(value: &'a super::ReverseLookupDBError) -> Self {
+        match value {
+            super::ReverseLookupDBError::DBError => Self::DatabaseError,
+            super::ReverseLookupDBError::DBFilterError => {
+                Self::RetrieveDataFailed("reverse lookup")
+            }
+            super::ReverseLookupDBError::DBInsertError => {
+                Self::DatabaseInsertFailed("reverse lookup")
+            }
+            super::ReverseLookupDBError::NotFoundError => Self::NotFoundError,
+            super::ReverseLookupDBError::UnknownError => Self::UnknownError,
         }
     }
 }

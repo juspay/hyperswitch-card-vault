@@ -8,7 +8,7 @@ rust-version = "1.85"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["caching", "kv"]
+default = ["caching"]
 release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "caching", "external_key_manager", "vergen", "redis", "kv"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
@@ -17,7 +17,7 @@ middleware = []
 key_custodian = []
 caching = ["dep:moka"]
 redis = ["dep:hyperswitch_redis_interface"]
-kv = ["redis", "caching", "dep:crc32fast", "dep:strum", "dep:error-stack-04"]
+kv = ["redis", "caching", "dep:crc32fast", "dep:error-stack-04"]
 console = ["tokio/tracing", "dep:console-subscriber"]
 external_key_manager = ["reqwest/rustls-tls"]
 vergen = ["build_info/vergen-gix"]
@@ -81,7 +81,7 @@ argh = "0.1.12"
 nanoid = "0.4.0"
 
 crc32fast = { version = "1.4", optional = true }
-strum = { version = "0.26", features = ["derive"], optional = true }
+strum = { version = "0.26", features = ["derive"] }
 error-stack-04 = { package = "error-stack", version = "0.4.1", optional = true }
 
 build_info = { git = "https://github.com/juspay/framework-libs-rs", rev = "9bcf79420c0782dee01674cd1ac296696cd4f1af", features = ["cargo-workspace", "framework-libs-members-env"] }

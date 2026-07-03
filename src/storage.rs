@@ -45,40 +45,10 @@ impl crate::runtime_config::RuntimeConfigItem for ReplicaRouting {
     const KEY: &'static str = "locker.use_read_replica";
 }
 
-/// Runtime-config payload for the KV master switch (`locker.enable_kv`).
-///
-/// Per-field `#[serde(default)]` is required so partial payloads like
-/// `{"enable_kv": true}` deserialize without erroring on missing `soft_kill`.
+/// Runtime-config binding: `locker.enable_kv` → `KvState`.
 #[cfg(feature = "kv")]
-#[derive(Clone, Debug, Default, serde::Deserialize)]
-pub struct KvRuntimeConfig {
-    #[serde(default)]
-    enable_kv: bool,
-    #[serde(default)]
-    soft_kill: bool,
-}
-
-#[cfg(feature = "kv")]
-impl crate::runtime_config::RuntimeConfigItem for KvRuntimeConfig {
+impl crate::runtime_config::RuntimeConfigItem for kv::KvState {
     const KEY: &'static str = "locker.enable_kv";
-}
-
-/// Map the runtime-config payload to [`kv::TableKvSettings`].
-///
-/// `soft_kill` is gated on `enable_kv` so an `enable_kv=false, soft_kill=true`
-/// payload can never route Finds to Redis.  DO NOT "simplify" the `&&` away.
-#[cfg(feature = "kv")]
-impl From<KvRuntimeConfig> for kv::TableKvSettings {
-    fn from(c: KvRuntimeConfig) -> Self {
-        Self {
-            storage_scheme: if c.enable_kv {
-                kv::StorageScheme::RedisKv
-            } else {
-                kv::StorageScheme::PostgresOnly
-            },
-            soft_kill: c.enable_kv && c.soft_kill,
-        }
-    }
 }
 
 /// Storage State that is to be passed though the application
@@ -91,11 +61,9 @@ pub struct Storage {
     redis: Option<redis_store::RedisStore>,
     #[cfg(feature = "kv")]
     kv_config: crate::config::KvConfig,
-    #[cfg(feature = "kv")]
-    request_id: Option<String>,
 }
 
-#[cfg(feature = "redis")]
+#[cfg(feature = "kv")]
 use crate::storage::redis as redis_store;
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -158,8 +126,6 @@ impl Storage {
             redis,
             #[cfg(feature = "kv")]
             kv_config: kv_config.clone(),
-            #[cfg(feature = "kv")]
-            request_id: None,
         })
     }
 
@@ -221,54 +187,27 @@ impl Storage {
         }
     }
 
-    /// Resolve the global KV settings from runtime config (`locker.enable_kv`).
-    ///
-    /// Falls back to file-based `[kv] enable_kv` / `soft_kill` when the runtime
-    /// config endpoint is disabled or unreachable.  Fail-closed: missing values
-    /// default to `PostgresOnly` / `soft_kill = false`.
+    /// Resolve `KvState` from runtime config, falling back to `[kv] kv_state`.
+    /// Fail-closed: missing/failed fetch → `Disabled`.
     #[cfg(feature = "kv")]
-    pub(crate) async fn kv_settings(&self) -> kv::TableKvSettings {
-        // Try runtime config endpoint first.
-        if let Some(config) = self
-            .runtime_config_manager
-            .get::<KvRuntimeConfig>()
-            .await
-        {
-            let settings = kv::TableKvSettings::from(config);
+    pub(crate) async fn kv_settings(&self) -> kv::KvState {
+        if let Some(state) = self.runtime_config_manager.get::<kv::KvState>().await {
             crate::logger::info!(
                 source = "runtime_config_endpoint",
-                enable_kv = %settings.storage_scheme,
-                soft_kill = %settings.soft_kill,
-                "KV settings resolved from runtime config endpoint"
+                kv_state = %state,
+                "KV state resolved from runtime config endpoint"
             );
-            return settings;
+            return state;
         }
 
-        // Runtime config disabled or unreachable — fall back to file-based
-        // `[kv] enable_kv` / `soft_kill`.
-        let settings = kv::TableKvSettings::from(KvRuntimeConfig {
-            enable_kv: self.kv_config.enable_kv,
-            soft_kill: self.kv_config.soft_kill,
-        });
+        // Fall back to TOML `kv_state` (defaults to `Disabled`).
+        let state = self.kv_config.kv_state;
         crate::logger::info!(
             source = "toml_fallback",
-            enable_kv = %self.kv_config.enable_kv,
-            soft_kill = %self.kv_config.soft_kill,
-            resolved_scheme = %settings.storage_scheme,
-            "KV settings resolved from TOML fallback (runtime config disabled or unreachable)"
+            kv_state = %state,
+            "KV state resolved from TOML fallback (runtime config disabled or unreachable)"
         );
-        settings
-    }
-
-    /// Set the request ID for KV drainer stream entries.
-    ///
-    /// Called by [`TenantStateResolver`](crate::custom_extractors::TenantStateResolver)
-    /// after cloning the per-tenant state so that each request carries its
-    /// own `x-request-id` into the drainer.
-    #[cfg(feature = "kv")]
-    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
-        self.request_id = Some(request_id.into());
-        self
+        state
     }
 }
 
@@ -276,11 +215,18 @@ impl Storage {
 impl kv::RedisConnInterface for Storage {
     fn get_redis_conn(
         &self,
-    ) -> error_stack::Result<std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>, hyperswitch_redis_interface::errors::RedisError> {
+    ) -> error_stack::Result<
+        std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>,
+        hyperswitch_redis_interface::errors::RedisError,
+    > {
         self.redis
             .as_ref()
             .map(|r| r.get_redis_conn())
-            .ok_or_else(|| error_stack::Report::new(hyperswitch_redis_interface::errors::RedisError::RedisConnectionError))
+            .ok_or_else(|| {
+                error_stack::Report::new(
+                    hyperswitch_redis_interface::errors::RedisError::RedisConnectionError,
+                )
+            })
     }
 }
 
@@ -296,10 +242,6 @@ impl kv::KvStoreContext for Storage {
 
     fn drainer_num_partitions(&self) -> u8 {
         self.kv_config.drainer_num_partitions
-    }
-
-    fn request_id(&self) -> &str {
-        self.request_id.as_deref().unwrap_or("")
     }
 }
 
@@ -456,6 +398,29 @@ pub(crate) trait FingerprintInterface {
         fingerprint_hash: Secret<Vec<u8>>,
         fingerprint_id: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
+}
+
+#[expect(dead_code)]
+///
+/// ReverseLookupInterface:
+///
+/// Interface for interacting with the reverse_lookup database table.
+/// The table maps an external lookup_id to the partition key and
+/// secondary key along with the source of insertion.
+pub(crate) trait ReverseLookupInterface {
+    type Error;
+
+    /// Fetch a reverse lookup record by its lookup_id.
+    async fn find_by_lookup_id(
+        &self,
+        lookup_id: &str,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>>;
+
+    /// Insert a new reverse lookup record into the database.
+    async fn insert_reverse_lookup(
+        &self,
+        new: types::ReverseLookupNew,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>>;
 }
 
 ///

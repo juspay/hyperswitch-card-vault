@@ -2,9 +2,9 @@ use diesel::{
     BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use hyperswitch_masking::{ExposeInterface, Secret};
 #[cfg(feature = "kv")]
 use hyperswitch_masking::PeekInterface;
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use super::{
     MerchantInterface, Storage, schema, types,
@@ -207,6 +207,7 @@ impl super::HashInterface for Storage {
             let model = types::HashTableNew {
                 hash_id: utils::generate_uuid(),
                 data_hash: data_hash.clone(),
+                // Overwritten by `insert_plain_resource` via `set_storage_scheme`.
                 updated_by: StorageScheme::PostgresOnly,
             };
             let partition_key = super::kv::PartitionKey::Hash {
@@ -339,7 +340,8 @@ impl super::FingerprintInterface for Storage {
             let model = types::FingerprintTableNew {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id: fingerprint_id.clone(),
-                updated_by: StorageScheme::PostgresOnly,
+                // Overwritten by `insert_plain_resource` via `set_storage_scheme`.
+                updated_by: StorageScheme::RedisKv,
             };
             let partition_key = super::kv::PartitionKey::Fingerprint {
                 fingerprint_hash: fingerprint_hash.peek().as_slice(),
@@ -409,5 +411,47 @@ impl super::EntityInterface for Storage {
             .await?;
 
         Ok(output)
+    }
+}
+
+impl super::ReverseLookupInterface for Storage {
+    type Error = error::ReverseLookupDBError;
+
+    async fn find_by_lookup_id(
+        &self,
+        lookup_id: &str,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        let output: Result<types::ReverseLookup, diesel::result::Error> =
+            types::ReverseLookup::table()
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
+                .get_result(&mut conn)
+                .await;
+
+        match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(reverse_lookup) => Ok(reverse_lookup),
+        }
+        .map_err(From::from)
+    }
+
+    async fn insert_reverse_lookup(
+        &self,
+        new: types::ReverseLookupNew,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        let mut conn = self.get_conn().await?;
+
+        diesel::insert_into(types::ReverseLookup::table())
+            .values(new)
+            .get_result(&mut conn)
+            .await
+            .change_error(error::StorageError::InsertError)
+            .map_err(From::from)
     }
 }

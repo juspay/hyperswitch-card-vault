@@ -3,15 +3,15 @@ use std::string::FromUtf8Error;
 #[macro_use]
 pub mod container;
 
+mod custom_error;
 #[cfg(feature = "kv")]
 pub mod kv;
-mod custom_error;
 mod transforms;
 
 pub use container::*;
 pub use custom_error::*;
 #[cfg(feature = "kv")]
-pub use kv::RedisErrorExt;
+pub use kv::{KvError, RedisErrorExt};
 use reqwest::StatusCode;
 
 #[derive(Debug, thiserror::Error)]
@@ -72,17 +72,6 @@ pub enum StorageError {
     UpdateError,
     #[error("Read replica pool is not configured")]
     ReplicaPoolNotConfigured,
-    #[error("DuplicateValue: {entity} already exists {key:?}")]
-    DuplicateValue {
-        entity: &'static str,
-        key: Option<String>,
-    },
-    #[error("KV error")]
-    KVError,
-    #[error("ValueNotFound: {0}")]
-    ValueNotFound(String),
-    #[error("Serialization failure")]
-    SerializationFailed,
 }
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]

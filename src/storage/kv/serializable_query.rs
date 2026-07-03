@@ -42,10 +42,7 @@ mod pg_type_metadata {
     use diesel::pg::PgTypeMetadata;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S: Serializer>(
-        metadata: &[PgTypeMetadata],
-        s: S,
-    ) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(metadata: &[PgTypeMetadata], s: S) -> Result<S::Ok, S::Error> {
         let pairs: Vec<(u32, u32)> = metadata
             .iter()
             .map(|m| (m.oid().unwrap_or(0), m.array_oid().unwrap_or(0)))
@@ -53,9 +50,7 @@ mod pg_type_metadata {
         pairs.serialize(s)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        d: D,
-    ) -> Result<Vec<PgTypeMetadata>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<PgTypeMetadata>, D::Error> {
         let pairs: Vec<(u32, u32)> = Vec::deserialize(d)?;
         Ok(pairs
             .into_iter()
@@ -65,21 +60,21 @@ mod pg_type_metadata {
 }
 
 use diesel::{
+    Insertable,
     associations::HasTable,
     debug_query,
     pg::Pg,
     query_builder::{
-        bind_collector::RawBytesBindCollector, InsertStatement, QueryBuilder, QueryFragment,
+        InsertStatement, QueryBuilder, QueryFragment, bind_collector::RawBytesBindCollector,
     },
     query_source::Table,
-    Insertable,
 };
 use error_stack::ResultExt;
 use hyperswitch_masking::Secret;
 use tracing::debug;
 
 use super::entity::EntityType;
-use crate::error::StorageError;
+use crate::error::KvError;
 
 type SecretBinaryData = Secret<Vec<u8>>;
 
@@ -116,7 +111,9 @@ pub(crate) struct SerializableQuery {
     operation: DatabaseOperation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::Display,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum DatabaseOperation {
@@ -137,7 +134,7 @@ impl SerializableQuery {
         query: Q,
         entity_type: String,
         operation: DatabaseOperation,
-    ) -> error_stack::Result<Self, StorageError>
+    ) -> error_stack::Result<Self, KvError>
     where
         Q: QueryFragment<Pg> + Send + 'static,
     {
@@ -146,13 +143,13 @@ impl SerializableQuery {
         let mut qb = diesel::pg::PgQueryBuilder::new();
         query
             .to_sql(&mut qb, &Pg)
-            .change_context(StorageError::SerializationFailed)
+            .change_context(KvError::SerializationFailed)
             .attach_printable("Failed to construct SQL query")?;
         let sql = qb.finish();
 
         let safe_to_cache_prepared = query
             .is_safe_to_cache_prepared(&Pg)
-            .change_context(StorageError::SerializationFailed)
+            .change_context(KvError::SerializationFailed)
             .attach_printable(
                 "Failed to determine whether query is safe to store in prepared statement cache",
             )?;
@@ -161,7 +158,7 @@ impl SerializableQuery {
         let mut metadata_lookup = KvPgMetadataLookup;
         query
             .collect_binds(&mut bind_collector, &mut metadata_lookup, &Pg)
-            .change_context(StorageError::SerializationFailed)
+            .change_context(KvError::SerializationFailed)
             .attach_printable("Failed to construct bind parameters")?;
 
         let serializable_query = Self {
@@ -184,14 +181,13 @@ impl SerializableQuery {
         &self,
         request_id: String,
         global_id: String,
-    ) -> error_stack::Result<Vec<(&str, String)>, StorageError> {
+    ) -> error_stack::Result<Vec<(&str, String)>, KvError> {
         let pushed_at = time::OffsetDateTime::now_utc().unix_timestamp();
 
         Ok(vec![
             (
                 "query",
-                serde_json::to_string(self)
-                    .change_context(StorageError::SerializationFailed)?,
+                serde_json::to_string(self).change_context(KvError::SerializationFailed)?,
             ),
             ("global_id", global_id),
             ("request_id", request_id),
@@ -200,9 +196,7 @@ impl SerializableQuery {
     }
 }
 
-pub(crate) fn generate_insert_query<T, N>(
-    new: N,
-) -> error_stack::Result<SerializableQuery, StorageError>
+pub(crate) fn generate_insert_query<T, N>(new: N) -> error_stack::Result<SerializableQuery, KvError>
 where
     T: HasTable<Table = T> + Table + Send + 'static,
     N: Insertable<T> + EntityType,

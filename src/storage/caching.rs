@@ -172,19 +172,6 @@ where
     }
 }
 
-/// Forward `with_request_id` through the `Caching` wrapper so that
-/// `TenantStateResolver` can set the request ID regardless of whether
-/// caching is active.
-#[cfg(feature = "kv")]
-impl Caching<super::Storage> {
-    pub fn with_request_id(self, request_id: impl Into<String>) -> Self {
-        Self {
-            inner: self.inner.with_request_id(request_id),
-            ..self
-        }
-    }
-}
-
 #[cfg(feature = "external_key_manager")]
 pub mod entity;
 pub mod fingerprint;

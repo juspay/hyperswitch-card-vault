@@ -116,18 +116,29 @@ max_failure_threshold_seconds = 5  # max seconds Redis may be unreachable before
 # KV (write-through Redis) configuration — global drainer settings (only used with the `kv` feature)
 [kv]
 drainer_stream_suffix = "DRAINER_STREAM"  # suffix for the drainer stream name
-drainer_num_partitions = 16        # number of shard partitions
+drainer_num_partitions = 16        # number of shard partitions (must be > 0)
 ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
-enable_kv = false                  # file-based fallback: enable KV when runtime_config is disabled
-soft_kill = false                  # file-based fallback: gradual rollout (inserts → PG, reads → Redis-first)
+
+# File-based fallback for the KV master switch, used ONLY when
+# `runtime_config.mode = "disabled"`.  When the runtime config endpoint is
+# enabled, the endpoint's value takes precedence (this field is ignored once the
+# endpoint is reachable).  Defaults to "disabled" (fail-closed).
+#   "disabled"  → all reads/writes go to Postgres
+#   "enabled"   → write-through Redis (writes → Redis + drainer; reads → Redis-first)
+#   "soft_kill" → gradual rollout (inserts → Postgres, reads → Redis-first)
+kv_state = "disabled"
 
 # KV enablement is controlled at runtime via the `locker.enable_kv` runtime-config
 # key (see [runtime_config] below).  When the runtime config endpoint is enabled,
-# its value takes precedence over `enable_kv` here.  When `runtime_config.mode` is
-# `"disabled"`, the `enable_kv` / `soft_kill` fields above are used as a fallback.
-# The endpoint should return JSON such as:
-#   {"enable_kv": true, "soft_kill": false}
-# `soft_kill=true` enables gradual rollout (inserts → Postgres, reads → Redis-first).
+# its value takes precedence over `kv_state` here.  The endpoint may return either:
+#   a string: "disabled" | "enabled" | "soft_kill"
+#   or the legacy object: {"enable_kv": true, "soft_kill": false}
+# `soft_kill` enables gradual rollout (inserts → Postgres, reads → Redis-first).
+
+# Per-tenant `redis_key_prefix` (under `[tenant_secrets.<id>]`) MUST be non-empty
+# and unique across tenants whenever `kv_state` is not "disabled", otherwise the
+# service fails to start.  The drainer must consume the prefixed
+# `{prefix}{shard_N}_DRAINER_STREAM` for each tenant.
 
 # Metrics configuration: export metrics for monitoring.
 # - disabled: no metrics exported
@@ -147,15 +158,19 @@ metrics_export_interval_secs = 60  # How often to export metrics (seconds)
 
 # Runtime configuration endpoint
 # [runtime_config]
-# mode = "enabled"        # Options: "disabled", "enabled"
-# ttl_seconds = 30
+# mode = "enabled"
+# refresh_interval_seconds = 30
 # cache_max_capacity = 32
-# Keys to prefetch/warm at startup and periodically refresh (optional).
-# Env: LOCKER__RUNTIME_CONFIG__KEYS=locker.use_read_replica,locker.enable_kv
-# keys = ["locker.use_read_replica", "locker.enable_kv"]
 
 # Endpoint needs to be specified if mode is "enabled"
 # [runtime_config.endpoint]
-# base_url = "http://localhost:8080/configs"
-# api_key = ""
+# base_url = "http://localhost:8090/configs"
+# api_key = "test_admin"
+# path = ""
+#
+# The endpoint at `{base_url}{path}` returns a single config object whose
+# `value` is a JSON-string array of {key, value} items, e.g.:
+#   {"key": "locker.config",
+#    "value": "[{\"key\":\"locker.use_read_replica\",\"value\":\"{\\\"use_read_replica\\\":true}\"},
+#               {\"key\":\"locker.enable_kv\",\"value\":\"{\\\"kv_state\\\":\\\"enabled\\\"}\"}]"}
 
