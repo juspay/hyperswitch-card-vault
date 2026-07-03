@@ -3,4 +3,5 @@
 pub(crate) mod fingerprint;
 pub(crate) mod hash_table;
 pub(crate) mod locker;
+pub(crate) mod reverse_lookup;
 pub(crate) mod vault;

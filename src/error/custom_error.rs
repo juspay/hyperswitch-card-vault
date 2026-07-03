@@ -217,3 +217,9 @@ impl_storage_error!(
     not_found = NotFoundError,
     other = DBError
 );
+impl_storage_error!(
+    ReverseLookupDBError,
+    duplicate = DBInsertError,
+    not_found = NotFoundError,
+    other = DBError
+);

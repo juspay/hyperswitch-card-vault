@@ -129,6 +129,35 @@ where
     }
 }
 
+/// Find by plain key (HGet). Non-optional: Redis hit returns the domain
+/// object directly; Redis miss/error falls through to `storage_find`, which
+/// itself returns `Err` on not-found. Used by reverse_lookup.
+#[instrument(skip(store, partition_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn find_plain_resource<M>(
+    store: &Storage,
+    partition_key: PartitionKey<'_>,
+) -> Result<M::Domain, ContainerError<M::Error>>
+where
+    M: PlainKeyed + KvFind,
+{
+    let scheme = decide(store, Op::Find).await;
+
+    if matches!(scheme, StorageScheme::RedisKv) {
+        let result = kv_wrapper::<M, M>(
+            store,
+            KvOperation::<M>::HGet(M::ENTITY_TYPE),
+            partition_key.clone(),
+        )
+        .await;
+
+        if let Ok(KvResult::HGet(v)) = result {
+            return Ok(M::into_domain(v));
+        }
+    }
+
+    M::storage_find(store, &partition_key).await
+}
+
 /// Insert via SetNx. KeyNotSet → Duplicate (no PG fallback). PostgresOnly → storage_insert.
 ///
 /// In the `RedisKv` path the returned domain object is built from the *model*

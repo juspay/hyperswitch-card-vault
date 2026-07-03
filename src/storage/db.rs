@@ -477,37 +477,66 @@ impl super::ReverseLookupInterface for Storage {
         &self,
         lookup_id: &str,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let partition_key = super::kv::PartitionKey::ReverseLookup { lookup_id };
 
-        let output: Result<types::ReverseLookup, diesel::result::Error> =
-            types::ReverseLookup::table()
-                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
-                .get_result(&mut conn)
+            return super::kv::find_plain_resource::<types::ReverseLookupNew>(self, partition_key)
                 .await;
-
-        match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
-                }
-                _ => Err(err).change_error(error::StorageError::FindError),
-            },
-            Ok(reverse_lookup) => Ok(reverse_lookup),
         }
-        .map_err(From::from)
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: Result<types::ReverseLookup, diesel::result::Error> =
+                types::ReverseLookup::table()
+                    .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
+                    .get_result(&mut conn)
+                    .await;
+
+            match output {
+                Err(err) => match err {
+                    diesel::result::Error::NotFound => {
+                        Err(err).change_error(error::StorageError::NotFoundError)
+                    }
+                    _ => Err(err).change_error(error::StorageError::FindError),
+                },
+                Ok(reverse_lookup) => Ok(reverse_lookup),
+            }
+            .map_err(From::from)
+        }
     }
 
     async fn insert_reverse_lookup(
         &self,
         new: types::ReverseLookupNew,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let lookup_id = new.lookup_id.clone();
+            let partition_key = super::kv::PartitionKey::ReverseLookup {
+                lookup_id: &lookup_id,
+            };
 
-        diesel::insert_into(types::ReverseLookup::table())
-            .values(new)
-            .get_result(&mut conn)
-            .await
-            .change_error(error::StorageError::InsertError)
-            .map_err(From::from)
+            return super::kv::insert_plain_resource::<types::ReverseLookupNew>(
+                self,
+                new,
+                partition_key,
+            )
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            diesel::insert_into(types::ReverseLookup::table())
+                .values(new)
+                .get_result(&mut conn)
+                .await
+                .change_error(error::StorageError::InsertError)
+                .map_err(From::from)
+        }
     }
 }

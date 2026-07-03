@@ -205,7 +205,7 @@ pub(crate) struct ReverseLookup {
     pub update_by: String,
 }
 
-#[derive(Debug, Clone, Insertable)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Insertable)]
 #[diesel(table_name = schema::reverse_lookup)]
 pub(crate) struct ReverseLookupNew {
     pub lookup_id: String,

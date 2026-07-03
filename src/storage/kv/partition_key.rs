@@ -16,6 +16,9 @@ pub(crate) enum PartitionKey<'a> {
         vault_id: &'a str,
         entity_id: &'a str,
     },
+    ReverseLookup {
+        lookup_id: &'a str,
+    },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
@@ -34,6 +37,9 @@ impl std::fmt::Display for PartitionKey<'_> {
                 vault_id,
                 entity_id,
             } => f.write_str(&format!("vault_{entity_id}_{vault_id}")),
+            Self::ReverseLookup { lookup_id } => {
+                f.write_str(&format!("reverse_lookup_{lookup_id}"))
+            }
         }
     }
 }
@@ -50,9 +56,9 @@ pub(crate) fn hash_field_key(partition_key: &PartitionKey<'_>) -> String {
         // Fingerprint and Hash are plain-keyed; they use M::ENTITY_TYPE as the field.
         // A mismatch is a programming error, not a runtime condition — return a
         // stable sentinel rather than panicking in library code.
-        PartitionKey::Fingerprint { .. } | PartitionKey::Hash { .. } => {
-            "invalid_hash_field_key".to_string()
-        }
+        PartitionKey::Fingerprint { .. }
+        | PartitionKey::Hash { .. }
+        | PartitionKey::ReverseLookup { .. } => "invalid_hash_field_key".to_string(),
     }
 }
 
