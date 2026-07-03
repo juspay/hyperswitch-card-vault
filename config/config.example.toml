@@ -140,3 +140,7 @@ metrics_export_interval_secs = 60  # How often to export metrics (seconds)
 # base_url = "http://localhost:8080/configs"
 # api_key = ""
 
+# Optional static headers sent on every runtime config pull request (omit entirely to send none)
+# [runtime_config.endpoint.headers]
+# accept = "application/json"
+

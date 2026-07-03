@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
@@ -37,6 +37,26 @@ pub struct RuntimeConfigManager {
 }
 
 impl RuntimeConfigManager {
+    fn build_header_map(
+        headers: &HashMap<String, Secret<String>>,
+    ) -> error_stack::Result<reqwest::header::HeaderMap, error::ConfigurationError> {
+        headers
+            .iter()
+            .map(|(name, value)| {
+                let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
+                        format!("invalid runtime_config header name `{name}`"),
+                    ))?;
+                let mut header_value = reqwest::header::HeaderValue::from_str(value.peek())
+                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
+                        format!("invalid runtime_config header value for `{name}`"),
+                    ))?;
+                header_value.set_sensitive(true);
+                Ok((header_name, header_value))
+            })
+            .collect()
+    }
+
     /// Construct a new runtime config manager.
     pub fn new(
         config: &RuntimeConfig,
@@ -57,6 +77,7 @@ impl RuntimeConfigManager {
                     .redirect(reqwest::redirect::Policy::none())
                     .pool_idle_timeout(Duration::from_secs(client_idle_timeout))
                     .pool_max_idle_per_host(pool_max_idle_per_host)
+                    .default_headers(Self::build_header_map(&endpoint.headers)?)
                     .build()
                     .change_context(error::ConfigurationError::InvalidConfigurationValueError(
                         "Failed to build HTTP client for runtime config endpoint".into(),
