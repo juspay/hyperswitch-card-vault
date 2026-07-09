@@ -16,7 +16,10 @@ use super::{
     wrapper::{KvOperation, KvResult, kv_wrapper},
 };
 use crate::{
-    error::{ContainerError, kv::KvError, kv::RedisErrorExt},
+    error::{
+        ContainerError,
+        kv::{KvError, RedisErrorExt},
+    },
     storage::Storage,
 };
 
