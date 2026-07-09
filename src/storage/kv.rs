@@ -26,5 +26,4 @@ pub(crate) use self::{
     scheme::KvState,
     wrapper::{KvStoreContext, RedisConnInterface},
 };
-
 pub(crate) use super::scheme::StorageScheme;
