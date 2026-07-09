@@ -1,44 +1,40 @@
 use hyperswitch_redis_interface::errors::RedisError;
 
+/// KV-layer errors.
+///
+/// `SerializationFailed` covers both directions (serialize/deserialize) and both sides
+/// (host-side drainer query building + Redis payload (de)serialization). `Backend` means
+/// transport/driver-level failures only.
 #[derive(Debug, thiserror::Error)]
 pub enum KvError {
-    #[error("DuplicateValue: {entity} already exists {key:?}")]
-    DuplicateValue {
-        entity: &'static str,
-        key: Option<String>,
-    },
+    #[error("Duplicate value already exists for key `{key}`")]
+    DuplicateValue { key: String },
     #[error("KV backend error")]
     Backend,
-    #[error("ValueNotFound: {0}")]
+    #[error("Value not found: {0}")]
     ValueNotFound(String),
-    #[error("Serialization failure")]
+    #[error("(De)serialization failed")]
     SerializationFailed,
 }
 
 pub trait RedisErrorExt {
     #[track_caller]
-    fn to_redis_failed_response(
-        self,
-        entity: &'static str,
-        key: &str,
-    ) -> error_stack::Report<KvError>;
+    fn to_redis_failed_response(self, key: &str) -> error_stack::Report<KvError>;
 }
 
 impl RedisErrorExt for error_stack::Report<RedisError> {
-    fn to_redis_failed_response(
-        self,
-        entity: &'static str,
-        key: &str,
-    ) -> error_stack::Report<KvError> {
+    fn to_redis_failed_response(self, key: &str) -> error_stack::Report<KvError> {
         match self.current_context() {
             RedisError::NotFound => self.change_context(KvError::ValueNotFound(format!(
                 "Data does not exist for key {key}",
             ))),
             RedisError::SetNxFailed | RedisError::SetAddMembersFailed => {
                 self.change_context(KvError::DuplicateValue {
-                    entity,
-                    key: Some(key.to_string()),
+                    key: key.to_string(),
                 })
+            }
+            RedisError::JsonSerializationFailed | RedisError::JsonDeserializationFailed => {
+                self.change_context(KvError::SerializationFailed)
             }
             RedisError::InvalidConfiguration(_)
             | RedisError::SetFailed
@@ -58,8 +54,6 @@ impl RedisErrorExt for error_stack::Report<RedisError> {
             | RedisError::ConsumerGroupRemoveConsumerFailed
             | RedisError::ConsumerGroupSetIdFailed
             | RedisError::ConsumerGroupClaimFailed
-            | RedisError::JsonSerializationFailed
-            | RedisError::JsonDeserializationFailed
             | RedisError::SetHashFailed
             | RedisError::SetHashFieldFailed
             | RedisError::GetHashFieldFailed

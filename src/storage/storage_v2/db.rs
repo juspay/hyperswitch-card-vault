@@ -39,6 +39,7 @@ impl VaultInterface for Storage {
 
         logger::info!("performing retrieve operation on vault data");
 
+        // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
         let output: types::VaultInner = types::VaultInner::table()
             .filter(
                 schema::vault::vault_id

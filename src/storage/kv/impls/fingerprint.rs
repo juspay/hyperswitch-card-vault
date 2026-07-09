@@ -4,7 +4,7 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTa
 use diesel_async::RunQueryDsl;
 
 use crate::{
-    error::{ContainerError, FingerprintDBError, KvError},
+    error::{ContainerError, FingerprintDBError, kv::KvError},
     storage::{
         Storage,
         kv::{
@@ -36,7 +36,7 @@ impl KvResource for Fingerprint {
         self.updated_by = scheme;
     }
 
-    fn insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError> {
+    fn generate_insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError> {
         let new = FingerprintTableNew {
             fingerprint_hash: self.fingerprint_hash.clone(),
             fingerprint_id: self.fingerprint_id.clone(),
@@ -66,7 +66,9 @@ impl KvResource for Fingerprint {
         pk: &PartitionKey<'_>,
     ) -> Result<Option<Self>, ContainerError<FingerprintDBError>> {
         let PartitionKey::Fingerprint { fingerprint_hash } = pk;
-        let mut conn = store.route_conn().await?;
+        // Use the primary conn — the drainer writes to the primary, and this PG
+        // fallback fires on a Redis miss where the row may have just been replayed.
+        let mut conn = store.get_conn().await?;
         let output = Self::table()
             .filter(crate::storage::schema::fingerprint::fingerprint_hash.eq(*fingerprint_hash))
             .get_result::<Self>(&mut conn)

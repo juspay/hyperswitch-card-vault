@@ -74,11 +74,13 @@ use hyperswitch_masking::Secret;
 use tracing::debug;
 
 use super::entity::EntityType;
-use crate::error::KvError;
+use crate::error::kv::KvError;
 
 type SecretBinaryData = Secret<Vec<u8>>;
 
-/// No-op `PgMetadataLookup` that issues fake OIDs for custom types.
+// Offline query builder — no live `PgConnection` available, so `Pg` alone can't
+// satisfy `PgMetadataLookup`. This stub returns a dummy OID; the drainer replays
+// with a live connection that resolves real OIDs at execution time.
 const FAKE_OID: u32 = 0;
 
 struct KvPgMetadataLookup;

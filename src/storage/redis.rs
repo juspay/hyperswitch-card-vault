@@ -34,11 +34,13 @@ impl RedisStore {
 
     /// A handle onto the same pool that namespaces every key with `key_prefix`.
     pub fn clone_with_prefix(&self, key_prefix: &str) -> Self {
+        // `.as_ref().clone(..)` calls the pool's inherent `clone`, not `Arc::clone`.
         Self {
             redis_conn: Arc::new(self.redis_conn.as_ref().clone(key_prefix)),
         }
     }
 
+    // Logs disconnects via `on_error`. `rx` stays bound (not `_`) so its `tx.send` succeeds.
     pub fn spawn_error_watcher(&self) {
         let redis_conn = self.redis_conn.clone();
         tokio::spawn(

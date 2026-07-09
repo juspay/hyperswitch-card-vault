@@ -140,6 +140,7 @@ impl<'a> LockerNew<'a> {
             enc_data,
             hash_id,
             ttl: *request.ttl,
+            // Placeholder — overwritten by `set_storage_scheme` when locker joins KV.
             updated_by: StorageScheme::PostgresOnly,
         }
     }
@@ -235,7 +236,7 @@ impl std::ops::Deref for CardNumber {
 }
 
 // Not serialized to Redis — the Queryable model (`Fingerprint` above) is the stored value.
-#[derive(Debug, Clone, serde::Deserialize, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
 pub(super) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,

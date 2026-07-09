@@ -135,7 +135,7 @@ where
 {
     let redis_conn = store.get_redis_conn()?;
 
-    let key = format!("{partition_key}");
+    let key = partition_key.to_string();
 
     let type_name = std::any::type_name::<T>();
     let operation = op.to_string();
@@ -145,8 +145,6 @@ where
     let result = async {
         match op {
             KvOperation::HSetNx(field, value, query) => {
-                debug!(kv_operation = %operation, ?value);
-
                 let result = redis_conn
                     .serialize_and_set_hash_field_if_not_exist(&key.into(), field, value, Some(ttl))
                     .await
@@ -206,7 +204,7 @@ async fn push_to_drainer_stream<R>(
 where
     R: KvStorePartition,
 {
-    let global_id = format!("{partition_key}");
+    let global_id = partition_key.to_string();
     let request_id = store.request_id();
 
     let shard_key = R::shard_key(partition_key, store.drainer_num_partitions());

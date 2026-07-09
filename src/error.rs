@@ -10,8 +10,6 @@ mod transforms;
 
 pub use container::*;
 pub use custom_error::*;
-#[cfg(feature = "kv")]
-pub use kv::{KvError, RedisErrorExt};
 use reqwest::StatusCode;
 
 #[derive(Debug, thiserror::Error)]

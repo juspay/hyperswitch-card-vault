@@ -111,6 +111,7 @@ impl super::LockerInterface for Storage {
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         let mut conn = self.get_conn().await?;
 
+        // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
         let output: types::LockerInner = types::LockerInner::table()
             .filter(
                 schema::locker::locker_id
@@ -175,7 +176,6 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        // Non-PK lookup — always Postgres.
         let mut conn = self.get_conn().await?;
 
         let output = types::HashTable::table()
@@ -197,6 +197,7 @@ impl super::HashInterface for Storage {
             .values(types::HashTableNew {
                 hash_id: utils::generate_uuid(),
                 data_hash,
+                // Placeholder — overwritten by `set_storage_scheme` when hash_table joins KV.
                 updated_by: StorageScheme::PostgresOnly,
             })
             .get_result(&mut conn)
@@ -226,6 +227,7 @@ impl super::TestInterface for Storage {
                         .values(types::HashTableNew {
                             hash_id: "test".to_string(),
                             data_hash: b"0".to_vec(),
+                            // Test-only — always PostgresOnly.
                             updated_by: StorageScheme::PostgresOnly,
                         })
                         .execute(x)
@@ -275,7 +277,7 @@ impl super::FingerprintInterface for Storage {
                 fingerprint_hash: &fp_bytes,
             };
 
-            // Store & return the Queryable model, not the New struct.
+            // Return the Queryable model, not the New struct.
             return super::kv::find_optional_resource_by_id::<types::Fingerprint>(
                 self,
                 super::kv::FindResourceBy::Id(types::Fingerprint::ENTITY_TYPE, partition_key),
@@ -305,6 +307,8 @@ impl super::FingerprintInterface for Storage {
         #[cfg(feature = "kv")]
         {
             // `id: 0` — serial unknown at KV-insert time, assigned by drainer on replay.
+            // `updated_by: PostgresOnly` is a placeholder — overwritten by `set_storage_scheme`
+            // in `insert_resource` before the model is written to Redis or PG.
             let model = types::Fingerprint {
                 id: 0,
                 fingerprint_hash: fingerprint_hash.clone(),

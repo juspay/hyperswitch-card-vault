@@ -28,9 +28,7 @@ impl FromRequestParts<Arc<GlobalAppState>> for TenantStateResolver {
             .ok_or(ApiError::TenantError("x-tenant-id not found in headers"))?;
 
         state.is_known_tenant(tenant_id)?;
-        let app_state = state.get_app_state_of_tenant(tenant_id).await?;
-
-        Ok(Self(app_state))
+        Ok(Self(state.get_app_state_of_tenant(tenant_id).await?))
     }
 }
 

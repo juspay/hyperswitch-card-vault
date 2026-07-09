@@ -16,7 +16,7 @@ use super::{
     wrapper::{KvOperation, KvResult, kv_wrapper},
 };
 use crate::{
-    error::{ContainerError, KvError, RedisErrorExt},
+    error::{ContainerError, kv::KvError, kv::RedisErrorExt},
     storage::Storage,
 };
 
@@ -38,7 +38,7 @@ pub(crate) trait KvResource:
 
     /// Drainer INSERT — built from the `Insertable` `New` projection (the model is not
     /// `Insertable`). Implementations rebuild the `New` struct from the model's fields.
-    fn insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError>;
+    fn generate_insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError>;
 
     async fn storage_insert(self, store: &Storage) -> Result<Self, ContainerError<Self::Error>>;
 
@@ -67,13 +67,12 @@ where
     ContainerError::from(report.change_context(ctx))
 }
 
-fn kv_duplicate_error<E>(entity: &'static str, key: &str) -> ContainerError<E>
+fn kv_duplicate_error<E>(key: &str) -> ContainerError<E>
 where
     E: for<'a> From<&'a KvError> + error_stack::Context,
 {
     kv_backend_error::<E>(Report::new(KvError::DuplicateValue {
-        entity,
-        key: Some(key.to_string()),
+        key: key.to_string(),
     }))
 }
 
@@ -101,7 +100,7 @@ where
         StorageScheme::PostgresOnly => model.storage_insert(store).await,
         StorageScheme::RedisKv => {
             let drainer_query = model
-                .insert_drainer_query()
+                .generate_insert_drainer_query()
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = params.partition_key.to_string();
@@ -111,15 +110,11 @@ where
                 params.partition_key,
             )
             .await
-            .map_err(|e| {
-                kv_backend_error::<M::Error>(e.to_redis_failed_response(M::ENTITY_TYPE, &key_str))
-            })?;
+            .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
 
             match reply.try_into_hsetnx() {
                 Ok(HsetnxReply::KeySet) => Ok(model),
-                Ok(HsetnxReply::KeyNotSet) => {
-                    Err(kv_duplicate_error::<M::Error>(M::ENTITY_TYPE, &key_str))
-                }
+                Ok(HsetnxReply::KeyNotSet) => Err(kv_duplicate_error::<M::Error>(&key_str)),
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     Report::new(e).change_context(KvError::Backend),
                 )),
@@ -159,7 +154,7 @@ where
                     M::storage_find_optional(store, &key).await
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
-                    e.to_redis_failed_response(M::ENTITY_TYPE, &key_str),
+                    e.to_redis_failed_response(&key_str),
                 )),
                 Ok(KvResult::HSetNx(_)) => Err(kv_backend_error::<M::Error>(
                     Report::new(KvError::Backend)

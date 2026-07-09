@@ -427,8 +427,6 @@ pub struct KvConfig {
     /// TTL (seconds) for KV keys in Redis. Must exceed max drainer replay lag.
     #[serde(default = "default_ttl_for_kv")]
     pub ttl_for_kv: u32,
-    // KV enablement is sourced solely from the runtime-config endpoint (`locker.enable_kv`),
-    // fail-closed to `Disabled`. No TOML fallback — single source of truth.
 }
 
 #[cfg(feature = "kv")]
