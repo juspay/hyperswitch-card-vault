@@ -69,8 +69,9 @@ impl<'de> serde::Deserialize<'de> for KvState {
 
 /// Operation type used by `decide_storage_scheme`.
 ///
-/// Updates route as `Op::Insert` (a write) — under `SoftKill` that correctly
-/// forces PG-only while draining. There is no separate update probe.
+/// `Update` is not yet included — fingerprint only has insert/find. When vault
+/// migrates, `Op::Update` will be added with a Redis probe in
+/// SoftKill mode, matching hyperswitch's behavior.
 #[derive(Debug, Clone, Copy, strum::Display)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum Op {
