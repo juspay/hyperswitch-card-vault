@@ -134,6 +134,8 @@ pub fn start_prometheus_metrics_server(
     tokio::spawn(async move {
         match tokio::net::TcpListener::bind(addr).await {
             Ok(listener) => {
+                tracing::info!("Starting Prometheus metrics server at `{addr}`");
+
                 if let Err(error) = axum::serve(listener, app).await {
                     tracing::warn!(?error, "Prometheus metrics server failed");
                 }
