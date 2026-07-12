@@ -212,3 +212,12 @@ counter_metric!(
     description: "Number of HTTP server requests rejected by rate limiting",
     unit: "1",
 );
+
+// Health check
+histogram_metric_f64!(
+    pub(crate) HEALTH_CHECK_DURATION, CARD_VAULT_METER,
+    name: "health.check.duration",
+    description: "Duration of completed health diagnostic checks",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);

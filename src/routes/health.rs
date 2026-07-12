@@ -8,6 +8,23 @@ use crate::{
     custom_extractors::TenantStateResolver, error, storage::TestInterface, tenant::GlobalAppState,
 };
 
+async fn record_health_check<Fut, T, E>(future: Fut, check: &'static str) -> Result<T, E>
+where
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = if result.is_ok() { "success" } else { "error" };
+
+    crate::observability::metrics::HEALTH_CHECK_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(("check", check), ("outcome", outcome)),
+    );
+
+    result
+}
+
 ///
 /// Function for registering routes that is specifically handling the health apis
 ///
@@ -61,11 +78,11 @@ pub enum HealthState {
 pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Json<Diagnostics> {
     crate::logger::info!("Health diagnostics was called");
 
-    let db_test_output = state.db.test().await;
+    let db_test_output = record_health_check(state.db.test(), "database").await;
     let db_test_output_case_match = db_test_output.as_ref().map_err(|err| err.get_inner());
 
     let replica_database_health = if state.db.has_replica() {
-        match state.db.test_replica().await {
+        match record_health_check(state.db.test_replica(), "database_replica").await {
             Ok(()) => HealthState::Working,
             Err(_) => HealthState::Failing,
         }
@@ -116,19 +133,20 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
         match &state.config.external_key_manager {
             ExternalKeyManagerConfig::Disabled => HealthState::Disabled,
             ExternalKeyManagerConfig::Enabled { .. }
-            | ExternalKeyManagerConfig::EnabledWithMtls { .. } => {
-                keymanager::external_keymanager::health_check_keymanager(&state)
-                    .await
-                    .map_err(|err| logger::error!(keymanager_err=?err))
-                    .unwrap_or_default()
-            }
+            | ExternalKeyManagerConfig::EnabledWithMtls { .. } => record_health_check(
+                keymanager::external_keymanager::health_check_keymanager(&state),
+                "keymanager",
+            )
+            .await
+            .map_err(|err| logger::error!(keymanager_err=?err))
+            .unwrap_or_default(),
         }
     };
 
     #[cfg(feature = "redis")]
     let redis_status = match &state.redis {
         None => HealthState::Disabled,
-        Some(redis) => match redis.test().await {
+        Some(redis) => match record_health_check(redis.test(), "redis").await {
             Ok(()) => HealthState::Working,
             Err(err) => {
                 crate::logger::error!(redis_err=?err);
