@@ -173,15 +173,21 @@ histogram_metric_f64!(
 
 // HTTP server
 counter_metric!(
-    pub(crate) REQUEST_COUNT, CARD_VAULT_METER,
+    pub(crate) HTTP_SERVER_REQUEST_COUNT, CARD_VAULT_METER,
     name: "http.server.request.count",
     description: "Number of HTTP server requests received",
     unit: "1",
 );
 histogram_metric_f64!(
-    pub(crate) REQUEST_DURATION, CARD_VAULT_METER,
+    pub(crate) HTTP_SERVER_REQUEST_DURATION, CARD_VAULT_METER,
     name: "http.server.request.duration",
     description: "Duration of HTTP server requests",
     unit: "s",
     buckets: f64_histogram_buckets(),
+);
+up_down_counter_metric!(
+    pub(crate) HTTP_SERVER_ACTIVE_REQUESTS, CARD_VAULT_METER,
+    name: "http.server.active_requests",
+    description: "Number of HTTP server requests currently in flight",
+    unit: "1",
 );
