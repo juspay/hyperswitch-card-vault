@@ -1,5 +1,5 @@
 mod macros;
-mod metrics;
+pub(crate) mod metrics;
 
 pub use self::metrics::{HttpRequestMetricsLayer, init_metrics, start_prometheus_metrics_server};
 

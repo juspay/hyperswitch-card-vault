@@ -160,6 +160,18 @@ pub(crate) fn f64_histogram_buckets() -> Vec<f64> {
 }
 
 global_meter!(pub(crate) CARD_VAULT_METER, "card_vault");
+
+// Secret manager
+#[cfg(any(feature = "kms-aws", feature = "kms-hashicorp-vault"))]
+histogram_metric_f64!(
+    pub(crate) SECRET_MANAGER_CALL_DURATION, CARD_VAULT_METER,
+    name: "secret_manager.call.duration",
+    description: "Duration of completed secret-manager call attempts",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
+
+// HTTP server
 counter_metric!(
     pub(crate) REQUEST_COUNT, CARD_VAULT_METER,
     name: "http.server.request.count",
