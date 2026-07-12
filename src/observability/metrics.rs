@@ -11,7 +11,9 @@ use opentelemetry_sdk::{
 
 pub use self::middleware::HttpRequestMetricsLayer;
 use super::{MetricsConfig, MetricsHandle};
-use crate::{counter_metric, error, global_meter, histogram_metric_f64};
+use crate::{
+    counter_metric, error, gauge_metric, global_meter, histogram_metric_f64, up_down_counter_metric,
+};
 
 pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
     match config {
