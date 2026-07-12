@@ -1,8 +1,12 @@
+pub mod crypto_operation;
+mod transformers;
+pub mod types;
+
 use std::sync::Arc;
 
 use axum::{Json, routing::post};
 #[cfg(feature = "limit")]
-use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
+use axum::{error_handling::HandleErrorLayer, extract::MatchedPath, response::IntoResponse};
 
 use self::types::Validation;
 use crate::{
@@ -16,14 +20,27 @@ use crate::{
     utils,
 };
 
-pub mod crypto_operation;
-mod transformers;
-pub mod types;
-
 #[cfg(feature = "limit")]
 const BUFFER_LIMIT: usize = 1024;
+
 #[cfg(feature = "limit")]
-async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
+async fn ratelimit_err_handler(
+    method: hyper::Method,
+    matched_path: Option<MatchedPath>,
+    _: axum::BoxError,
+) -> impl IntoResponse {
+    let route = matched_path
+        .map(|path| path.as_str().to_owned())
+        .unwrap_or_else(|| "UNKNOWN".to_string());
+
+    crate::observability::metrics::HTTP_SERVER_RATE_LIMITED_REQUEST_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("http.request.method", method.to_string()),
+            ("http.route", route),
+        ),
+    );
+
     (hyper::StatusCode::TOO_MANY_REQUESTS, "Rate Limit Applied")
 }
 

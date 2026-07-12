@@ -203,3 +203,12 @@ histogram_metric_f64!(
     unit: "s",
     buckets: f64_histogram_buckets(),
 );
+
+// Rate limiter
+#[cfg(feature = "limit")]
+counter_metric!(
+    pub(crate) HTTP_SERVER_RATE_LIMITED_REQUEST_COUNT, CARD_VAULT_METER,
+    name: "http.server.rate_limited_request.count",
+    description: "Number of HTTP server requests rejected by rate limiting",
+    unit: "1",
+);
