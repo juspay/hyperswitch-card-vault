@@ -193,3 +193,13 @@ up_down_counter_metric!(
     description: "Number of HTTP server requests currently in flight",
     unit: "1",
 );
+
+// JWE/JWS Middleware
+#[cfg(feature = "middleware")]
+histogram_metric_f64!(
+    pub(crate) HTTP_SERVER_JWE_MIDDLEWARE_OPERATION_DURATION, CARD_VAULT_METER,
+    name: "http.server.jwe_middleware.operation.duration",
+    description: "Duration of JWE/JWS middleware operations",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
