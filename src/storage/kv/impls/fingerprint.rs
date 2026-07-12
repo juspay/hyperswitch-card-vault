@@ -57,7 +57,7 @@ impl KvResource for Fingerprint {
     ) -> Result<Self, ContainerError<FingerprintDBError>> {
         let new = FingerprintTableNew::from(&self);
         // Writes always go to the primary pool, never a read replica.
-        let mut conn = store.route_conn().await?;
+        let mut conn = store.get_conn().await?;
         Ok(diesel::insert_into(Self::table())
             .values(new)
             .get_result(&mut conn)
