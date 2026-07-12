@@ -18,7 +18,7 @@ use crate::{
     },
 };
 
-// Required by `generate_insert_query<N: Insertable + EntityType>` — the drainer builder.
+// `EntityType` tags the drainer query built for this table (INSERT today, UPDATE once supported).
 impl EntityType for FingerprintTableNew {
     const ENTITY_TYPE: &'static str = "fingerprint";
 }
@@ -29,6 +29,16 @@ impl EntityType for Fingerprint {
 
 impl KvStorePartition for Fingerprint {}
 
+impl From<&Fingerprint> for FingerprintTableNew {
+    fn from(fingerprint: &Fingerprint) -> Self {
+        Self {
+            fingerprint_hash: fingerprint.fingerprint_hash.clone(),
+            fingerprint_id: fingerprint.fingerprint_id.clone(),
+            updated_by: fingerprint.updated_by,
+        }
+    }
+}
+
 impl KvResource for Fingerprint {
     type Error = FingerprintDBError;
 
@@ -37,11 +47,7 @@ impl KvResource for Fingerprint {
     }
 
     fn generate_insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError> {
-        let new = FingerprintTableNew {
-            fingerprint_hash: self.fingerprint_hash.clone(),
-            fingerprint_id: self.fingerprint_id.clone(),
-            updated_by: self.updated_by,
-        };
+        let new = FingerprintTableNew::from(self);
         generate_insert_query::<crate::storage::schema::fingerprint::table, _>(new)
     }
 
@@ -49,12 +55,9 @@ impl KvResource for Fingerprint {
         self,
         store: &Storage,
     ) -> Result<Self, ContainerError<FingerprintDBError>> {
-        let new = FingerprintTableNew {
-            fingerprint_hash: self.fingerprint_hash,
-            fingerprint_id: self.fingerprint_id,
-            updated_by: self.updated_by,
-        };
-        let mut conn = store.get_conn().await?;
+        let new = FingerprintTableNew::from(&self);
+        // Writes always go to the primary pool, never a read replica.
+        let mut conn = store.route_conn().await?;
         Ok(diesel::insert_into(Self::table())
             .values(new)
             .get_result(&mut conn)
@@ -66,9 +69,8 @@ impl KvResource for Fingerprint {
         pk: &PartitionKey<'_>,
     ) -> Result<Option<Self>, ContainerError<FingerprintDBError>> {
         let PartitionKey::Fingerprint { fingerprint_hash } = pk;
-        // Use the primary conn — the drainer writes to the primary, and this PG
-        // fallback fires on a Redis miss where the row may have just been replayed.
-        let mut conn = store.get_conn().await?;
+        // Read path: route to the read replica when runtime config enables it.
+        let mut conn = store.route_conn().await?;
         let output = Self::table()
             .filter(crate::storage::schema::fingerprint::fingerprint_hash.eq(*fingerprint_hash))
             .get_result::<Self>(&mut conn)

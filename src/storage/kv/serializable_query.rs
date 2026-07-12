@@ -181,7 +181,7 @@ impl SerializableQuery {
 
     pub(crate) fn to_field_value_pairs(
         &self,
-        request_id: String,
+        request_id: &str,
         global_id: String,
     ) -> error_stack::Result<Vec<(&str, String)>, KvError> {
         let pushed_at = time::OffsetDateTime::now_utc().unix_timestamp();
@@ -192,7 +192,7 @@ impl SerializableQuery {
                 serde_json::to_string(self).change_context(KvError::SerializationFailed)?,
             ),
             ("global_id", global_id),
-            ("request_id", request_id),
+            ("request_id", request_id.to_string()),
             ("pushed_at", pushed_at.to_string()),
         ])
     }

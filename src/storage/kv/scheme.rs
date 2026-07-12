@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use tracing::debug;
 
 use crate::storage::scheme::StorageScheme;
@@ -8,10 +6,8 @@ use crate::storage::scheme::StorageScheme;
 ///
 /// `ttl_for_kv` must exceed max drainer replay lag — otherwise a KV-only
 /// fingerprint can expire in Redis before reaching Postgres.
-///
-/// Deserialization accepts `"disabled"` / `"enabled"` / `"soft_kill"` as a
-/// bare string or `{"kv_state": "..."}` object.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, strum::Display, strum::EnumString)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum KvState {
     #[default]
@@ -22,56 +18,10 @@ pub(crate) enum KvState {
     SoftKill,
 }
 
-impl<'de> serde::Deserialize<'de> for KvState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de;
-
-        struct KvStateVisitor;
-
-        impl<'de> de::Visitor<'de> for KvStateVisitor {
-            type Value = KvState;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str(r#"a kv_state string ("disabled"/"enabled"/"soft_kill") or {"kv_state": "..."}"#)
-            }
-
-            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-                KvState::from_str(v)
-                    .map_err(|_| de::Error::custom(format!("unknown kv_state: {v}")))
-            }
-
-            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
-                self.visit_str(&v)
-            }
-
-            fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-                let mut kv_state: Option<String> = None;
-
-                while let Some(key) = map.next_key::<String>()? {
-                    match key.as_str() {
-                        "kv_state" => kv_state = Some(map.next_value()?),
-                        other => return Err(de::Error::unknown_field(other, &["kv_state"])),
-                    }
-                }
-
-                let state = kv_state.ok_or_else(|| de::Error::missing_field("kv_state"))?;
-                KvState::from_str(&state)
-                    .map_err(|_| de::Error::custom(format!("unknown kv_state: {state}")))
-            }
-        }
-
-        deserializer.deserialize_any(KvStateVisitor)
-    }
-}
-
 /// Operation type used by `decide_storage_scheme`.
 ///
 /// `Update` is not yet included — fingerprint only has insert/find. When vault
-/// migrates, `Op::Update` will be added with a Redis probe in
-/// SoftKill mode, matching hyperswitch's behavior.
+/// migrates, `Op::Update` will be added with a Redis probe in SoftKill mode.
 #[derive(Debug, Clone, Copy, strum::Display)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum Op {

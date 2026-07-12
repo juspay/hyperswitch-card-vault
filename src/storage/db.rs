@@ -324,7 +324,7 @@ impl super::FingerprintInterface for Storage {
                 model,
                 super::kv::InsertResourceParams {
                     partition_key,
-                    identifier: types::Fingerprint::ENTITY_TYPE,
+                    field: types::Fingerprint::ENTITY_TYPE,
                 },
             )
             .await;
@@ -359,7 +359,9 @@ impl super::EntityInterface for Storage {
         // Reads are routed to the read replica when enabled (#171).
         let mut conn = self.route_conn().await?;
 
-        // Missing row → `EntityDBError::NotFoundError`, checked by `find_or_create_entity`.
+        // A missing row surfaces as `EntityDBError::NotFoundError` (see the `From<diesel>`
+        // classifier), which `find_or_create_entity` in the key manager checks via
+        // `is_not_found()`.
         let output: types::Entity = types::Entity::table()
             .filter(schema::entity::entity_id.eq(entity_id))
             .get_result(&mut conn)

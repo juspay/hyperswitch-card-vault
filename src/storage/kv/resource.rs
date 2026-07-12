@@ -1,7 +1,6 @@
 //! Generic KV resource trait, key-shape locators, and CRUD helpers.
 //!
-//! Stores and returns the Diesel Queryable model (not the `New` projection). Mirrors
-//! hyperswitch's `insert_resource` / `find_optional_resource_by_id`.
+//! Stores and returns the Diesel Queryable model (not the `New` projection).
 
 use error_stack::Report;
 use hyperswitch_redis_interface::{errors::RedisError, types::HsetnxReply};
@@ -24,7 +23,7 @@ use crate::{
 };
 
 /// A KV-routed table's Diesel Queryable model: stored in Redis, read back, returned to
-/// callers. Analog of hyperswitch `StorageModel<D>`.
+/// callers.
 pub(crate) trait KvResource:
     serde::Serialize
     + serde::de::DeserializeOwned
@@ -53,11 +52,12 @@ pub(crate) trait KvResource:
 
 pub(crate) struct InsertResourceParams<'a> {
     pub partition_key: PartitionKey<'a>,
-    pub identifier: &'static str,
+    /// Redis hash field the value is stored under.
+    pub field: &'static str,
 }
 
 /// Locator for a find. `Id` = plain-keyed (single HGet/HSetNx field).
-/// SEAM: add `LookupId(String)` for reverse-lookup tables with their first consumer.
+/// Extend with `LookupId(String)` for reverse-lookup tables when their first consumer lands.
 pub(crate) enum FindResourceBy<'a> {
     Id(&'static str, PartitionKey<'a>),
 }
@@ -109,7 +109,7 @@ where
             let key_str = params.partition_key.to_string();
             let reply = kv_wrapper::<(), M>(
                 store,
-                KvOperation::HSetNx(params.identifier, &model, drainer_query),
+                KvOperation::HSetNx(params.field, &model, drainer_query),
                 params.partition_key,
             )
             .await
@@ -149,9 +149,8 @@ where
             match result {
                 Ok(KvResult::HGet(v)) => Ok(Some(v)),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
-                    // Redis miss → fall back to Postgres (mirrors hyperswitch's
-                    // `try_redis_get_else_try_database_get`). In SoftKill this means
-                    // the key was never written to Redis, so we read from DB.
+                    // Redis miss → fall back to Postgres. In SoftKill this means the key was
+                    // never written to Redis, so we read from DB.
                     super::metrics::KV_MISS
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
                     M::storage_find_optional(store, &key).await

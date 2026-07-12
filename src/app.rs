@@ -121,24 +121,6 @@ impl MakeRequestId for MakeUuidV7 {
     }
 }
 
-/// Capture the request-id into a task-local for KV drainer stream entries.
-#[cfg(feature = "kv")]
-async fn scope_request_id(
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    let request_id = req
-        .extensions()
-        .get::<tower_http::request_id::RequestId>()
-        .and_then(|rid| rid.header_value().to_str().ok())
-        .map(ToString::to_string)
-        .unwrap_or_default();
-
-    crate::storage::kv::request_id::REQUEST_ID
-        .scope(request_id, next.run(req))
-        .await
-}
-
 #[allow(clippy::expect_used)]
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -276,25 +258,11 @@ pub async fn server_builder(
             ),
     );
 
-    // set_x_request_id runs before scope_request_id (innermost layer).
-    #[cfg(feature = "kv")]
-    {
-        router = router.layer(
-            ServiceBuilder::new()
-                .set_x_request_id(MakeUuidV7)
-                .propagate_x_request_id()
-                .layer(axum::middleware::from_fn(scope_request_id)),
-        );
-    }
-
-    #[cfg(not(feature = "kv"))]
-    {
-        router = router.layer(
-            ServiceBuilder::new()
-                .set_x_request_id(MakeUuidV7)
-                .propagate_x_request_id(),
-        );
-    }
+    router = router.layer(
+        ServiceBuilder::new()
+            .set_x_request_id(MakeUuidV7)
+            .propagate_x_request_id(),
+    );
 
     // Register default headers layer last so it wraps all routes, ensuring x-version is present on all responses.
     #[cfg(feature = "vergen")]

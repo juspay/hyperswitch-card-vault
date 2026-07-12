@@ -34,21 +34,15 @@ pub use scheme::StorageScheme;
 
 pub trait State {}
 
-/// Runtime config for read replica routing.
+/// All runtime configs, deserialized directly from the config endpoint's JSON body. Field names
+/// match the keys the endpoint returns; each `#[serde(default)]` field fails closed when absent.
 #[derive(Clone, Debug, Default, serde::Deserialize)]
-pub struct ReplicaRouting {
+pub struct RuntimeConfigValues {
+    #[cfg(feature = "kv")]
+    #[serde(default)]
+    enable_kv: kv::KvState,
     #[serde(default)]
     use_replica: bool,
-}
-
-impl crate::runtime_config::RuntimeConfigItem for ReplicaRouting {
-    const KEY: &'static str = "locker.use_read_replica";
-}
-
-/// Runtime-config binding: `locker.enable_kv` → `KvState`.
-#[cfg(feature = "kv")]
-impl crate::runtime_config::RuntimeConfigItem for kv::KvState {
-    const KEY: &'static str = "locker.enable_kv";
 }
 
 /// Storage State that is to be passed though the application
@@ -167,10 +161,9 @@ impl Storage {
         }
 
         self.runtime_config_manager
-            .get::<ReplicaRouting>()
+            .get::<RuntimeConfigValues>()
             .await
-            .map(|config| config.use_replica)
-            .unwrap_or(false)
+            .use_replica
     }
 
     /// Returns a connection from the replica pool when the runtime config enables it,
@@ -187,20 +180,13 @@ impl Storage {
         }
     }
 
-    /// Resolve `KvState` from the runtime-config endpoint only, fail-closed to `Disabled`.
+    /// Resolve `KvState` from runtime config; fail-closed to `Disabled` when absent.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::KvState {
         self.runtime_config_manager
-            .get::<kv::KvState>()
+            .get::<RuntimeConfigValues>()
             .await
-            .unwrap_or_else(|| {
-                crate::logger::info!(
-                    source = "fail_closed_default",
-                    kv_state = %kv::KvState::Disabled,
-                    "KV state unresolved from runtime config; defaulting to Disabled"
-                );
-                kv::KvState::Disabled
-            })
+            .enable_kv
     }
 }
 

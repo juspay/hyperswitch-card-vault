@@ -523,21 +523,9 @@ pub enum RuntimeConfig {
     Disabled,
     Enabled {
         endpoint: RuntimeConfigEndpoint,
-        #[serde(default = "default_runtime_config_ttl_seconds")]
-        ttl_seconds: u64,
-        #[serde(default = "default_runtime_config_cache_max_capacity")]
-        cache_max_capacity: u64,
         #[serde(default = "default_runtime_config_refresh_interval_seconds")]
         refresh_interval_seconds: u64,
     },
-}
-
-fn default_runtime_config_ttl_seconds() -> u64 {
-    30
-}
-
-fn default_runtime_config_cache_max_capacity() -> u64 {
-    32
 }
 
 fn default_runtime_config_refresh_interval_seconds() -> u64 {

@@ -7,8 +7,6 @@ pub(crate) mod metrics;
 #[cfg(feature = "kv")]
 pub(crate) mod partition_key;
 #[cfg(feature = "kv")]
-pub(crate) mod request_id;
-#[cfg(feature = "kv")]
 pub(crate) mod resource;
 pub(crate) mod scheme;
 pub(crate) mod serializable_query;

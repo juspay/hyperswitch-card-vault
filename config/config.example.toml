@@ -153,7 +153,6 @@ metrics_export_interval_secs = 60  # How often to export metrics (seconds)
 # [runtime_config]
 # mode = "enabled"
 # refresh_interval_seconds = 30
-# cache_max_capacity = 32
 
 # Endpoint needs to be specified if mode is "enabled"
 # [runtime_config.endpoint]
@@ -161,11 +160,9 @@ metrics_export_interval_secs = 60  # How often to export metrics (seconds)
 # api_key = "test_admin"
 # path = ""
 #
-# The endpoint at `{base_url}{path}` returns a single config object whose
-# `value` is a JSON-string array of {key, value} items, e.g.:
-#   {"key": "locker.config",
-#    "value": "[{\"key\":\"locker.use_read_replica\",\"value\":\"{\\\"use_read_replica\\\":true}\"},
-#               {\"key\":\"locker.enable_kv\",\"value\":\"{\\\"kv_state\\\":\\\"enabled\\\"}\"}]"}
+# The endpoint at `{base_url}{path}` returns `{"key": "...", "value": "<config json string>"}`,
+# where `value` is a JSON string holding the flat config object, e.g.:
+#   {"key":"locker.configs","value":"{\"enable_kv\":\"enabled\",\"use_replica\":false}"}
 
 # Optional static headers sent on every runtime config pull request (omit entirely to send none)
 # [runtime_config.endpoint.headers]
