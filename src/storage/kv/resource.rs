@@ -57,16 +57,10 @@ pub(crate) trait KvResource:
     ) -> Result<Option<Self>, ContainerError<Self::Error>>;
 }
 
-pub(crate) struct InsertResourceParams<'a> {
-    pub partition_key: PartitionKey<'a>,
-    /// Redis hash field the value is stored under.
-    pub field: &'static str,
-}
-
 /// Locator for a find. `Id` = plain-keyed (single HGet/HSetNx field).
 /// Extend with `LookupId(String)` for reverse-lookup tables when their first consumer lands.
 pub(crate) enum FindResourceBy<'a> {
-    Id(&'static str, PartitionKey<'a>),
+    Id(PartitionKey<'a>),
 }
 
 fn kv_backend_error<E>(report: Report<KvError>) -> ContainerError<E>
@@ -94,11 +88,11 @@ async fn decide(store: &Storage, op: Op) -> StorageScheme {
 /// Insert via HSetNx. `KeyNotSet` → `Duplicate`. `PostgresOnly` → `storage_insert`.
 /// On the RedisKv path the model's serial `id` is unresolved (e.g. `0`); the drainer
 /// assigns it on PG replay. Callers only see the business id (`fingerprint_id`).
-#[instrument(skip(store, diesel_new, params), fields(resource = M::ENTITY_TYPE))]
+#[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn insert_resource<M>(
     store: &Storage,
     mut diesel_new: M::DieselNew,
-    params: InsertResourceParams<'_>,
+    partition_key: PartitionKey<'_>,
 ) -> Result<M, ContainerError<M::Error>>
 where
     M: KvResource,
@@ -112,13 +106,13 @@ where
             let drainer_query = M::generate_insert_drainer_query(&diesel_new)
                 .map_err(kv_backend_error::<M::Error>)?;
 
-            let key_str = params.partition_key.to_string();
+            let key_str = partition_key.to_string();
             // apply the changes in applciation
             let diesel_model = diesel_new.into();
             let reply = kv_wrapper::<(), M>(
                 store,
-                KvOperation::HSetNx(params.field, &diesel_model, drainer_query),
-                params.partition_key,
+                KvOperation::HSetNx(&key_str, &diesel_model, drainer_query),
+                partition_key,
             )
             .await
             .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
@@ -145,14 +139,14 @@ where
     M: KvResource,
 {
     let scheme = decide(store, Op::Find).await;
-    let FindResourceBy::Id(field, key) = find_by;
+    let FindResourceBy::Id(key) = find_by;
 
     match scheme {
         StorageScheme::PostgresOnly => M::storage_find_optional(store, &key).await,
         StorageScheme::RedisKv => {
             let key_str = key.to_string();
             let result =
-                kv_wrapper::<M, M>(store, KvOperation::<M>::HGet(field), key.clone()).await;
+                kv_wrapper::<M, M>(store, KvOperation::<M>::HGet(&key_str), key.clone()).await;
 
             match result {
                 Ok(KvResult::HGet(v)) => Ok(Some(v)),

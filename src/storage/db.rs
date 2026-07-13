@@ -6,8 +6,6 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use hyperswitch_masking::PeekInterface;
 use hyperswitch_masking::{ExposeInterface, Secret};
 
-#[cfg(feature = "kv")]
-use super::kv::EntityType;
 use super::{
     MerchantInterface, Storage, schema, types,
     types::{StorageDecryption, StorageEncryption},
@@ -280,7 +278,7 @@ impl super::FingerprintInterface for Storage {
             // Return the Queryable model, not the New struct.
             return super::kv::find_optional_resource_by_id::<types::Fingerprint>(
                 self,
-                super::kv::FindResourceBy::Id(types::Fingerprint::ENTITY_TYPE, partition_key),
+                super::kv::FindResourceBy::Id(partition_key),
             )
             .await;
         }
@@ -321,10 +319,7 @@ impl super::FingerprintInterface for Storage {
             return super::kv::insert_resource::<types::Fingerprint>(
                 self,
                 finger_print_new,
-                super::kv::InsertResourceParams {
-                    partition_key,
-                    field: types::Fingerprint::ENTITY_TYPE,
-                },
+                partition_key,
             )
             .await;
         }

@@ -14,11 +14,8 @@ pub(crate) mod wrapper;
 
 #[cfg(feature = "kv")]
 pub(crate) use self::{
-    entity::EntityType,
     partition_key::PartitionKey,
-    resource::{
-        FindResourceBy, InsertResourceParams, find_optional_resource_by_id, insert_resource,
-    },
+    resource::{FindResourceBy, find_optional_resource_by_id, insert_resource},
 };
 pub(crate) use self::{
     scheme::KvState,
