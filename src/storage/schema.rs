@@ -22,7 +22,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    hash_table (hash_id) {
+    hash_table (data_hash) {
         id -> Int4,
         #[max_length = 255]
         hash_id -> Varchar,
