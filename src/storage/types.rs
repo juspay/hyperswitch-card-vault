@@ -198,6 +198,17 @@ pub struct Fingerprint {
     pub updated_by: StorageScheme,
 }
 
+impl From<FingerprintTableNew> for Fingerprint {
+    fn from(value: FingerprintTableNew) -> Self {
+        Self {
+            id: 0,
+            fingerprint_hash: value.fingerprint_hash,
+            fingerprint_id: value.fingerprint_id,
+            updated_by: value.updated_by,
+        }
+    }
+}
+
 #[cfg(feature = "external_key_manager")]
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::entity)]
@@ -235,10 +246,9 @@ impl std::ops::Deref for CardNumber {
     }
 }
 
-// Not serialized to Redis — the Queryable model (`Fingerprint` above) is the stored value.
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
-pub(super) struct FingerprintTableNew {
+pub(crate) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
     pub updated_by: StorageScheme,

@@ -36,13 +36,20 @@ pub(crate) trait KvResource:
 {
     type Error: error_stack::Context + Send + Sync + 'static + for<'a> From<&'a KvError>;
 
-    fn set_storage_scheme(&mut self, scheme: StorageScheme);
+    type DieselNew: Into<Self>;
+
+    fn set_storage_scheme(diesel_new: &mut Self::DieselNew, scheme: StorageScheme);
 
     /// Drainer INSERT — built from the `Insertable` `New` projection (the model is not
     /// `Insertable`). Implementations rebuild the `New` struct from the model's fields.
-    fn generate_insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError>;
+    fn generate_insert_drainer_query(
+        new_object: &Self::DieselNew,
+    ) -> error_stack::Result<SerializableQuery, KvError>;
 
-    async fn storage_insert(self, store: &Storage) -> Result<Self, ContainerError<Self::Error>>;
+    async fn storage_insert(
+        new_object: Self::DieselNew,
+        store: &Storage,
+    ) -> Result<Self, ContainerError<Self::Error>>;
 
     async fn storage_find_optional(
         store: &Storage,
@@ -87,36 +94,37 @@ async fn decide(store: &Storage, op: Op) -> StorageScheme {
 /// Insert via HSetNx. `KeyNotSet` → `Duplicate`. `PostgresOnly` → `storage_insert`.
 /// On the RedisKv path the model's serial `id` is unresolved (e.g. `0`); the drainer
 /// assigns it on PG replay. Callers only see the business id (`fingerprint_id`).
-#[instrument(skip(store, model, params), fields(resource = M::ENTITY_TYPE))]
+#[instrument(skip(store, diesel_new, params), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn insert_resource<M>(
     store: &Storage,
-    mut model: M,
+    mut diesel_new: M::DieselNew,
     params: InsertResourceParams<'_>,
 ) -> Result<M, ContainerError<M::Error>>
 where
     M: KvResource,
 {
     let scheme = decide(store, Op::Insert).await;
-    model.set_storage_scheme(scheme);
+    M::set_storage_scheme(&mut diesel_new, scheme);
 
     match scheme {
-        StorageScheme::PostgresOnly => model.storage_insert(store).await,
+        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
         StorageScheme::RedisKv => {
-            let drainer_query = model
-                .generate_insert_drainer_query()
+            let drainer_query = M::generate_insert_drainer_query(&diesel_new)
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = params.partition_key.to_string();
+            // apply the changes in applciation
+            let diesel_model = diesel_new.into();
             let reply = kv_wrapper::<(), M>(
                 store,
-                KvOperation::HSetNx(params.field, &model, drainer_query),
+                KvOperation::HSetNx(params.field, &diesel_model, drainer_query),
                 params.partition_key,
             )
             .await
             .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
 
             match reply.try_into_hsetnx() {
-                Ok(HsetnxReply::KeySet) => Ok(model),
+                Ok(HsetnxReply::KeySet) => Ok(diesel_model),
                 Ok(HsetnxReply::KeyNotSet) => Err(kv_duplicate_error::<M::Error>(&key_str)),
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     Report::new(e).change_context(KvError::Backend),

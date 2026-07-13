@@ -29,37 +29,29 @@ impl EntityType for Fingerprint {
 
 impl KvStorePartition for Fingerprint {}
 
-impl From<&Fingerprint> for FingerprintTableNew {
-    fn from(fingerprint: &Fingerprint) -> Self {
-        Self {
-            fingerprint_hash: fingerprint.fingerprint_hash.clone(),
-            fingerprint_id: fingerprint.fingerprint_id.clone(),
-            updated_by: fingerprint.updated_by,
-        }
-    }
-}
-
 impl KvResource for Fingerprint {
     type Error = FingerprintDBError;
 
-    fn set_storage_scheme(&mut self, scheme: StorageScheme) {
-        self.updated_by = scheme;
+    type DieselNew = FingerprintTableNew;
+
+    fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
+        new_object.updated_by = scheme;
     }
 
-    fn generate_insert_drainer_query(&self) -> error_stack::Result<SerializableQuery, KvError> {
-        let new = FingerprintTableNew::from(self);
-        generate_insert_query::<crate::storage::schema::fingerprint::table, _>(new)
+    fn generate_insert_drainer_query(
+        new_object: &Self::DieselNew,
+    ) -> error_stack::Result<SerializableQuery, KvError> {
+        generate_insert_query::<crate::storage::schema::fingerprint::table, _>(new_object.clone())
     }
 
     async fn storage_insert(
-        self,
+        new_object: Self::DieselNew,
         store: &Storage,
     ) -> Result<Self, ContainerError<FingerprintDBError>> {
-        let new = FingerprintTableNew::from(&self);
         // Writes always go to the primary pool, never a read replica.
         let mut conn = store.get_conn().await?;
         Ok(diesel::insert_into(Self::table())
-            .values(new)
+            .values(new_object)
             .get_result(&mut conn)
             .await?)
     }

@@ -309,8 +309,7 @@ impl super::FingerprintInterface for Storage {
             // `id: 0` — serial unknown at KV-insert time, assigned by drainer on replay.
             // `updated_by: PostgresOnly` is a placeholder — overwritten by `set_storage_scheme`
             // in `insert_resource` before the model is written to Redis or PG.
-            let model = types::Fingerprint {
-                id: 0,
+            let finger_print_new = types::FingerprintTableNew {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id,
                 updated_by: StorageScheme::PostgresOnly,
@@ -321,7 +320,7 @@ impl super::FingerprintInterface for Storage {
 
             return super::kv::insert_resource::<types::Fingerprint>(
                 self,
-                model,
+                finger_print_new,
                 super::kv::InsertResourceParams {
                     partition_key,
                     field: types::Fingerprint::ENTITY_TYPE,
