@@ -10,6 +10,8 @@ use diesel_async::{
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
 
+#[cfg(feature = "kv")]
+use crate::storage::redis as redis_store;
 use crate::{
     config::Database,
     crypto::encryption_manager::encryption_interface::Encryption,
@@ -56,9 +58,6 @@ pub struct Storage {
     #[cfg(feature = "kv")]
     kv_config: crate::config::KvConfig,
 }
-
-#[cfg(feature = "kv")]
-use crate::storage::redis as redis_store;
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
 
@@ -163,7 +162,7 @@ impl Storage {
         self.runtime_config_manager
             .get::<RuntimeConfigValues>()
             .await
-            .use_replica
+            .is_some_and(|runtime_conf| runtime_conf.use_replica)
     }
 
     /// Returns a connection from the replica pool when the runtime config enables it,
@@ -186,7 +185,8 @@ impl Storage {
         self.runtime_config_manager
             .get::<RuntimeConfigValues>()
             .await
-            .enable_kv
+            .map(|runtime_config_values| runtime_config_values.enable_kv)
+            .unwrap_or(kv::KvState::Disabled)
     }
 }
 

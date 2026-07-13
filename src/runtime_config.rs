@@ -95,22 +95,22 @@ impl RuntimeConfigManager {
 
     /// Deserialize the last-known-good config body into `T`. A disabled manager, no config fetched
     /// yet, or an unparseable payload yields `T::default()` (fail-closed).
-    pub async fn get<T: serde::de::DeserializeOwned + Default>(&self) -> T {
+    pub async fn get<T: serde::de::DeserializeOwned + Default>(&self) -> Option<T> {
         let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
-            return T::default();
+            return None;
         };
 
         let guard = cache.read().await;
         let Some(raw) = guard.as_deref() else {
             crate::logger::debug!("Runtime config not fetched yet");
-            return T::default();
+            return None;
         };
 
         match serde_json::from_str::<T>(raw) {
-            Ok(val) => val,
+            Ok(val) => Some(val),
             Err(error) => {
                 crate::logger::error!(?error, raw, "Failed to deserialize runtime config");
-                T::default()
+                None
             }
         }
     }
