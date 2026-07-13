@@ -227,6 +227,16 @@ function pickCard() {
     { number: "4000056655665556", month: "11", year: "28" },
     { number: "5105105105105100", month: "10", year: "29" },
     { number: "6011111111111117", month: "09", year: "31" },
+    { number: "378282246310005", month: "03", year: "29" },
+    { number: "371449635398431", month: "04", year: "30" },
+    { number: "30569309025904", month: "05", year: "28" },
+    { number: "38520000023237", month: "06", year: "29" },
+    { number: "6011000990139424", month: "07", year: "31" },
+    { number: "3566002020360505", month: "08", year: "30" },
+    { number: "5200828282828210", month: "01", year: "28" },
+    { number: "5555555555554444", month: "02", year: "29" },
+    { number: "4111111111111111", month: "12", year: "30" },
+    { number: "4988438866111706", month: "11", year: "29" },
   ]);
 }
 
