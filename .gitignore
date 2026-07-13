@@ -1,2 +1,4 @@
 /target
 .DS_Store
+certs/local/
+loadtest/results/

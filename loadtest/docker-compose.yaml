@@ -88,5 +88,15 @@ services:
       - "6565:6565"
     environment:
       - K6_OUT=influxdb=http://influxdb:8086/k6
+      - BASE_URL=${BASE_URL:-http://locker_server:8080}
+      - TENANT_ID=${TENANT_ID:-hyperswitch}
+      - DURATION=${DURATION:-5m}
+      - VUS=${VUS:-5}
+      - ENABLE_NEGATIVE=${ENABLE_NEGATIVE:-true}
+      - ENABLE_CUSTODIAN=${ENABLE_CUSTODIAN:-false}
+      - KEY1=${KEY1:-}
+      - KEY2=${KEY2:-}
+      - INSECURE_SKIP_TLS_VERIFY=${INSECURE_SKIP_TLS_VERIFY:-true}
     volumes:
       - ./scripts:/scripts
+      - ./results:/results
