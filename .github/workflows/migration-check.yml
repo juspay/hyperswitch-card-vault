@@ -27,15 +27,13 @@ jobs:
 
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/locker
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      PGHOST: localhost
-      PGPORT: 5432
 
     services:
       postgres:
         image: "postgres:alpine"
         env:
+          POSTGRES_DB: locker
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         options: >-
           --health-cmd pg_isready
