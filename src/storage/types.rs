@@ -72,7 +72,7 @@ impl From<LockerInner> for Locker {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Locker {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
@@ -84,7 +84,7 @@ pub struct Locker {
     pub updated_by: StorageScheme,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum Encryptable {
     Encrypted(Secret<Vec<u8>>),
     Decrypted(StrongSecret<Vec<u8>>),
@@ -118,18 +118,19 @@ impl From<Encrypted> for Encryptable {
 
 #[derive(Debug, Insertable, Clone)]
 #[diesel(table_name = schema::locker)]
-pub struct LockerNew<'a> {
+pub struct LockerNew {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Encrypted,
-    pub hash_id: &'a str,
+    pub created_at: time::PrimitiveDateTime,
+    pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
     pub updated_by: StorageScheme,
 }
 
-impl<'a> LockerNew<'a> {
-    pub fn new(request: StoreCardRequest, hash_id: &'a str, enc_data: Encrypted) -> Self {
+impl LockerNew {
+    pub fn new(request: StoreCardRequest, hash_id: &str, enc_data: Encrypted) -> Self {
         Self {
             locker_id: request
                 .requestor_card_reference
@@ -138,10 +139,26 @@ impl<'a> LockerNew<'a> {
             merchant_id: request.merchant_id,
             customer_id: request.merchant_customer_id,
             enc_data,
-            hash_id,
+            created_at: crate::utils::date_time::now(),
+            hash_id: hash_id.to_string(),
             ttl: *request.ttl,
             // Placeholder — overwritten by `set_storage_scheme` when locker joins KV.
             updated_by: StorageScheme::PostgresOnly,
+        }
+    }
+}
+
+impl From<LockerNew> for Locker {
+    fn from(value: LockerNew) -> Self {
+        Self {
+            locker_id: value.locker_id,
+            merchant_id: value.merchant_id,
+            customer_id: value.customer_id,
+            data: value.enc_data.into(),
+            created_at: value.created_at,
+            hash_id: value.hash_id,
+            ttl: value.ttl,
+            updated_by: value.updated_by,
         }
     }
 }
@@ -273,7 +290,7 @@ pub(super) struct HashTableNew {
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression)]
+#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
 pub struct Encrypted {

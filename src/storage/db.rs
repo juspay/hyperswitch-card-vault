@@ -89,16 +89,33 @@ impl super::LockerInterface for Storage {
 
     async fn insert_locker(
         &self,
-        new: types::LockerNew<'_>,
+        new: types::LockerNew,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let locker_id = new.locker_id.peek().clone();
+            let merchant_id = new.merchant_id.clone();
+            let customer_id = new.customer_id.clone();
+            let partition_key = super::kv::PartitionKey::Locker {
+                merchant_id: &merchant_id,
+                customer_id: &customer_id,
+                locker_id: &locker_id,
+            };
 
-        let output: types::LockerInner = diesel::insert_into(types::LockerInner::table())
-            .values(new)
-            .get_result(&mut conn)
-            .await?;
+            return super::kv::insert_resource::<types::Locker>(self, new, partition_key).await;
+        }
 
-        Ok(output.into())
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::LockerInner = diesel::insert_into(types::LockerInner::table())
+                .values(new)
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn find_by_locker_id_merchant_id_customer_id(
@@ -107,20 +124,40 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let locker_id = locker_id.peek().clone();
+            let partition_key = super::kv::PartitionKey::Locker {
+                merchant_id,
+                customer_id,
+                locker_id: &locker_id,
+            };
 
-        // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
-        let output: types::LockerInner = types::LockerInner::table()
-            .filter(
-                schema::locker::locker_id
-                    .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
+            return super::kv::find_optional_resource_by_id::<types::Locker>(
+                self,
+                super::kv::FindResourceBy::Id(partition_key),
             )
-            .get_result(&mut conn)
-            .await?;
+            .await?
+            .ok_or_else(|| ContainerError::from(error::VaultDBError::NotFoundError));
+        }
 
-        Ok(output.into())
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
+            let output: types::LockerInner = types::LockerInner::table()
+                .filter(
+                    schema::locker::locker_id
+                        .eq(locker_id.expose())
+                        .and(schema::locker::merchant_id.eq(merchant_id))
+                        .and(schema::locker::customer_id.eq(customer_id)),
+                )
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn find_optional_by_hash_id_merchant_id_customer_id(
