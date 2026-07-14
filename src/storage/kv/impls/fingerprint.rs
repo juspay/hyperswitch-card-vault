@@ -60,7 +60,10 @@ impl KvResource for Fingerprint {
         store: &Storage,
         pk: &PartitionKey<'_>,
     ) -> Result<Self, ContainerError<FingerprintDBError>> {
-        let PartitionKey::Fingerprint { fingerprint_hash } = pk;
+        let PartitionKey::Fingerprint { fingerprint_hash } = pk else {
+            return Err(ContainerError::from(FingerprintDBError::UnknownError));
+        };
+
         // Read path: route to the read replica when runtime config enables it.
         let mut conn = store.route_conn().await?;
         Ok(Self::table()
