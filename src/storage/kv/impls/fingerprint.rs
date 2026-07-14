@@ -38,10 +38,23 @@ impl KvResource for Fingerprint {
         new_object.updated_by = scheme;
     }
 
-    fn generate_insert_drainer_query(
+    async fn generate_insert_drainer_query(
         new_object: &Self::DieselNew,
-    ) -> error_stack::Result<SerializableQuery, KvError> {
-        generate_insert_query::<crate::storage::schema::fingerprint::table, _>(new_object.clone())
+        store: &Storage,
+    ) -> Result<SerializableQuery, ContainerError<FingerprintDBError>> {
+        let new_object = new_object.clone();
+
+        store
+            .with_sync_conn(move |conn| {
+                generate_insert_query::<crate::storage::schema::fingerprint::table, _>(
+                    conn, new_object,
+                )
+                .map_err(|report| {
+                    let context = FingerprintDBError::from(report.current_context());
+                    ContainerError::from(report.change_context(context))
+                })
+            })
+            .await
     }
 
     async fn storage_insert(

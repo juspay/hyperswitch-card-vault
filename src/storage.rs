@@ -1,5 +1,10 @@
 use std::sync::Arc;
 
+#[cfg(feature = "kv")]
+use diesel::{
+    PgConnection,
+    r2d2::{ConnectionManager, Pool as SyncPool},
+};
 use diesel_async::{
     AsyncPgConnection,
     pooled_connection::{
@@ -10,6 +15,8 @@ use diesel_async::{
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
 
+#[cfg(feature = "kv")]
+use crate::error::ErrorTransform;
 #[cfg(feature = "kv")]
 use crate::storage::redis as redis_store;
 use crate::{
@@ -52,6 +59,8 @@ pub struct RuntimeConfigValues {
 pub struct Storage {
     primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
+    #[cfg(feature = "kv")]
+    sync_pg_pool: Arc<SyncPgPoolType>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     #[cfg(feature = "kv")]
     redis: Option<redis_store::RedisStore>,
@@ -60,13 +69,12 @@ pub struct Storage {
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
+#[cfg(feature = "kv")]
+type SyncPgPoolType = SyncPool<ConnectionManager<PgConnection>>;
 
 impl Storage {
-    fn create_database_connection_pool(
-        database_config: &Database,
-        schema: &str,
-    ) -> error_stack::Result<Pool<AsyncPgConnection>, error::StorageError> {
-        let database_url = format!(
+    fn database_url(database_config: &Database, schema: &str) -> String {
+        format!(
             "postgres://{}:{}@{}:{}/{}?application_name={}&options=-c search_path%3D{}",
             database_config.username,
             database_config.password.peek(),
@@ -75,7 +83,14 @@ impl Storage {
             database_config.dbname,
             schema,
             schema
-        );
+        )
+    }
+
+    fn create_database_connection_pool(
+        database_config: &Database,
+        schema: &str,
+    ) -> error_stack::Result<Pool<AsyncPgConnection>, error::StorageError> {
+        let database_url = Self::database_url(database_config, schema);
 
         let config =
             pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
@@ -87,6 +102,27 @@ impl Storage {
         };
 
         pool.build()
+            .change_context(error::StorageError::DBPoolError)
+    }
+
+    #[cfg(feature = "kv")]
+    fn create_sync_database_connection_pool(
+        database_config: &Database,
+        schema: &str,
+    ) -> error_stack::Result<SyncPgPoolType, error::StorageError> {
+        let database_url = Self::database_url(database_config, schema);
+        let manager = ConnectionManager::<PgConnection>::new(database_url);
+        let pool = SyncPool::builder();
+
+        let pool = match database_config.pool_size {
+            Some(value) => pool.max_size(u32::try_from(value).map_err(|_| {
+                error_stack::Report::new(error::StorageError::DBPoolError)
+                    .attach_printable("database.pool_size exceeds u32::MAX")
+            })?),
+            None => pool,
+        };
+
+        pool.build(manager)
             .change_context(error::StorageError::DBPoolError)
     }
 
@@ -103,6 +139,11 @@ impl Storage {
             primary_config,
             schema,
         )?);
+        #[cfg(feature = "kv")]
+        let sync_pg_pool = Arc::new(Self::create_sync_database_connection_pool(
+            primary_config,
+            schema,
+        )?);
 
         let replica_pool = match replica_config {
             Some(config) => Some(Arc::new(Self::create_database_connection_pool(
@@ -114,6 +155,8 @@ impl Storage {
         Ok(Self {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
+            #[cfg(feature = "kv")]
+            sync_pg_pool,
             runtime_config_manager,
             #[cfg(feature = "kv")]
             redis,
@@ -129,6 +172,36 @@ impl Storage {
             .get()
             .await
             .change_context(error::StorageError::PoolClientFailure)?)
+    }
+
+    #[cfg(feature = "kv")]
+    pub(crate) async fn with_sync_conn<T, E, F>(&self, f: F) -> Result<T, ContainerError<E>>
+    where
+        T: Send + 'static,
+        E: error_stack::Context + Send + Sync + 'static + for<'a> From<&'a error::StorageError>,
+        F: FnOnce(&mut PgConnection) -> Result<T, ContainerError<E>> + Send + 'static,
+        ContainerError<E>: From<ContainerError<error::StorageError>>
+            + ErrorTransform<ContainerError<error::StorageError>>,
+    {
+        let pool = self.sync_pg_pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(error::StorageError::PoolClientFailure)
+                .map_err(ContainerError::<error::StorageError>::from)
+                .map_err(ContainerError::<E>::from)?;
+
+            f(&mut conn)
+        })
+        .await
+        .map_err(|error| {
+            let storage_error = ContainerError::<error::StorageError>::from(
+                error_stack::Report::new(error::StorageError::PoolClientFailure)
+                    .attach_printable(format!("Failed to join sync database task: {error}")),
+            );
+            ContainerError::<E>::from(storage_error)
+        })?
     }
 
     /// Get a connection from the read replica pool, if configured.
