@@ -1,6 +1,6 @@
 ## Prerequisites for Locker API Testing
 
-A postman collection is included in `docs/collection/hyperswitch-card-vault.postman_collection.json` for testing the Locker API. The collection contains requests for all the endpoints of the Locker API.
+A postman collection is included in `docs/collection/hyperswitch-card-vault.postman_collection.json` for testing the Locker API. The collection contains local HTTPS examples for the main Locker APIs. For the full local startup flow, see the [Local Development Guide](./local-development.md).
 
 Note: The requests in the Postman collection will not work when the `middleware` feature is enabled. This is because the requests need to be JWE (JSON Web Encryption) + JWS (JSON Web Signature) encrypted.
 

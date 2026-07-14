@@ -22,6 +22,10 @@ dbname = "locker"
 tti = 7200 # i.e. 2 hours
 max_capacity = 5000
 
+[tls]
+certificate = "certs/local/tls-cert.pem"
+private_key = "certs/local/tls-key.pem"
+
 [secrets]
 locker_private_key = ""
 

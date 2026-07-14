@@ -9,7 +9,7 @@ It is designed in an polymorphic manner to handle and store any type of sensitiv
 
 Hyperswitch Card Vault is built with a GDPR compliant personal identifiable information (PII) storage and secure encryption algorithms to be fully compliant with PCI DSS requirements.
 
-Here's a quick guide to [Get Started](./docs/guides/setup.md) with setting up Hyperswitch Card Vault.
+Here's a quick guide to [Get Started](./docs/guides/setup.md) with setting up Hyperswitch Card Vault. For local development with generated certificates and Postman testing, use the [Local Development Guide](./docs/guides/local-development.md).
 
 ### How does Hyperswitch Card Vault work?
 

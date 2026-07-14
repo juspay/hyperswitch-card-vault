@@ -1,5 +1,7 @@
 # Setup Guide
 
+For a local development setup with generated certificates, PostgreSQL migrations, and Postman testing, see the [Local Development Guide](./local-development.md).
+
 ## Prerequisites
 
 The locker consists of 3 main feature flags which will be enabled when building the docker image.
