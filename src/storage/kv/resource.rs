@@ -42,10 +42,9 @@ pub(crate) trait KvResource:
 
     /// Drainer INSERT — built from the `Insertable` `New` projection (the model is not
     /// `Insertable`). Implementations rebuild the `New` struct from the model's fields.
-    async fn generate_insert_drainer_query(
+    fn generate_insert_drainer_query(
         new_object: &Self::DieselNew,
-        store: &Storage,
-    ) -> Result<SerializableQuery, ContainerError<Self::Error>>;
+    ) -> error_stack::Result<SerializableQuery, KvError>;
 
     async fn storage_insert(
         new_object: Self::DieselNew,
@@ -104,7 +103,8 @@ where
     match scheme {
         StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
         StorageScheme::RedisKv => {
-            let drainer_query = M::generate_insert_drainer_query(&diesel_new, store).await?;
+            let drainer_query = M::generate_insert_drainer_query(&diesel_new)
+                .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = partition_key.to_string();
             // apply the changes in application
