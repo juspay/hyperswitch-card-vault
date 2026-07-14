@@ -194,7 +194,7 @@ up_down_counter_metric!(
     unit: "1",
 );
 
-// JWE/JWS Middleware
+// JWE/JWS middleware
 #[cfg(feature = "middleware")]
 histogram_metric_f64!(
     pub(crate) HTTP_SERVER_JWE_MIDDLEWARE_OPERATION_DURATION, CARD_VAULT_METER,
@@ -240,6 +240,21 @@ histogram_metric_f64!(
     pub(crate) DATABASE_CONNECTION_ACQUIRE_DURATION, CARD_VAULT_METER,
     name: "database.connection.acquire.duration",
     description: "Duration of database connection acquisition attempts",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
+
+// External HTTP client
+counter_metric!(
+    pub(crate) EXTERNAL_HTTP_REQUEST_COUNT, CARD_VAULT_METER,
+    name: "external_http.request.count",
+    description: "Number of external HTTP request attempts",
+    unit: "1",
+);
+histogram_metric_f64!(
+    pub(crate) EXTERNAL_HTTP_REQUEST_DURATION, CARD_VAULT_METER,
+    name: "external_http.request.duration",
+    description: "Duration of completed external HTTP requests",
     unit: "s",
     buckets: f64_histogram_buckets(),
 );

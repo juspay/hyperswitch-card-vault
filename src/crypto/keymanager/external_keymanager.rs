@@ -37,6 +37,7 @@ pub async fn create_key_in_key_manager(
 
     let response = call_encryption_service::<_, error::DataKeyCreationError>(
         tenant_app_state,
+        "key_create",
         url,
         Method::Post,
         request_body,
@@ -64,6 +65,7 @@ pub async fn transfer_key_to_key_manager(
 
     let response = call_encryption_service::<_, error::DataKeyTransferError>(
         tenant_app_state,
+        "key_transfer",
         url,
         Method::Post,
         request_body,
@@ -89,6 +91,7 @@ pub async fn encrypt_data_using_key_manager(
 
     let response = call_encryption_service::<_, error::DataEncryptionError>(
         tenant_app_state,
+        "data_encrypt",
         url,
         Method::Post,
         request_body,
@@ -114,6 +117,7 @@ pub async fn decrypt_data_using_key_manager(
 
     let response = call_encryption_service::<_, error::DataDecryptionError>(
         tenant_app_state,
+        "data_decrypt",
         url,
         Method::Post,
         request_body,
@@ -144,6 +148,7 @@ pub async fn health_check_keymanager(
 
     call_encryption_service::<_, error::KeyManagerHealthCheckError>(
         tenant_app_state,
+        "health",
         url,
         Method::Get,
         (),
@@ -155,6 +160,7 @@ pub async fn health_check_keymanager(
 
 pub async fn call_encryption_service<T, E>(
     tenant_app_state: &TenantAppState,
+    operation: &'static str,
     url: String,
     method: Method,
     request_body: T,
@@ -167,7 +173,7 @@ where
 
     let response = tenant_app_state
         .api_client
-        .send_request::<_>(url, headers, method, request_body)
+        .send_request(operation, url, headers, method, request_body)
         .await?;
 
     Ok(response)
