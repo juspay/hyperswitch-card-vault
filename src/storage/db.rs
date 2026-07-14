@@ -133,12 +133,11 @@ impl super::LockerInterface for Storage {
                 locker_id: &locker_id,
             };
 
-            return super::kv::find_optional_resource_by_id::<types::Locker>(
+            return super::kv::find_resource_by_id::<types::Locker>(
                 self,
                 super::kv::FindResourceBy::Id(partition_key),
             )
-            .await?
-            .ok_or_else(|| ContainerError::from(error::VaultDBError::NotFoundError));
+            .await;
         }
 
         #[cfg(not(feature = "kv"))]
