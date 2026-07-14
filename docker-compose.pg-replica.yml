@@ -1,0 +1,47 @@
+services:
+  pg-primary:
+    image: bitnami/postgresql:16
+    container_name: locker-pg-primary
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+      POSTGRESQL_USERNAME: db_user
+      POSTGRESQL_PASSWORD: db_pass
+      POSTGRESQL_DATABASE: locker
+    volumes:
+      - pg_primary_data:/bitnami/postgresql
+
+  pg-replica:
+    image: bitnami/postgresql:16
+    container_name: locker-pg-replica
+    ports:
+      - "5433:5432"
+    depends_on:
+      - pg-primary
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: pg-primary
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+      POSTGRESQL_USERNAME: db_user
+      POSTGRESQL_PASSWORD: db_pass
+    volumes:
+      - pg_replica_data:/bitnami/postgresql
+
+  runtime-config:
+    image: python:3.12-alpine
+    container_name: locker-runtime-config
+    working_dir: /app
+    command: python -m http.server 9091
+    ports:
+      - "9091:9091"
+    volumes:
+      - ./dev/runtime-config:/app:ro
+
+volumes:
+  pg_primary_data:
+  pg_replica_data:
