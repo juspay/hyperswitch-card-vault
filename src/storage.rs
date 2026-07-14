@@ -10,6 +10,8 @@ use diesel_async::{
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
 
+#[cfg(feature = "kv")]
+use crate::storage::redis as redis_store;
 use crate::{
     config::Database,
     crypto::encryption_manager::encryption_interface::Encryption,
@@ -20,24 +22,29 @@ use crate::{
 pub mod caching;
 pub mod consts;
 pub mod db;
+#[cfg(feature = "kv")]
+pub mod kv;
 #[cfg(feature = "redis")]
 pub mod redis;
 pub mod schema;
+pub mod scheme;
 pub mod storage_v2;
 pub mod types;
 pub mod utils;
 
+pub use scheme::StorageScheme;
+
 pub trait State {}
 
-/// Runtime config for read replica routing.
+/// All runtime configs, deserialized directly from the config endpoint's JSON body. Field names
+/// match the keys the endpoint returns; each `#[serde(default)]` field fails closed when absent.
 #[derive(Clone, Debug, Default, serde::Deserialize)]
-pub struct ReplicaRouting {
+pub struct RuntimeConfigValues {
+    #[cfg(feature = "kv")]
+    #[serde(default)]
+    enable_kv: kv::KvState,
     #[serde(default)]
     use_replica: bool,
-}
-
-impl ReplicaRouting {
-    const CONFIG_KEY: &str = "locker.use_read_replica";
 }
 
 /// Storage State that is to be passed though the application
@@ -46,6 +53,10 @@ pub struct Storage {
     primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
+    #[cfg(feature = "kv")]
+    redis: Option<redis_store::RedisStore>,
+    #[cfg(feature = "kv")]
+    kv_config: crate::config::KvConfig,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -85,6 +96,8 @@ impl Storage {
         replica_config: Option<&Database>,
         schema: &str,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
+        #[cfg(feature = "kv")] redis: Option<redis_store::RedisStore>,
+        #[cfg(feature = "kv")] kv_config: &crate::config::KvConfig,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -102,6 +115,10 @@ impl Storage {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
             runtime_config_manager,
+            #[cfg(feature = "kv")]
+            redis,
+            #[cfg(feature = "kv")]
+            kv_config: kv_config.clone(),
         })
     }
 
@@ -143,10 +160,9 @@ impl Storage {
         }
 
         self.runtime_config_manager
-            .get_config::<ReplicaRouting>(ReplicaRouting::CONFIG_KEY)
+            .get::<RuntimeConfigValues>()
             .await
-            .map(|config| config.use_replica)
-            .unwrap_or(false)
+            .is_some_and(|runtime_conf| runtime_conf.use_replica)
     }
 
     /// Returns a connection from the replica pool when the runtime config enables it,
@@ -161,6 +177,50 @@ impl Storage {
             crate::logger::debug!("Routing to primary pool");
             self.get_conn().await
         }
+    }
+
+    /// Resolve `KvState` from runtime config; fail-closed to `Disabled` when absent.
+    #[cfg(feature = "kv")]
+    pub(crate) async fn kv_settings(&self) -> kv::KvState {
+        self.runtime_config_manager
+            .get::<RuntimeConfigValues>()
+            .await
+            .map(|runtime_config_values| runtime_config_values.enable_kv)
+            .unwrap_or(kv::KvState::Disabled)
+    }
+}
+
+#[cfg(feature = "kv")]
+impl kv::RedisConnInterface for Storage {
+    fn get_redis_conn(
+        &self,
+    ) -> error_stack::Result<
+        std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>,
+        hyperswitch_redis_interface::errors::RedisError,
+    > {
+        self.redis
+            .as_ref()
+            .map(|r| r.get_redis_conn())
+            .ok_or_else(|| {
+                error_stack::Report::new(
+                    hyperswitch_redis_interface::errors::RedisError::RedisConnectionError,
+                )
+            })
+    }
+}
+
+#[cfg(feature = "kv")]
+impl kv::KvStoreContext for Storage {
+    fn ttl_for_kv(&self) -> u32 {
+        self.kv_config.ttl_for_kv
+    }
+
+    fn drainer_stream_name(&self, shard_key: &str) -> String {
+        self.kv_config.drainer_stream_name(shard_key)
+    }
+
+    fn drainer_num_partitions(&self) -> u8 {
+        self.kv_config.drainer_num_partitions
     }
 }
 

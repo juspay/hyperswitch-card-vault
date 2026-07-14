@@ -2,6 +2,8 @@ use diesel::{
     BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+#[cfg(feature = "kv")]
+use hyperswitch_masking::PeekInterface;
 use hyperswitch_masking::{ExposeInterface, Secret};
 
 use super::{
@@ -12,6 +14,7 @@ use super::{
 use crate::{
     crypto::encryption_manager::managers::aes,
     error::{self, ContainerError, ResultContainerExt},
+    storage::scheme::StorageScheme,
 };
 
 impl MerchantInterface for Storage {
@@ -192,6 +195,8 @@ impl super::HashInterface for Storage {
             .values(types::HashTableNew {
                 hash_id: utils::generate_uuid(),
                 data_hash,
+                // Placeholder — overwritten by `set_storage_scheme` when hash_table joins KV.
+                updated_by: StorageScheme::PostgresOnly,
             })
             .get_result(&mut conn)
             .await?;
@@ -220,6 +225,8 @@ impl super::TestInterface for Storage {
                         .values(types::HashTableNew {
                             hash_id: "test".to_string(),
                             data_hash: b"0".to_vec(),
+                            // Test-only — always PostgresOnly.
+                            updated_by: StorageScheme::PostgresOnly,
                         })
                         .execute(x)
                         .await
@@ -261,15 +268,33 @@ impl super::FingerprintInterface for Storage {
         &self,
         fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let fp_bytes = fingerprint_hash.peek().clone();
+            let partition_key = super::kv::PartitionKey::Fingerprint {
+                fingerprint_hash: &fp_bytes,
+            };
 
-        let output = types::Fingerprint::table()
-            .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash))
-            .get_result::<types::Fingerprint>(&mut conn)
-            .await
-            .optional()?;
+            // Return the Queryable model, not the New struct.
+            return super::kv::find_optional_resource_by_id::<types::Fingerprint>(
+                self,
+                super::kv::FindResourceBy::Id(partition_key),
+            )
+            .await;
+        }
 
-        Ok(output)
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output = types::Fingerprint::table()
+                .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash))
+                .get_result::<types::Fingerprint>(&mut conn)
+                .await
+                .optional()?;
+
+            Ok(output)
+        }
     }
 
     async fn insert_fingerprint(
@@ -277,17 +302,43 @@ impl super::FingerprintInterface for Storage {
         fingerprint_hash: Secret<Vec<u8>>,
         fingerprint_id: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
-
-        let output: types::Fingerprint = diesel::insert_into(types::Fingerprint::table())
-            .values(types::FingerprintTableNew {
-                fingerprint_hash,
+        #[cfg(feature = "kv")]
+        {
+            // `id: 0` — serial unknown at KV-insert time, assigned by drainer on replay.
+            // `updated_by: PostgresOnly` is a placeholder — overwritten by `set_storage_scheme`
+            // in `insert_resource` before the model is written to Redis or PG.
+            let finger_print_new = types::FingerprintTableNew {
+                fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id,
-            })
-            .get_result(&mut conn)
-            .await?;
+                updated_by: StorageScheme::PostgresOnly,
+            };
+            let partition_key = super::kv::PartitionKey::Fingerprint {
+                fingerprint_hash: fingerprint_hash.peek().as_slice(),
+            };
 
-        Ok(output)
+            return super::kv::insert_resource::<types::Fingerprint>(
+                self,
+                finger_print_new,
+                partition_key,
+            )
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::Fingerprint = diesel::insert_into(types::Fingerprint::table())
+                .values(types::FingerprintTableNew {
+                    fingerprint_hash,
+                    fingerprint_id,
+                    updated_by: StorageScheme::PostgresOnly,
+                })
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output)
+        }
     }
 }
 
