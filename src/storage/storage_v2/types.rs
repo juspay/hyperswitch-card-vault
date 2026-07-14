@@ -10,7 +10,7 @@ use crate::{
     },
 };
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Vault {
     pub vault_id: Secret<String>,
     pub entity_id: String,
@@ -46,7 +46,7 @@ impl VaultNew {
 
 #[derive(Debug, Identifiable, Queryable)]
 #[diesel(table_name = schema::vault)]
-pub(super) struct VaultInner {
+pub(crate) struct VaultInner {
     id: i32,
     entity_id: String,
     vault_id: Secret<String>,

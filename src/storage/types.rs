@@ -84,7 +84,7 @@ pub struct Locker {
     pub updated_by: StorageScheme,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum Encryptable {
     Encrypted(Secret<Vec<u8>>),
     Decrypted(StrongSecret<Vec<u8>>),
@@ -273,7 +273,7 @@ pub(super) struct HashTableNew {
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression)]
+#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
 pub struct Encrypted {
