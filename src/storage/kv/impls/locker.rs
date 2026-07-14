@@ -9,7 +9,7 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::KvResource,
+            resource::{KvResource, ReverseLookupKey},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
         types::{Locker, LockerInner, LockerNew},
@@ -39,6 +39,21 @@ impl KvResource for Locker {
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
         generate_insert_query::<crate::storage::schema::locker::table, _>(new_object.clone())
+    }
+
+    fn get_reverse_lookup_key(
+        new_object: &Self::DieselNew,
+        _partition_key: &PartitionKey<'_>,
+    ) -> Option<ReverseLookupKey> {
+        Some(ReverseLookupKey {
+            lookup_id: format!(
+                "{}_{}_{}_{}",
+                Self::ENTITY_TYPE,
+                new_object.merchant_id,
+                new_object.customer_id,
+                new_object.hash_id
+            ),
+        })
     }
 
     async fn storage_insert(

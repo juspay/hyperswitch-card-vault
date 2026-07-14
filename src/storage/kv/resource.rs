@@ -19,8 +19,13 @@ use crate::{
         ContainerError, StorageErrorExt,
         kv::{KvError, RedisErrorExt},
     },
-    storage::Storage,
+    storage::{ReverseLookupInterface, Storage, types},
 };
+
+/// Secondary-to-primary mapping metadata emitted by a KV resource.
+pub(crate) struct ReverseLookupKey {
+    pub lookup_id: String,
+}
 
 /// A KV-routed table's Diesel Queryable model: stored in Redis, read back, returned to
 /// callers.
@@ -50,6 +55,13 @@ pub(crate) trait KvResource:
     fn generate_insert_drainer_query(
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError>;
+
+    fn get_reverse_lookup_key(
+        _new_object: &Self::DieselNew,
+        _partition_key: &PartitionKey<'_>,
+    ) -> Option<ReverseLookupKey> {
+        None
+    }
 
     async fn storage_insert(
         new_object: Self::DieselNew,
@@ -111,20 +123,44 @@ where
             let drainer_query = M::generate_insert_drainer_query(&diesel_new)
                 .map_err(kv_backend_error::<M::Error>)?;
 
-            let key_str = partition_key.to_string();
+            let partition_key_str = partition_key.to_string();
+            if let Some(reverse_lookup_key) = M::get_reverse_lookup_key(&diesel_new, &partition_key)
+            {
+                store
+                    .insert_reverse_lookup(types::ReverseLookupNew {
+                        lookup_id: reverse_lookup_key.lookup_id.clone(),
+                        secondary_key: reverse_lookup_key.lookup_id,
+                        partition_key: partition_key_str.clone(),
+                        source: M::ENTITY_TYPE.to_string(),
+                        update_by: scheme.to_string(),
+                    })
+                    .await
+                    .map_err(|err| {
+                        kv_backend_error::<M::Error>(
+                            Report::new(KvError::Backend).attach_printable(format!(
+                                "failed to insert reverse lookup record: {err}"
+                            )),
+                        )
+                    })?;
+            }
+
             // apply the changes in application
             let diesel_model = diesel_new.into();
             let reply = kv_wrapper::<(), M>(
                 store,
-                KvOperation::HSetNx(&key_str, &diesel_model, drainer_query),
+                KvOperation::HSetNx(&partition_key_str, &diesel_model, drainer_query),
                 partition_key,
             )
             .await
-            .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
+            .map_err(|e| {
+                kv_backend_error::<M::Error>(e.to_redis_failed_response(&partition_key_str))
+            })?;
 
             match reply.try_into_hsetnx() {
                 Ok(HsetnxReply::KeySet) => Ok(diesel_model),
-                Ok(HsetnxReply::KeyNotSet) => Err(kv_duplicate_error::<M::Error>(&key_str)),
+                Ok(HsetnxReply::KeyNotSet) => {
+                    Err(kv_duplicate_error::<M::Error>(&partition_key_str))
+                }
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     Report::new(e).change_context(KvError::Backend),
                 )),
