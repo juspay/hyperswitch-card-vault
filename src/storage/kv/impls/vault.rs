@@ -1,4 +1,4 @@
-use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 
 use crate::{
@@ -35,21 +35,10 @@ impl KvResource for Vault {
         new_object.updated_by = scheme;
     }
 
-    async fn generate_insert_drainer_query(
+    fn generate_insert_drainer_query(
         new_object: &Self::DieselNew,
-        store: &Storage,
-    ) -> Result<SerializableQuery, ContainerError<VaultDBError>> {
-        let new_object = new_object.clone();
-
-        store
-            .with_sync_conn(move |conn| {
-                generate_insert_query::<crate::storage::schema::vault::table, _>(conn, new_object)
-                    .map_err(|report| {
-                        let context = VaultDBError::from(report.current_context());
-                        ContainerError::from(report.change_context(context))
-                    })
-            })
-            .await
+    ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
+        generate_insert_query::<crate::storage::schema::vault::table, _>(new_object.clone())
     }
 
     async fn storage_insert(
@@ -64,29 +53,28 @@ impl KvResource for Vault {
         Ok(output.into())
     }
 
-    async fn storage_find_optional(
+    async fn storage_find(
         store: &Storage,
         pk: &PartitionKey<'_>,
-    ) -> Result<Option<Self>, ContainerError<VaultDBError>> {
+    ) -> Result<Self, ContainerError<VaultDBError>> {
         let PartitionKey::Vault {
             entity_id,
             vault_id,
         } = pk
         else {
-            return Ok(None);
+            return Err(ContainerError::from(VaultDBError::UnknownError));
         };
 
         let mut conn = store.route_conn().await?;
-        let output = crate::storage::schema::vault::table
+        let output: VaultInner = crate::storage::schema::vault::table
             .filter(
                 crate::storage::schema::vault::vault_id
                     .eq(*vault_id)
                     .and(crate::storage::schema::vault::entity_id.eq(*entity_id)),
             )
             .get_result::<VaultInner>(&mut conn)
-            .await
-            .optional()?;
+            .await?;
 
-        Ok(output.map(From::from))
+        Ok(output.into())
     }
 }
