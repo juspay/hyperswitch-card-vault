@@ -259,7 +259,6 @@ const CARD_FIXTURES = [
     { number: "5200828282828210", month: "01", year: "28" },
     { number: "5555555555554444", month: "02", year: "29" },
     { number: "4111111111111111", month: "12", year: "30" },
-    { number: "4988438866111706", month: "11", year: "29" },
 ];
 
 function pickCard() {
