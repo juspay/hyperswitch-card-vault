@@ -119,12 +119,11 @@ drainer_stream_suffix = "DRAINER_STREAM"  # suffix for the drainer stream name
 drainer_num_partitions = 16        # number of shard partitions (must be > 0)
 ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 
-# KV enablement is controlled SOLELY at runtime via the `locker.enable_kv` runtime-config
-# key (see [runtime_config] below).  There is no TOML fallback — a single source of truth
-# avoids drift.  When the endpoint is disabled or unreachable the service fails closed to
-# "disabled" (all reads/writes go to Postgres).  The endpoint may return either:
-#   a string: "disabled" | "enabled" | "soft_kill"
-#   or the legacy object: {"enable_kv": true, "soft_kill": false}
+# KV enablement is controlled SOLELY at runtime via the runtime-config endpoint (see
+# [runtime_config] below).  There is no TOML fallback — a single source of truth avoids drift.
+# When the endpoint is disabled or unreachable the service fails closed to "disabled"
+# (all reads/writes go to Postgres).  The endpoint returns the config object as its `value`:
+#   {"enable_kv": "disabled" | "enabled" | "soft_kill", "use_replica": true | false}
 #   "enabled"   → write-through Redis (writes → Redis + drainer; reads → Redis-first)
 #   "soft_kill" → gradual rollout (inserts → Postgres, reads → Redis-first)
 
