@@ -8,7 +8,7 @@ use crate::error::{ReverseLookupDBError, kv::KvError};
 impl From<&KvError> for ReverseLookupDBError {
     fn from(e: &KvError) -> Self {
         match e {
-            KvError::DuplicateValue { .. } => Self::DBInsertError,
+            KvError::DuplicateValue { .. } => Self::Duplicate,
             KvError::ValueNotFound(_) => Self::NotFoundError,
             KvError::Backend | KvError::SerializationFailed => Self::UnknownError,
         }

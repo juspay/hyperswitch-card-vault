@@ -330,6 +330,7 @@ impl<'a> From<&'a super::ReverseLookupDBError> for super::ApiError {
             super::ReverseLookupDBError::DBInsertError => {
                 Self::DatabaseInsertFailed("reverse lookup")
             }
+            super::ReverseLookupDBError::Duplicate => Self::DatabaseInsertFailed("reverse lookup"),
             super::ReverseLookupDBError::NotFoundError => Self::NotFoundError,
             super::ReverseLookupDBError::UnknownError => Self::UnknownError,
         }

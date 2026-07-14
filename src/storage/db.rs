@@ -394,12 +394,11 @@ impl super::ReverseLookupInterface for Storage {
         {
             let partition_key = super::kv::PartitionKey::ReverseLookup { lookup_id };
 
-            return super::kv::find_optional_resource_by_id::<types::ReverseLookup>(
+            return super::kv::find_resource_by_id::<types::ReverseLookup>(
                 self,
                 super::kv::FindResourceBy::Id(partition_key),
             )
-            .await?
-            .ok_or_else(|| ContainerError::from(error::ReverseLookupDBError::NotFoundError));
+            .await;
         }
 
         #[cfg(not(feature = "kv"))]

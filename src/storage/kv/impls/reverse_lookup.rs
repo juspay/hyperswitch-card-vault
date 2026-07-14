@@ -1,8 +1,8 @@
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable};
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
 
 use crate::{
-    error::{self, ContainerError, ResultContainerExt, ReverseLookupDBError},
+    error::{self, ContainerError, ResultContainerExt, ReverseLookupDBError, kv::KvError},
     storage::{
         Storage,
         kv::{
@@ -35,23 +35,12 @@ impl KvResource for ReverseLookup {
         new_object.update_by = scheme.to_string();
     }
 
-    async fn generate_insert_drainer_query(
+    fn generate_insert_drainer_query(
         new_object: &Self::DieselNew,
-        store: &Storage,
-    ) -> Result<SerializableQuery, ContainerError<ReverseLookupDBError>> {
-        let new_object = new_object.clone();
-
-        store
-            .with_sync_conn(move |conn| {
-                generate_insert_query::<crate::storage::schema::reverse_lookup::table, _>(
-                    conn, new_object,
-                )
-                .map_err(|report| {
-                    let context = ReverseLookupDBError::from(report.current_context());
-                    ContainerError::from(report.change_context(context))
-                })
-            })
-            .await
+    ) -> error_stack::Result<SerializableQuery, KvError> {
+        generate_insert_query::<crate::storage::schema::reverse_lookup::table, _>(
+            new_object.clone(),
+        )
     }
 
     async fn storage_insert(
@@ -67,23 +56,29 @@ impl KvResource for ReverseLookup {
             .map_err(From::from)
     }
 
-    async fn storage_find_optional(
+    async fn storage_find(
         store: &Storage,
         pk: &PartitionKey<'_>,
-    ) -> Result<Option<Self>, ContainerError<ReverseLookupDBError>> {
+    ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
         let PartitionKey::ReverseLookup { lookup_id } = pk else {
-            return Ok(None);
+            return Err(ContainerError::from(ReverseLookupDBError::DBFilterError));
         };
 
         let mut conn = store.route_conn().await?;
-        let output = Self::table()
+        let output: Result<Self, diesel::result::Error> = Self::table()
             .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(*lookup_id))
             .get_result::<Self>(&mut conn)
-            .await
-            .optional()
-            .change_error(error::StorageError::FindError)
-            .map_err(ContainerError::<ReverseLookupDBError>::from)?;
+            .await;
 
-        Ok(output)
+        match output {
+            Err(err) => match err {
+                diesel::result::Error::NotFound => {
+                    Err(err).change_error(error::StorageError::NotFoundError)
+                }
+                _ => Err(err).change_error(error::StorageError::FindError),
+            },
+            Ok(reverse_lookup) => Ok(reverse_lookup),
+        }
+        .map_err(From::from)
     }
 }
