@@ -63,7 +63,7 @@ use diesel::{
     Insertable,
     associations::HasTable,
     debug_query,
-    pg::{Pg, PgConnection},
+    pg::Pg,
     query_builder::{
         InsertStatement, QueryBuilder, QueryFragment, bind_collector::RawBytesBindCollector,
     },
@@ -77,6 +77,23 @@ use super::entity::EntityType;
 use crate::error::kv::KvError;
 
 type SecretBinaryData = Secret<Vec<u8>>;
+
+// Offline query builder — no live `PgConnection` available, so `Pg` alone can't
+// satisfy `PgMetadataLookup`. This stub returns a dummy OID; the drainer replays
+// with a live connection that resolves real OIDs at execution time.
+const FAKE_OID: u32 = 0;
+
+struct KvPgMetadataLookup;
+
+impl diesel::pg::PgMetadataLookup for KvPgMetadataLookup {
+    fn lookup_type(
+        &mut self,
+        _type_name: &str,
+        _schema: Option<&str>,
+    ) -> diesel::pg::PgTypeMetadata {
+        diesel::pg::PgTypeMetadata::from_result(Ok((FAKE_OID, FAKE_OID)))
+    }
+}
 
 /// SQL query and bind parameters in a serializable representation.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -116,7 +133,6 @@ impl SerializableQuery {
 
     /// Construct a `SerializableQuery` from any diesel query fragment.
     fn from_query<Q>(
-        conn: &mut PgConnection,
         query: Q,
         entity_type: String,
         operation: DatabaseOperation,
@@ -141,8 +157,9 @@ impl SerializableQuery {
             )?;
 
         let mut bind_collector = RawBytesBindCollector::<Pg>::new();
+        let mut metadata_lookup = KvPgMetadataLookup;
         query
-            .collect_binds(&mut bind_collector, conn, &Pg)
+            .collect_binds(&mut bind_collector, &mut metadata_lookup, &Pg)
             .change_context(KvError::SerializationFailed)
             .attach_printable("Failed to construct bind parameters")?;
 
@@ -153,7 +170,7 @@ impl SerializableQuery {
                 .into_iter()
                 .map(|option| option.map(Secret::new))
                 .collect(),
-            metadata: bind_collector.metadata,
+            metadata: bind_collector.metadata.clone(),
             safe_to_cache_prepared,
             entity_type,
             operation,
@@ -181,10 +198,7 @@ impl SerializableQuery {
     }
 }
 
-pub(crate) fn generate_insert_query<T, N>(
-    conn: &mut PgConnection,
-    new: N,
-) -> error_stack::Result<SerializableQuery, KvError>
+pub(crate) fn generate_insert_query<T, N>(new: N) -> error_stack::Result<SerializableQuery, KvError>
 where
     T: HasTable<Table = T> + Table + Send + 'static,
     N: Insertable<T> + EntityType,
@@ -193,6 +207,6 @@ where
 {
     let entity_type = N::ENTITY_TYPE.to_owned();
     let query = diesel::insert_into(<T as HasTable>::table()).values(new);
-    SerializableQuery::from_query(conn, query, entity_type, DatabaseOperation::Insert)
+    SerializableQuery::from_query(query, entity_type, DatabaseOperation::Insert)
         .attach_printable("Failed to generate insert query")
 }
