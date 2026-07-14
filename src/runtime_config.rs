@@ -93,9 +93,11 @@ impl RuntimeConfigManager {
         })
     }
 
-    /// Deserialize the last-known-good config body into `T`. Returns `None` for a disabled manager,
-    /// no config fetched yet, or an unparsable payload — callers fall back to their safe default.
-    pub async fn get<T: serde::de::DeserializeOwned + Default>(&self) -> Option<T> {
+    /// Deserialize the last-known-good config body into `T`.
+    ///
+    /// Returns `None` when the manager is disabled, no config has been fetched yet, or the
+    /// cached payload cannot be deserialized into `T`.
+    pub async fn get<T: serde::de::DeserializeOwned>(&self) -> Option<T> {
         let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
             crate::logger::debug!("Runtime config disabled");
             return None;

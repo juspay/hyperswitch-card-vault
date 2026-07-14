@@ -107,7 +107,7 @@ where
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = partition_key.to_string();
-            // Build the Queryable model (stored in Redis) from the insertable `New` struct.
+            // apply the changes in application
             let diesel_model = diesel_new.into();
             let reply = kv_wrapper::<(), M>(
                 store,
