@@ -1,6 +1,6 @@
 //! KV trait impls for the fingerprint table.
 
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable};
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
 
 use crate::{
@@ -56,21 +56,20 @@ impl KvResource for Fingerprint {
             .await?)
     }
 
-    async fn storage_find_optional(
+    async fn storage_find(
         store: &Storage,
         pk: &PartitionKey<'_>,
-    ) -> Result<Option<Self>, ContainerError<FingerprintDBError>> {
+    ) -> Result<Self, ContainerError<FingerprintDBError>> {
         let PartitionKey::Fingerprint { fingerprint_hash } = pk else {
-            return Ok(None);
+            return Err(ContainerError::from(FingerprintDBError::UnknownError));
         };
+
         // Read path: route to the read replica when runtime config enables it.
         let mut conn = store.route_conn().await?;
-        let output = Self::table()
+        Ok(Self::table()
             .filter(crate::storage::schema::fingerprint::fingerprint_hash.eq(*fingerprint_hash))
             .get_result::<Self>(&mut conn)
-            .await
-            .optional()?;
-        Ok(output)
+            .await?)
     }
 }
 

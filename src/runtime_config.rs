@@ -99,6 +99,7 @@ impl RuntimeConfigManager {
     /// cached payload cannot be deserialized into `T`.
     pub async fn get<T: serde::de::DeserializeOwned>(&self) -> Option<T> {
         let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
+            crate::logger::debug!("Runtime config disabled");
             return None;
         };
 
