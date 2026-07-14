@@ -4,7 +4,7 @@ This directory contains a [k6](https://k6.io/) based load-test suite that simula
 
 ## Files
 
-- `scripts/production-traffic.js` - main k6 script covering health, legacy `/data`, vault v2, fingerprint, negative, and optional custodian scenarios.
+- `scripts/production-traffic.js` - main k6 script covering health, Hyperswitch card-vault patterns, legacy card APIs, vault v2, fingerprint, negative, and optional custodian scenarios.
 - `scripts/http-rs.js` - older minimal script posting one encrypted payload.
 - `scripts/settings.js` - shared k6 options.
 - `Makefile` - convenience targets for docker and local runs.
@@ -13,18 +13,26 @@ This directory contains a [k6](https://k6.io/) based load-test suite that simula
 
 ## What the script covers
 
-The production-traffic script exercises every curl present in `docs/collection/hyperswitch-card-vault.postman_collection.json` as weighted production scenarios rather than a linear walk-through:
+The production-traffic script exercises the card-vault call patterns used by Hyperswitch, plus the generic vault APIs, as weighted production scenarios rather than a linear walk-through. It intentionally does not read a deleted id after delete, because Hyperswitch does not do that.
 
 - **Health** - `GET /health`, `GET /health/diagnostics`
-- **Legacy Data API** - `/data/add`, `/data/retrieve`, `/data/delete`
-  - happy-path add → retrieve → delete → retrieve-miss
+- **Hyperswitch card-vault patterns** - default legacy prefix `/cards`
+  - payment method delete: add → delete and check delete response status
+  - customer delete: add many cards for one customer → delete each card
+  - payment method update: add → retrieve → delete → add changed card with same `requestor_card_reference`
+  - metadata changed: add → metadata-changed duplicate add → delete → add changed card with same reference
+  - tokenization and payout metadata update: add → delete → add with same reference
+  - network token delete: add → delete
+  - network token webhook update: add → retrieve → delete → add changed card without a caller-supplied reference
+- **Legacy Card API** - `/cards/add`, `/cards/retrieve`, `/cards/delete` by default. Set `LEGACY_PATH_PREFIX=/data` to use `/data/*` instead.
+  - happy-path add → retrieve → delete
   - duplicate add with same metadata
   - metadata-changed duplicate add
   - delayed retrieve after a configured wait
-- **Vault API v2** - `/api/v2/vault/add?mode=upsert`, `/retrieve`, `/delete`
-  - happy-path add → retrieve → delete → retrieve-miss
-  - upsert overwrite scenario
-- **Fingerprint API** - `/data/fingerprint`
+- **Vault API v2** - `/api/v2/vault/add?mode=insert|upsert`, `/retrieve`, `/delete`
+  - happy-path insert → retrieve → delete
+  - insert → upsert overwrite scenario
+- **Fingerprint API** - `/cards/fingerprint` by default. Set `LEGACY_PATH_PREFIX=/data` to use `/data/fingerprint` instead.
   - create fingerprint
   - reuse existing fingerprint
   - caller-supplied `x-fingerprint-id`
@@ -43,6 +51,7 @@ All behaviour is controlled through environment variables. The defaults are chos
 |---|---|---|
 | `BASE_URL` | `https://127.0.0.1:3001` (Makefile) / `http://locker_server:8080` (docker-compose) | Locker base URL. |
 | `TENANT_ID` | `public` (Makefile) / `hyperswitch` (docker-compose) | Tenant passed in `x-tenant-id`. |
+| `LEGACY_PATH_PREFIX` | `/cards` | Prefix for legacy card APIs. Use `/cards` to mimic Hyperswitch; use `/data` for older direct vault scripts. |
 | `DURATION` | `5m` | Test duration. Accepts k6 duration strings (`30s`, `5m`, `2h`). |
 | `VUS` | `5` | Number of concurrent virtual users. |
 | `RUN_FOREVER` | `false` | Set to `true` to run until interrupted. Internally sets duration to a very large value. |
@@ -59,9 +68,15 @@ All behaviour is controlled through environment variables. The defaults are chos
 The default weight mix is:
 
 ```text
-health=5, legacy_flow=25, legacy_duplicate=10, legacy_metadata_changed=10,
-delayed_retrieve=10, v2_flow=20, v2_update=10, fingerprint_create=10,
-fingerprint_reuse=10, fingerprint_supplied_id=5, negative=5, custodian=2 (when enabled)
+health=5, hs_payment_method_delete=20, hs_customer_delete_many_cards=10,
+hs_update_retrieve_delete_add_same_ref=15,
+hs_metadata_changed_delete_add_same_ref=10,
+hs_tokenization_delete_add_same_ref=10,
+hs_webhook_retrieve_delete_add_new_ref=5, hs_network_token_delete_only=5,
+hs_payout_metadata_update=5, legacy_flow=25, legacy_duplicate=10,
+legacy_metadata_changed=10, delayed_retrieve=10, v2_flow=20, v2_update=10,
+fingerprint_create=10, fingerprint_reuse=10, fingerprint_supplied_id=5,
+negative=5, custodian=2 (when enabled)
 ```
 
 ## Running locally

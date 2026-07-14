@@ -18,6 +18,17 @@ host = "localhost"
 port = 5432
 dbname = "locker"
 
+# Optional local read replica. This matches docker-compose.pg-replica.yml.
+# Prefer env vars from docs/guides/local-development.md when testing so the
+# default local setup continues to work with only one PostgreSQL instance.
+# [read_replica]
+# username = "db_user"
+# password = "db_pass"
+# host = "localhost"
+# port = 5433
+# dbname = "locker"
+# pool_size = 10
+
 [cache]
 tti = 7200 # i.e. 2 hours
 max_capacity = 5000

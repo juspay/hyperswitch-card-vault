@@ -8,8 +8,9 @@ This guide starts Hyperswitch Card Vault locally with PostgreSQL, TLS, and the l
 - PostgreSQL running on `localhost:5432`.
 - Diesel CLI with Postgres support: `cargo install diesel_cli --no-default-features --features postgres`.
 - OpenSSL for local certificate generation.
+- Docker, when using the optional local PostgreSQL primary/replica setup.
 
-Docker is not required for this local flow.
+Docker is not required for the default single-PostgreSQL local flow.
 
 ## Local Certificates
 
@@ -66,6 +67,106 @@ Run migrations:
 
 ```bash
 DATABASE_URL="postgres://db_user:db_pass@localhost:5432/locker" diesel migration run
+```
+
+## PostgreSQL Primary/Replica Setup
+
+Use this optional Docker Compose setup when testing read-replica connectivity or primary database outage behavior.
+
+Start the local primary, read replica, and runtime-config server:
+
+```bash
+docker compose -f docker-compose.pg-replica.yml up -d
+```
+
+The compose file exposes:
+
+- Primary PostgreSQL: `localhost:5432`
+- Read replica PostgreSQL: `localhost:5433`
+- Runtime config server: `http://localhost:9091`
+
+Run migrations against the primary:
+
+```bash
+DATABASE_URL="postgres://db_user:db_pass@localhost:5432/locker" diesel migration run
+```
+
+Verify primary and replica state:
+
+```bash
+psql "postgres://db_user:db_pass@localhost:5432/locker" -c "select pg_is_in_recovery();"
+psql "postgres://db_user:db_pass@localhost:5433/locker" -c "select pg_is_in_recovery();"
+```
+
+Expected output is `f` for the primary and `t` for the replica.
+
+Run the locker with the read replica and runtime config enabled:
+
+```bash
+LOCKER__READ_REPLICA__USERNAME=db_user \
+LOCKER__READ_REPLICA__PASSWORD=db_pass \
+LOCKER__READ_REPLICA__HOST=localhost \
+LOCKER__READ_REPLICA__PORT=5433 \
+LOCKER__READ_REPLICA__DBNAME=locker \
+LOCKER__READ_REPLICA__POOL_SIZE=10 \
+LOCKER__RUNTIME_CONFIG__MODE=enabled \
+LOCKER__RUNTIME_CONFIG__TTL_SECONDS=5 \
+LOCKER__RUNTIME_CONFIG__ENDPOINT__BASE_URL=http://localhost:9091/configs \
+LOCKER__RUNTIME_CONFIG__ENDPOINT__API_KEY=dev \
+cargo run --bin locker
+```
+
+The static runtime-config response is stored at `dev/runtime-config/configs/locker.use_read_replica` and enables replica routing with:
+
+```json
+{"use_replica":true}
+```
+
+Change replica routing while the locker is running by editing the same mounted file. No container restart is required because the Python server serves the latest file contents from the host directory.
+
+Disable replica routing:
+
+```bash
+printf '%s\n' '{"key":"runtime_config","value":"{\"use_replica\":false}"}' > dev/runtime-config/configs/locker.use_read_replica
+```
+
+Enable replica routing again:
+
+```bash
+printf '%s\n' '{"key":"runtime_config","value":"{\"use_replica\":true}"}' > dev/runtime-config/configs/locker.use_read_replica
+```
+
+The locker fetches `http://localhost:9091/configs/locker.use_read_replica`. With `LOCKER__RUNTIME_CONFIG__TTL_SECONDS=5`, changes can take up to about 5 seconds to apply when the `caching` feature is enabled. Without caching, the value is fetched on demand.
+
+Check diagnostics:
+
+```bash
+curl -k https://localhost:3001/health/diagnostics -H "x-tenant-id: public"
+```
+
+Stop only the primary while the application is still running:
+
+```bash
+docker compose -f docker-compose.pg-replica.yml stop pg-primary
+```
+
+Expected behavior:
+
+- Primary database health and write operations fail.
+- Replica health remains available while `pg-replica` is running.
+- Only code paths that use replica routing can continue reading from the replica.
+- This setup does not provide automatic primary failover or promotion.
+
+Start the primary again:
+
+```bash
+docker compose -f docker-compose.pg-replica.yml start pg-primary
+```
+
+Remove the local database volumes when you want a clean setup:
+
+```bash
+docker compose -f docker-compose.pg-replica.yml down -v
 ```
 
 ## Run The Service

@@ -25,6 +25,7 @@ const envInt = (key, defaultValue) => {
 
 const BASE_URL = env("BASE_URL", "https://127.0.0.1:3001");
 const TENANT_ID = env("TENANT_ID", "public");
+const LEGACY_PATH_PREFIX = env("LEGACY_PATH_PREFIX", "/cards");
 const INSECURE_SKIP_TLS_VERIFY = envBool("INSECURE_SKIP_TLS_VERIFY", true);
 const RUN_FOREVER = envBool("RUN_FOREVER", false);
 const DURATION = env("DURATION", "5m");
@@ -39,6 +40,14 @@ const DELAYED_RETRIEVE_DELAY = env("DELAYED_RETRIEVE_DELAY", "30s");
 const DELAYED_RETRIEVE_TTL = envInt("DELAYED_RETRIEVE_TTL", 3600);
 
 const WEIGHT_HEALTH = envInt("WEIGHT_HEALTH", 5);
+const WEIGHT_HS_PAYMENT_METHOD_DELETE = envInt("WEIGHT_HS_PAYMENT_METHOD_DELETE", 20);
+const WEIGHT_HS_CUSTOMER_DELETE_MANY_CARDS = envInt("WEIGHT_HS_CUSTOMER_DELETE_MANY_CARDS", 10);
+const WEIGHT_HS_UPDATE_RETRIEVE_DELETE_ADD_SAME_REF = envInt("WEIGHT_HS_UPDATE_RETRIEVE_DELETE_ADD_SAME_REF", 15);
+const WEIGHT_HS_METADATA_CHANGED_DELETE_ADD_SAME_REF = envInt("WEIGHT_HS_METADATA_CHANGED_DELETE_ADD_SAME_REF", 10);
+const WEIGHT_HS_TOKENIZATION_DELETE_ADD_SAME_REF = envInt("WEIGHT_HS_TOKENIZATION_DELETE_ADD_SAME_REF", 10);
+const WEIGHT_HS_WEBHOOK_RETRIEVE_DELETE_ADD_NEW_REF = envInt("WEIGHT_HS_WEBHOOK_RETRIEVE_DELETE_ADD_NEW_REF", 5);
+const WEIGHT_HS_NETWORK_TOKEN_DELETE_ONLY = envInt("WEIGHT_HS_NETWORK_TOKEN_DELETE_ONLY", 5);
+const WEIGHT_HS_PAYOUT_METADATA_UPDATE = envInt("WEIGHT_HS_PAYOUT_METADATA_UPDATE", 5);
 const WEIGHT_LEGACY_FLOW = envInt("WEIGHT_LEGACY_FLOW", 25);
 const WEIGHT_LEGACY_DUPLICATE = envInt("WEIGHT_LEGACY_DUPLICATE", 10);
 const WEIGHT_LEGACY_METADATA_CHANGED = envInt("WEIGHT_LEGACY_METADATA_CHANGED", 10);
@@ -53,6 +62,14 @@ const WEIGHT_CUSTODIAN = envInt("WEIGHT_CUSTODIAN", ENABLE_CUSTODIAN ? 2 : 0);
 
 const SCENARIO_WEIGHTS = [
   { name: "health", weight: WEIGHT_HEALTH, fn: healthScenario },
+  { name: "hs_payment_method_delete", weight: WEIGHT_HS_PAYMENT_METHOD_DELETE, fn: hsPaymentMethodDeleteScenario },
+  { name: "hs_customer_delete_many_cards", weight: WEIGHT_HS_CUSTOMER_DELETE_MANY_CARDS, fn: hsCustomerDeleteManyCardsScenario },
+  { name: "hs_update_retrieve_delete_add_same_ref", weight: WEIGHT_HS_UPDATE_RETRIEVE_DELETE_ADD_SAME_REF, fn: hsUpdateRetrieveDeleteAddSameRefScenario },
+  { name: "hs_metadata_changed_delete_add_same_ref", weight: WEIGHT_HS_METADATA_CHANGED_DELETE_ADD_SAME_REF, fn: hsMetadataChangedDeleteAddSameRefScenario },
+  { name: "hs_tokenization_delete_add_same_ref", weight: WEIGHT_HS_TOKENIZATION_DELETE_ADD_SAME_REF, fn: hsTokenizationDeleteAddSameRefScenario },
+  { name: "hs_webhook_retrieve_delete_add_new_ref", weight: WEIGHT_HS_WEBHOOK_RETRIEVE_DELETE_ADD_NEW_REF, fn: hsWebhookRetrieveDeleteAddNewRefScenario },
+  { name: "hs_network_token_delete_only", weight: WEIGHT_HS_NETWORK_TOKEN_DELETE_ONLY, fn: hsNetworkTokenDeleteOnlyScenario },
+  { name: "hs_payout_metadata_update", weight: WEIGHT_HS_PAYOUT_METADATA_UPDATE, fn: hsPayoutMetadataUpdateScenario },
   { name: "legacy_flow", weight: WEIGHT_LEGACY_FLOW, fn: legacyFlowScenario },
   { name: "legacy_duplicate", weight: WEIGHT_LEGACY_DUPLICATE, fn: legacyDuplicateScenario },
   { name: "legacy_metadata_changed", weight: WEIGHT_LEGACY_METADATA_CHANGED, fn: legacyMetadataChangedScenario },
@@ -99,8 +116,8 @@ export const options = {
     },
   },
   thresholds: {
-    // Many scenarios intentionally exercise expected 4xx responses (retrieve-after-delete,
-    // expired TTL, invalid card, missing tenant header). Therefore the global HTTP failure
+    // Negative scenarios intentionally exercise expected 4xx responses (expired TTL,
+    // invalid card, missing tenant header). Therefore the global HTTP failure
     // rate is not a reliable signal. Track checks pass-rate and latency instead.
     checks: ["rate>0.95"],
     http_req_duration: ["p(95)<2000"],
@@ -126,6 +143,13 @@ function headers(extra = {}) {
 
 function fullUrl(path) {
   return `${BASE_URL}${path}`;
+}
+
+function legacyUrl(path) {
+  const prefix = LEGACY_PATH_PREFIX.endsWith("/")
+    ? LEGACY_PATH_PREFIX.slice(0, -1)
+    : LEGACY_PATH_PREFIX;
+  return fullUrl(`${prefix}${path}`);
 }
 
 function logUnexpectedFailure(details) {
@@ -221,8 +245,7 @@ function tryParseJson(response) {
   }
 }
 
-function pickCard() {
-  return randomItem([
+const CARD_FIXTURES = [
     { number: "4242424242424242", month: "12", year: "30" },
     { number: "4000056655665556", month: "11", year: "28" },
     { number: "5105105105105100", month: "10", year: "29" },
@@ -237,7 +260,14 @@ function pickCard() {
     { number: "5555555555554444", month: "02", year: "29" },
     { number: "4111111111111111", month: "12", year: "30" },
     { number: "4988438866111706", month: "11", year: "29" },
-  ]);
+];
+
+function pickCard() {
+  return Object.assign({}, randomItem(CARD_FIXTURES));
+}
+
+function cardByIndex(index, name, overrides = {}) {
+  return Object.assign({}, CARD_FIXTURES[index % CARD_FIXTURES.length], { name }, overrides);
 }
 
 function generateEntityPair() {
@@ -267,25 +297,28 @@ function healthScenario() {
   doGet("health_diagnostics", fullUrl("/health/diagnostics"), [200]);
 }
 
-function legacyAdd(merchantId, customerId, card, ttl, scenario) {
+function legacyAdd(merchantId, customerId, card, ttl, scenario, requestorCardReference = null) {
   const payload = {
     merchant_id: merchantId,
     merchant_customer_id: customerId,
+    requestor_card_reference: requestorCardReference,
     card: {
       card_number: card.number,
       name_on_card: card.name,
       card_exp_month: card.month,
       card_exp_year: card.year,
+      card_brand: card.brand,
+      nick_name: card.nickName,
     },
     ttl: ttl,
   };
-  return doPost(scenario, fullUrl("/data/add"), payload, [200]);
+  return doPost(scenario, legacyUrl("/add"), payload, [200]);
 }
 
 function legacyRetrieve(merchantId, customerId, cardReference, scenario) {
   return doPost(
     scenario,
-    fullUrl("/data/retrieve"),
+    legacyUrl("/retrieve"),
     {
       merchant_id: merchantId,
       merchant_customer_id: customerId,
@@ -295,10 +328,21 @@ function legacyRetrieve(merchantId, customerId, cardReference, scenario) {
   );
 }
 
+function retrieveAndAssertFound(merchantId, customerId, cardReference, scenario) {
+  const response = legacyRetrieve(merchantId, customerId, cardReference, scenario);
+  assertThat(
+    scenario,
+    `${scenario}: retrieve response is 200`,
+    response.status === 200,
+    { status: response.status, response_body: safeResponseBody(response) }
+  );
+  return response;
+}
+
 function legacyDelete(merchantId, customerId, cardReference, scenario) {
   return doPost(
     scenario,
-    fullUrl("/data/delete"),
+    legacyUrl("/delete"),
     {
       merchant_id: merchantId,
       merchant_customer_id: customerId,
@@ -308,24 +352,200 @@ function legacyDelete(merchantId, customerId, cardReference, scenario) {
   );
 }
 
+function getLegacyCardReference(response) {
+  const body = tryParseJson(response);
+  return body && body.payload && body.payload.card_reference;
+}
+
+function getLegacyPayload(response) {
+  const body = tryParseJson(response);
+  return body && body.payload;
+}
+
+function assertLegacyDeleteOk(scenario, response) {
+  const body = tryParseJson(response);
+  assertThat(
+    scenario,
+    `${scenario}: delete response status is Ok`,
+    body && body.status === "Ok",
+    { status: response.status, response_body: safeResponseBody(response) }
+  );
+}
+
+function deleteAndAssert(merchantId, customerId, cardReference, scenario) {
+  const response = legacyDelete(merchantId, customerId, cardReference, scenario);
+  assertLegacyDeleteOk(scenario, response);
+  return response;
+}
+
+function addDeleteAddSameReferenceScenario(scenario, retrieveBeforeDelete = false) {
+  const { merchantId, customerId } = generateEntityPair();
+  const originalCard = Object.assign(pickCard(), { name: `${scenario} Original` });
+  const updatedCard = Object.assign({}, originalCard, {
+    name: `${scenario} Updated`,
+    year: "35",
+    nickName: "updated-card",
+  });
+
+  const addRes = legacyAdd(merchantId, customerId, originalCard, 3600, scenario);
+  const cardReference = getLegacyCardReference(addRes);
+
+  if (cardReference) {
+    if (retrieveBeforeDelete) {
+      retrieveAndAssertFound(merchantId, customerId, cardReference, scenario);
+    }
+
+    deleteAndAssert(merchantId, customerId, cardReference, scenario);
+
+    const reAdd = legacyAdd(
+      merchantId,
+      customerId,
+      updatedCard,
+      3600,
+      scenario,
+      cardReference
+    );
+    const reAddRef = getLegacyCardReference(reAdd);
+    assertThat(
+      scenario,
+      `${scenario}: re-add keeps requestor card reference`,
+      reAddRef === cardReference,
+      { original_ref: cardReference, readd_ref: reAddRef }
+    );
+  }
+}
+
+function hsPaymentMethodDeleteScenario() {
+  const scenario = "hs_payment_method_delete";
+  const { merchantId, customerId } = generateEntityPair();
+  const card = Object.assign(pickCard(), { name: "PM Delete" });
+
+  const addRes = legacyAdd(merchantId, customerId, card, 3600, scenario);
+  const cardReference = getLegacyCardReference(addRes);
+
+  if (cardReference) {
+    deleteAndAssert(merchantId, customerId, cardReference, scenario);
+  }
+}
+
+function hsCustomerDeleteManyCardsScenario() {
+  const scenario = "hs_customer_delete_many_cards";
+  const { merchantId, customerId } = generateEntityPair();
+  const cardCount = randomIntBetween(2, 5);
+  const cardReferences = [];
+
+  for (let i = 0; i < cardCount; i += 1) {
+    const card = cardByIndex(i, `Customer Delete ${i}`);
+    const addRes = legacyAdd(merchantId, customerId, card, 3600, scenario);
+    const cardReference = getLegacyCardReference(addRes);
+    if (cardReference) {
+      cardReferences.push(cardReference);
+    }
+  }
+
+  for (const cardReference of cardReferences) {
+    deleteAndAssert(merchantId, customerId, cardReference, scenario);
+  }
+}
+
+function hsUpdateRetrieveDeleteAddSameRefScenario() {
+  addDeleteAddSameReferenceScenario("hs_update_retrieve_delete_add_same_ref", true);
+}
+
+function hsMetadataChangedDeleteAddSameRefScenario() {
+  const scenario = "hs_metadata_changed_delete_add_same_ref";
+  const { merchantId, customerId } = generateEntityPair();
+  const originalCard = Object.assign(pickCard(), { name: "Metadata Original" });
+  const changedCard = Object.assign({}, originalCard, {
+    name: "Metadata Changed",
+    year: "35",
+  });
+
+  const first = legacyAdd(merchantId, customerId, originalCard, 3600, scenario);
+  const firstRef = getLegacyCardReference(first);
+  const second = legacyAdd(merchantId, customerId, changedCard, 3600, scenario);
+  const secondPayload = getLegacyPayload(second);
+
+  if (firstRef && secondPayload) {
+    assertThat(
+      scenario,
+      `${scenario}: metadata changed returns same card_reference`,
+      secondPayload.card_reference === firstRef,
+      { first_ref: firstRef, second_ref: secondPayload.card_reference }
+    );
+    assertThat(
+      scenario,
+      `${scenario}: duplication_check is meta_data_changed`,
+      secondPayload.duplication_check === "meta_data_changed",
+      { payload: secondPayload }
+    );
+
+    deleteAndAssert(merchantId, customerId, firstRef, scenario);
+    const reAdd = legacyAdd(merchantId, customerId, changedCard, 3600, scenario, firstRef);
+    const reAddRef = getLegacyCardReference(reAdd);
+    assertThat(
+      scenario,
+      `${scenario}: re-add keeps existing card_reference`,
+      reAddRef === firstRef,
+      { first_ref: firstRef, readd_ref: reAddRef }
+    );
+  }
+}
+
+function hsTokenizationDeleteAddSameRefScenario() {
+  addDeleteAddSameReferenceScenario("hs_tokenization_delete_add_same_ref", false);
+}
+
+function hsWebhookRetrieveDeleteAddNewRefScenario() {
+  const scenario = "hs_webhook_retrieve_delete_add_new_ref";
+  const { merchantId, customerId } = generateEntityPair();
+  const originalCard = Object.assign(pickCard(), {
+    name: "Webhook Token Original",
+    brand: "Visa",
+  });
+  const updatedCard = Object.assign({}, originalCard, {
+    name: "Webhook Token Updated",
+    month: "10",
+    year: "35",
+  });
+
+  const addRes = legacyAdd(merchantId, customerId, originalCard, 3600, scenario);
+  const cardReference = getLegacyCardReference(addRes);
+
+  if (cardReference) {
+    retrieveAndAssertFound(merchantId, customerId, cardReference, scenario);
+    deleteAndAssert(merchantId, customerId, cardReference, scenario);
+    legacyAdd(merchantId, customerId, updatedCard, 3600, scenario);
+  }
+}
+
+function hsNetworkTokenDeleteOnlyScenario() {
+  const scenario = "hs_network_token_delete_only";
+  const { merchantId, customerId } = generateEntityPair();
+  const card = Object.assign(pickCard(), { name: "Network Token" });
+
+  const addRes = legacyAdd(merchantId, customerId, card, 3600, scenario);
+  const cardReference = getLegacyCardReference(addRes);
+
+  if (cardReference) {
+    deleteAndAssert(merchantId, customerId, cardReference, scenario);
+  }
+}
+
+function hsPayoutMetadataUpdateScenario() {
+  addDeleteAddSameReferenceScenario("hs_payout_metadata_update", false);
+}
+
 function legacyFlowScenario() {
   const { merchantId, customerId } = generateEntityPair();
   const card = Object.assign(pickCard(), { name: "John Smith" });
 
   const addRes = legacyAdd(merchantId, customerId, card, 3600, "legacy_flow");
-  const addBody = tryParseJson(addRes);
-  const cardReference = addBody && addBody.payload && addBody.payload.card_reference;
+  const cardReference = getLegacyCardReference(addRes);
 
   if (cardReference) {
-    legacyRetrieve(merchantId, customerId, cardReference, "legacy_flow");
-    legacyDelete(merchantId, customerId, cardReference, "legacy_flow");
-    const missRes = legacyRetrieve(merchantId, customerId, cardReference, "legacy_flow");
-    assertThat(
-      "legacy_flow",
-      "legacy_flow: retrieve after delete is 404",
-      missRes.status === 404,
-      { method: "POST", url: fullUrl("/data/retrieve"), status: missRes.status }
-    );
+    retrieveAndAssertFound(merchantId, customerId, cardReference, "legacy_flow");
+    deleteAndAssert(merchantId, customerId, cardReference, "legacy_flow");
   }
 }
 
@@ -403,16 +623,16 @@ function delayedRetrieveScenario() {
       "delayed_retrieve",
       "delayed_retrieve: card still retrievable after delay",
       retrieveRes.status === 200,
-      { method: "POST", url: fullUrl("/data/retrieve"), status: retrieveRes.status }
+      { method: "POST", url: legacyUrl("/retrieve"), status: retrieveRes.status }
     );
-    legacyDelete(merchantId, customerId, cardReference, "delayed_retrieve");
+    deleteAndAssert(merchantId, customerId, cardReference, "delayed_retrieve");
   }
 }
 
-function v2Add(entityId, vaultId, data, ttl, scenario) {
+function v2Add(entityId, vaultId, data, ttl, scenario, mode = "insert") {
   return doPost(
     scenario,
-    fullUrl(`/api/v2/vault/add?mode=upsert`),
+    fullUrl(`/api/v2/vault/add?mode=${mode}`),
     {
       entity_id: entityId,
       vault_id: vaultId,
@@ -446,24 +666,17 @@ function v2FlowScenario() {
   const vaultId = `vault-${uuidv4()}`;
   const data = { version: 1, card_token: uuidv4() };
 
-  v2Add(entityId, vaultId, data, 3600, "v2_flow");
+  v2Add(entityId, vaultId, data, 3600, "v2_flow", "insert");
   v2Retrieve(entityId, vaultId, "v2_flow");
   v2Delete(entityId, vaultId, "v2_flow");
-  const miss = v2Retrieve(entityId, vaultId, "v2_flow");
-  assertThat(
-    "v2_flow",
-    "v2_flow: retrieve after delete is 404",
-    miss.status === 404,
-    { method: "POST", url: fullUrl("/api/v2/vault/retrieve"), status: miss.status }
-  );
 }
 
 function v2UpdateScenario() {
   const entityId = `entity-${uuidv4()}`;
   const vaultId = `vault-${uuidv4()}`;
 
-  v2Add(entityId, vaultId, { version: 1 }, 3600, "v2_update");
-  v2Add(entityId, vaultId, { version: 2 }, 3600, "v2_update");
+  v2Add(entityId, vaultId, { version: 1 }, 3600, "v2_update", "insert");
+  v2Add(entityId, vaultId, { version: 2 }, 3600, "v2_update", "upsert");
   const retrieveRes = v2Retrieve(entityId, vaultId, "v2_update");
   const body = tryParseJson(retrieveRes);
   if (body && body.data) {
@@ -480,7 +693,7 @@ function v2UpdateScenario() {
 function fingerprintCreate(data, key, scenario, extraHeaders = {}) {
   return doPost(
     scenario,
-    fullUrl("/data/fingerprint"),
+    legacyUrl("/fingerprint"),
     { data: data, key: key },
     [200],
     extraHeaders
@@ -560,7 +773,7 @@ function negativeScenario() {
   };
   doPost(
     scenario,
-    fullUrl("/data/add"),
+    legacyUrl("/add"),
     {
       merchant_id: merchantId,
       merchant_customer_id: customerId,
@@ -605,7 +818,7 @@ function negativeScenario() {
       scenario,
       "negative: expired card retrieve returns 404",
       retrieveRes.status === 404,
-      { method: "POST", url: fullUrl("/data/retrieve"), status: retrieveRes.status }
+      { method: "POST", url: legacyUrl("/retrieve"), status: retrieveRes.status }
     );
   }
 
@@ -656,6 +869,7 @@ export function handleSummary(data) {
     "=== Production Traffic Test Summary ===",
     `Base URL:        ${BASE_URL}`,
     `Tenant ID:       ${TENANT_ID}`,
+    `Legacy prefix:   ${LEGACY_PATH_PREFIX}`,
     `Duration:        ${RUN_FOREVER ? "until-interrupted" : DURATION}`,
     `VUs:             ${VUS}`,
     `HTTP requests:   ${data.metrics.http_reqs ? data.metrics.http_reqs.values.count : 0}`,
@@ -675,6 +889,7 @@ export function handleSummary(data) {
         config: {
           base_url: BASE_URL,
           tenant_id: TENANT_ID,
+          legacy_path_prefix: LEGACY_PATH_PREFIX,
           duration: RUN_FOREVER ? "until-interrupted" : DURATION,
           vus: VUS,
           enable_negative: ENABLE_NEGATIVE,
