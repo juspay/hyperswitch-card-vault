@@ -2,6 +2,7 @@
 #[derive(Clone, Debug)]
 pub(crate) enum PartitionKey<'a> {
     Fingerprint { fingerprint_hash: &'a [u8] },
+    HashTable { data_hash: &'a [u8] },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
@@ -9,6 +10,9 @@ impl std::fmt::Display for PartitionKey<'_> {
         match self {
             Self::Fingerprint { fingerprint_hash } => {
                 f.write_str(&format!("fingerprint_{}", hex::encode(fingerprint_hash)))
+            }
+            Self::HashTable { data_hash } => {
+                f.write_str(&format!("hash_table_{}", hex::encode(data_hash)))
             }
         }
     }
