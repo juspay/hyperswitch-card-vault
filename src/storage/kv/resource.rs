@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     error::{
-        ContainerError,
+        ContainerError, StorageErrorExt,
         kv::{KvError, RedisErrorExt},
     },
     storage::Storage,
@@ -34,7 +34,12 @@ pub(crate) trait KvResource:
     + Send
     + Sized
 {
-    type Error: error_stack::Context + Send + Sync + 'static + for<'a> From<&'a KvError>;
+    type Error: error_stack::Context
+        + Send
+        + Sync
+        + 'static
+        + StorageErrorExt
+        + for<'a> From<&'a KvError>;
 
     type DieselNew: Into<Self>;
 
@@ -51,10 +56,10 @@ pub(crate) trait KvResource:
         store: &Storage,
     ) -> Result<Self, ContainerError<Self::Error>>;
 
-    async fn storage_find_optional(
+    async fn storage_find(
         store: &Storage,
         pk: &PartitionKey<'_>,
-    ) -> Result<Option<Self>, ContainerError<Self::Error>>;
+    ) -> Result<Self, ContainerError<Self::Error>>;
 }
 
 /// Locator for a find. `Id` = plain-keyed (single HGet/HSetNx field).
@@ -131,10 +136,10 @@ where
 /// Find by plain key. Redis hit → return model. `NotFound` → Postgres fallback.
 /// Other Redis errors are surfaced (not masked) to avoid duplicate inserts.
 #[instrument(skip(store, find_by), fields(resource = M::ENTITY_TYPE))]
-pub(crate) async fn find_optional_resource_by_id<M>(
+pub(crate) async fn find_resource_by_id<M>(
     store: &Storage,
     find_by: FindResourceBy<'_>,
-) -> Result<Option<M>, ContainerError<M::Error>>
+) -> Result<M, ContainerError<M::Error>>
 where
     M: KvResource,
 {
@@ -142,20 +147,20 @@ where
     let FindResourceBy::Id(key) = find_by;
 
     match scheme {
-        StorageScheme::PostgresOnly => M::storage_find_optional(store, &key).await,
+        StorageScheme::PostgresOnly => M::storage_find(store, &key).await,
         StorageScheme::RedisKv => {
             let key_str = key.to_string();
             let result =
                 kv_wrapper::<M, M>(store, KvOperation::<M>::HGet(&key_str), key.clone()).await;
 
             match result {
-                Ok(KvResult::HGet(v)) => Ok(Some(v)),
+                Ok(KvResult::HGet(v)) => Ok(v),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
                     super::metrics::KV_MISS
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
-                    M::storage_find_optional(store, &key).await
+                    M::storage_find(store, &key).await
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&key_str),
@@ -166,5 +171,20 @@ where
                 )),
             }
         }
+    }
+}
+
+#[instrument(skip(store, find_by), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn find_optional_resource_by_id<M>(
+    store: &Storage,
+    find_by: FindResourceBy<'_>,
+) -> Result<Option<M>, ContainerError<M::Error>>
+where
+    M: KvResource,
+{
+    match find_resource_by_id(store, find_by).await {
+        Ok(resource) => Ok(Some(resource)),
+        Err(err) if err.get_inner().is_not_found() => Ok(None),
+        Err(err) => Err(err),
     }
 }
