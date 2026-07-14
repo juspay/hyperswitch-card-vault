@@ -2,6 +2,7 @@
 #[derive(Clone, Debug)]
 pub(crate) enum PartitionKey<'a> {
     Fingerprint { fingerprint_hash: &'a [u8] },
+    ReverseLookup { lookup_id: &'a str },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
@@ -9,6 +10,9 @@ impl std::fmt::Display for PartitionKey<'_> {
         match self {
             Self::Fingerprint { fingerprint_hash } => {
                 f.write_str(&format!("fingerprint_{}", hex::encode(fingerprint_hash)))
+            }
+            Self::ReverseLookup { lookup_id } => {
+                f.write_str(&format!("reverse_lookup_{lookup_id}"))
             }
         }
     }
