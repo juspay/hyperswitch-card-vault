@@ -4,7 +4,7 @@ use diesel_async::RunQueryDsl;
 use crate::{
     error::{ContainerError, HashDBError, kv::KvError},
     storage::{
-        Storage,
+        DbOperation, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -62,10 +62,21 @@ impl KvResource for HashTable {
         store: &Storage,
     ) -> Result<Self, ContainerError<HashDBError>> {
         let mut conn = store.get_conn().await?;
-        Ok(diesel::insert_into(Self::table())
-            .values(new_object)
-            .get_result(&mut conn)
-            .await?)
+
+        let query = diesel::insert_into(Self::table()).values(new_object);
+
+        let pool = conn.pool();
+        let operation = DbOperation::Insert;
+        crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
+
+        let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
+            query.get_result(conn.get_mut()),
+            operation,
+            pool,
+        )
+        .await?;
+
+        Ok(output)
     }
 
     async fn storage_find(
@@ -73,9 +84,21 @@ impl KvResource for HashTable {
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<HashDBError>> {
         let mut conn = store.route_conn().await?;
-        Ok(Self::table()
-            .filter(crate::storage::schema::hash_table::data_hash.eq(&pk.data_hash))
-            .get_result::<Self>(&mut conn)
-            .await?)
+
+        let query =
+            Self::table().filter(crate::storage::schema::hash_table::data_hash.eq(&pk.data_hash));
+
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
+
+        let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
+            query.get_result(conn.get_mut()),
+            operation,
+            pool,
+        )
+        .await?;
+
+        Ok(output)
     }
 }

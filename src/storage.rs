@@ -61,6 +61,61 @@ pub struct Storage {
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
 
+#[derive(Debug, Clone, Copy)]
+enum DbPool {
+    Primary,
+    Replica,
+}
+
+impl DbPool {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Primary => "primary",
+            Self::Replica => "replica",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DbOperation {
+    Insert,
+    Update,
+    Delete,
+    FindOne,
+    Filter,
+}
+
+impl DbOperation {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Insert => "insert",
+            Self::Update => "update",
+            Self::Delete => "delete",
+            Self::FindOne => "find_one",
+            Self::Filter => "filter",
+        }
+    }
+}
+
+pub struct DbConnection {
+    conn: DeadPoolConnType,
+    pool: DbPool,
+}
+
+impl DbConnection {
+    fn new(conn: DeadPoolConnType, pool: DbPool) -> Self {
+        Self { conn, pool }
+    }
+
+    fn pool(&self) -> DbPool {
+        self.pool
+    }
+
+    fn get_mut(&mut self) -> &mut DeadPoolConnType {
+        &mut self.conn
+    }
+}
+
 impl Storage {
     fn create_database_connection_pool(
         database_config: &Database,
@@ -123,28 +178,33 @@ impl Storage {
     }
 
     /// Get connection from database pool for accessing data
-    pub async fn get_conn(&self) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
-        Ok(self
-            .primary_pg_pool
-            .get()
+    pub async fn get_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
+        let pool = DbPool::Primary;
+        let conn = record_db_connection_acquire_duration(self.primary_pg_pool.get(), pool)
             .await
-            .change_context(error::StorageError::PoolClientFailure)?)
+            .change_context(error::StorageError::PoolClientFailure)?;
+
+        Ok(DbConnection::new(conn, pool))
     }
 
     /// Get a connection from the read replica pool, if configured.
     /// Returns `ReplicaPoolNotConfigured` error if no replica pool was initialized.
     pub async fn get_replica_conn(
         &self,
-    ) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
-        Ok(self
-            .replica_pg_pool
-            .as_ref()
-            .ok_or(ContainerError::from(
+    ) -> Result<DbConnection, ContainerError<error::StorageError>> {
+        match self.replica_pg_pool.as_ref() {
+            Some(pg_pool) => {
+                let pool = DbPool::Replica;
+                let conn = record_db_connection_acquire_duration(pg_pool.get(), pool)
+                    .await
+                    .change_context(error::StorageError::PoolClientFailure)?;
+
+                Ok(DbConnection::new(conn, pool))
+            }
+            None => Err(ContainerError::from(
                 error::StorageError::ReplicaPoolNotConfigured,
-            ))?
-            .get()
-            .await
-            .change_context(error::StorageError::PoolClientFailure)?)
+            )),
+        }
     }
 
     /// Returns `true` if a read replica pool was configured and initialized.
@@ -167,9 +227,7 @@ impl Storage {
 
     /// Returns a connection from the replica pool when the runtime config enables it,
     /// otherwise returns a primary pool connection.
-    pub async fn route_conn(
-        &self,
-    ) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
+    pub async fn route_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
         if self.should_use_replica().await {
             crate::logger::debug!("Routing to read replica");
             self.get_replica_conn().await
@@ -422,4 +480,173 @@ pub(crate) trait EntityInterface {
         entity_id: &str,
         identifier: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>>;
+}
+
+async fn record_db_connection_acquire_duration<Fut, T, E>(future: Fut, pool: DbPool) -> Result<T, E>
+where
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = if result.is_ok() { "success" } else { "error" };
+
+    crate::observability::metrics::DATABASE_CONNECTION_ACQUIRE_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(("pool", pool.as_str()), ("outcome", outcome)),
+    );
+
+    result
+}
+
+#[track_caller]
+fn log_db_query<T, Q>(query: &Q, operation: DbOperation, pool: DbPool)
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Q: diesel::query_builder::QueryFragment<diesel::pg::Pg>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::logger::debug!(
+        query = %diesel::debug_query(query),
+        table = %table_name,
+        operation = %operation.as_str(),
+        pool = %pool.as_str(),
+        "Executing database query",
+    );
+}
+
+async fn record_db_query<T, Fut, R, E>(
+    future: Fut,
+    operation: DbOperation,
+    pool: DbPool,
+) -> Result<R, E>
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Fut: Future<Output = Result<R, E>>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::observability::metrics::DATABASE_QUERY_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation.as_str()),
+            ("pool", pool.as_str())
+        ),
+    );
+
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = if result.is_ok() { "success" } else { "error" };
+
+    crate::observability::metrics::DATABASE_QUERY_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation.as_str()),
+            ("pool", pool.as_str()),
+            ("outcome", outcome),
+        ),
+    );
+
+    result
+}
+
+#[cfg_attr(feature = "kv", expect(dead_code))]
+async fn record_db_query_optional<T, Fut, R, E>(
+    future: Fut,
+    operation: DbOperation,
+    pool: DbPool,
+) -> Result<Option<R>, E>
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Fut: Future<Output = Result<Option<R>, E>>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::observability::metrics::DATABASE_QUERY_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation.as_str()),
+            ("pool", pool.as_str())
+        ),
+    );
+
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = match &result {
+        Ok(Some(_)) => "success",
+        Ok(None) => "not_found",
+        Err(_) => "error",
+    };
+
+    crate::observability::metrics::DATABASE_QUERY_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation.as_str()),
+            ("pool", pool.as_str()),
+            ("outcome", outcome),
+        ),
+    );
+
+    result
+}
+
+async fn record_db_query_rows<T, Fut, E>(
+    future: Fut,
+    operation: DbOperation,
+    pool: DbPool,
+) -> Result<usize, E>
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Fut: Future<Output = Result<usize, E>>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::observability::metrics::DATABASE_QUERY_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation.as_str()),
+            ("pool", pool.as_str())
+        ),
+    );
+
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = match &result {
+        Ok(rows) if *rows == 0 => "zero_rows",
+        Ok(_) => "success",
+        Err(_) => "error",
+    };
+
+    crate::observability::metrics::DATABASE_QUERY_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation.as_str()),
+            ("pool", pool.as_str()),
+            ("outcome", outcome),
+        ),
+    );
+
+    result
 }

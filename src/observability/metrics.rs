@@ -221,3 +221,25 @@ histogram_metric_f64!(
     unit: "s",
     buckets: f64_histogram_buckets(),
 );
+
+// Database
+counter_metric!(
+    pub(crate) DATABASE_QUERY_COUNT, CARD_VAULT_METER,
+    name: "database.query.count",
+    description: "Number of database query attempts",
+    unit: "1",
+);
+histogram_metric_f64!(
+    pub(crate) DATABASE_QUERY_DURATION, CARD_VAULT_METER,
+    name: "database.query.duration",
+    description: "Duration of completed database queries",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
+histogram_metric_f64!(
+    pub(crate) DATABASE_CONNECTION_ACQUIRE_DURATION, CARD_VAULT_METER,
+    name: "database.connection.acquire.duration",
+    description: "Duration of database connection acquisition attempts",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
