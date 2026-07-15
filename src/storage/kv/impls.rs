@@ -4,6 +4,7 @@ pub(crate) mod fingerprint;
 pub(crate) mod hash_table;
 pub(crate) mod locker;
 pub(crate) mod reverse_lookup;
+pub(crate) mod vault;
 
 use crate::error::{HashDBError, ReverseLookupDBError, VaultDBError, kv::KvError};
 
@@ -16,7 +17,6 @@ impl From<&KvError> for HashDBError {
         }
     }
 }
-
 impl From<&KvError> for VaultDBError {
     fn from(e: &KvError) -> Self {
         match e {
