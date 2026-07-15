@@ -207,7 +207,7 @@ impl From<ReverseLookupNew> for ReverseLookup {
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
@@ -292,10 +292,23 @@ pub(super) struct EntityTableNew {
 
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::hash_table)]
-pub(super) struct HashTableNew {
+pub(crate) struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
+    pub created_at: time::PrimitiveDateTime,
     pub updated_by: StorageScheme,
+}
+
+impl From<HashTableNew> for HashTable {
+    fn from(value: HashTableNew) -> Self {
+        Self {
+            id: 0,
+            hash_id: value.hash_id,
+            data_hash: value.data_hash,
+            created_at: value.created_at,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 ///

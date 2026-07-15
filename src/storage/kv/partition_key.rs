@@ -12,6 +12,7 @@ pub(crate) enum PartitionKey<'a> {
         customer_id: &'a str,
         locker_id: &'a str,
     },
+    HashTable { data_hash: &'a [u8] },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
@@ -26,6 +27,9 @@ impl std::fmt::Display for PartitionKey<'_> {
                 customer_id,
                 locker_id,
             } => f.write_str(&format!("locker_{merchant_id}_{customer_id}_{locker_id}")),
+            Self::HashTable { data_hash } => {
+                f.write_str(&format!("hash_table_{}", hex::encode(data_hash)))
+            }
         }
     }
 }
