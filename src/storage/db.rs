@@ -215,7 +215,8 @@ impl super::LockerInterface for Storage {
                 customer_id: customer_id.to_string(),
             };
 
-            return super::kv::delete_resource_by_id::<types::Locker>(self, pk).await;
+            return super::kv::delete_resource_by_id_with_reverse_lookup::<types::Locker>(self, pk)
+                .await;
         }
 
         #[cfg(not(feature = "kv"))]
@@ -557,6 +558,34 @@ impl super::ReverseLookupInterface for Storage {
                 .get_result(&mut conn)
                 .await
                 .change_error(error::StorageError::InsertError)
+                .map_err(From::from)
+        }
+    }
+
+    async fn delete_reverse_lookup(
+        &self,
+        lookup_id: &str,
+    ) -> Result<usize, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            return Box::pin(super::kv::delete_resource_by_id::<types::ReverseLookup>(
+                self,
+                super::kv::impls::reverse_lookup::ReverseLookupPrimaryKey {
+                    lookup_id: lookup_id.to_string(),
+                },
+            ))
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            diesel::delete(types::ReverseLookup::table())
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
+                .execute(&mut conn)
+                .await
+                .change_error(error::StorageError::DeleteError)
                 .map_err(From::from)
         }
     }

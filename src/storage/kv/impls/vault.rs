@@ -9,7 +9,10 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::{GetPartitionKey, KvDeleteResource, KvResource, KvUpdateResource},
+            resource::{
+                GetPartitionKey, KvDeleteResource, KvDeleteWithoutLookup, KvResource,
+                KvUpdateResource,
+            },
             serializable_query::{
                 SerializableQuery, generate_delete_query, generate_insert_query,
                 generate_update_query,
@@ -121,6 +124,8 @@ impl KvDeleteResource for Vault {
         Ok(output)
     }
 }
+
+impl KvDeleteWithoutLookup for Vault {}
 
 impl KvUpdateResource for Vault {
     fn generate_update_drainer_query(

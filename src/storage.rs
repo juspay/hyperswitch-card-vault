@@ -400,6 +400,12 @@ pub(crate) trait ReverseLookupInterface {
         &self,
         new: types::ReverseLookupNew,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>>;
+
+    /// Delete a reverse lookup record by its lookup_id.
+    async fn delete_reverse_lookup(
+        &self,
+        lookup_id: &str,
+    ) -> Result<usize, ContainerError<Self::Error>>;
 }
 
 ///

@@ -16,9 +16,9 @@ pub(crate) mod wrapper;
 pub(crate) use self::{
     partition_key::PartitionKey,
     resource::{
-        delete_resource_by_id, find_optional_resource_by_id, find_optional_resource_by_lookup_id,
-        find_resource_by_id, insert_resource, insert_resource_with_reverse_lookup,
-        update_resource_by_id,
+        delete_resource_by_id, delete_resource_by_id_with_reverse_lookup,
+        find_optional_resource_by_id, find_optional_resource_by_lookup_id, find_resource_by_id,
+        insert_resource, insert_resource_with_reverse_lookup, update_resource_by_id,
     },
 };
 pub(crate) use self::{

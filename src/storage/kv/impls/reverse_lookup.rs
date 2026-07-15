@@ -9,8 +9,8 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::{GetPartitionKey, KvResource},
-            serializable_query::{SerializableQuery, generate_insert_query},
+            resource::{GetPartitionKey, KvDeleteResource, KvDeleteWithoutLookup, KvResource},
+            serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
         types::{ReverseLookup, ReverseLookupNew},
     },
@@ -26,6 +26,7 @@ impl EntityType for ReverseLookup {
 
 impl KvStorePartition for ReverseLookup {}
 
+#[derive(Clone)]
 pub(crate) struct ReverseLookupPrimaryKey {
     pub lookup_id: String,
 }
@@ -92,3 +93,30 @@ impl KvResource for ReverseLookup {
         .map_err(From::from)
     }
 }
+
+impl KvDeleteResource for ReverseLookup {
+    fn generate_delete_drainer_query(
+        pk: &Self::PrimaryKeyType,
+    ) -> error_stack::Result<SerializableQuery, KvError> {
+        let query = diesel::delete(crate::storage::schema::reverse_lookup::table)
+            .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id.clone()));
+
+        generate_delete_query(query, Self::ENTITY_TYPE.to_owned())
+    }
+
+    async fn storage_delete(
+        store: &Storage,
+        pk: Self::PrimaryKeyType,
+    ) -> Result<usize, ContainerError<ReverseLookupDBError>> {
+        let mut conn = store.get_conn().await?;
+
+        diesel::delete(Self::table())
+            .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id))
+            .execute(&mut conn)
+            .await
+            .change_error(error::StorageError::DeleteError)
+            .map_err(From::from)
+    }
+}
+
+impl KvDeleteWithoutLookup for ReverseLookup {}
