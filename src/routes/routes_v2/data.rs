@@ -59,11 +59,18 @@ pub async fn retrieve_data(
         .expires_at
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
+                crate::routes::record_expired_data_encountered("vault");
+
                 tokio::spawn(async move {
-                    tenant_app_state
+                    let result = tenant_app_state
                         .db
                         .delete_from_vault(request.vault_id.into(), &request.entity_id)
-                        .await
+                        .await;
+
+                    crate::routes::record_ttl_deletion_result(
+                        "vault",
+                        if result.is_ok() { "deleted" } else { "failed" },
+                    );
                 });
 
                 Err(error::ApiError::NotFoundError)

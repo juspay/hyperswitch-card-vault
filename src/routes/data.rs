@@ -213,15 +213,22 @@ pub async fn retrieve_card(
         .ttl
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
+                super::record_expired_data_encountered("locker");
+
                 tokio::spawn(async move {
-                    tenant_app_state
+                    let result = tenant_app_state
                         .db
                         .delete_locker(
                             request.card_reference.into(),
                             &request.merchant_id,
                             &request.merchant_customer_id,
                         )
-                        .await
+                        .await;
+
+                    super::record_ttl_deletion_result(
+                        "locker",
+                        if result.is_ok() { "deleted" } else { "failed" },
+                    );
                 });
 
                 Err(error::ApiError::NotFoundError)

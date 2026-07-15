@@ -324,3 +324,17 @@ gauge_metric!(
     description: "Current number of cache entries",
     unit: "1",
 );
+
+// TTL-based cleanup
+counter_metric!(
+    pub(crate) TTL_EXPIRED_DATA_ENCOUNTERED_COUNT, CARD_VAULT_METER,
+    name: "ttl.expired_data_encountered.count",
+    description: "Number of requests that encountered data with expired TTL",
+    unit: "1",
+);
+counter_metric!(
+    pub(crate) TTL_DELETION_COUNT, CARD_VAULT_METER,
+    name: "ttl.deletion.count",
+    description: "Number of background TTL-based deletions",
+    unit: "1",
+);
