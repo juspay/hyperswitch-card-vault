@@ -1,7 +1,10 @@
 mod macros;
 pub(crate) mod metrics;
 
-pub use self::metrics::{HttpRequestMetricsLayer, init_metrics, start_prometheus_metrics_server};
+pub use self::metrics::{
+    HttpRequestMetricsLayer, init_metrics, spawn_bg_metrics_collector,
+    start_prometheus_metrics_server,
+};
 
 #[derive(Debug, Clone, serde::Deserialize, Default)]
 #[serde(tag = "mode", rename_all = "snake_case")]

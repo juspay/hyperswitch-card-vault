@@ -33,6 +33,10 @@ pub struct Merchant {
     pub created_at: time::PrimitiveDateTime,
 }
 
+impl Merchant {
+    pub const CACHE_NAME: &'static str = "merchant";
+}
+
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
 pub(crate) struct MerchantNewInner<'a> {
@@ -236,6 +240,10 @@ pub struct HashTable {
     pub updated_by: Option<StorageScheme>,
 }
 
+impl HashTable {
+    pub const CACHE_NAME: &'static str = "hash_table";
+}
+
 #[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::fingerprint)]
 pub struct Fingerprint {
@@ -256,6 +264,10 @@ impl From<FingerprintTableNew> for Fingerprint {
     }
 }
 
+impl Fingerprint {
+    pub const CACHE_NAME: &'static str = "fingerprint";
+}
+
 #[cfg(feature = "external_key_manager")]
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::entity)]
@@ -264,6 +276,11 @@ pub struct Entity {
     pub entity_id: String,
     pub enc_key_id: String,
     pub created_at: time::PrimitiveDateTime,
+}
+
+#[cfg(feature = "external_key_manager")]
+impl Entity {
+    pub const CACHE_NAME: &'static str = "entity";
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Clone)]

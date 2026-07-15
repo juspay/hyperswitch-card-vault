@@ -15,6 +15,7 @@ duration = 60     # duration to rate limit the delete api (in sec)
 [cache]
 tti = 7200          # Idle time after a get/insert of a cache entry to free the cache (in secs)
 max_capacity = 5000 # Max capacity of a single table cache
+metrics_collection_interval_secs = 15 # Interval for collecting cache entry-count (in secs)
 
 [database]
 username = "sam"   # username for the database

@@ -21,6 +21,7 @@ dbname = "locker"
 [cache]
 tti = 7200 # i.e. 2 hours
 max_capacity = 5000
+metrics_collection_interval_secs = 15
 
 [secrets]
 locker_private_key = ""

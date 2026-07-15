@@ -47,11 +47,15 @@ where
     }
 }
 
-fn new_cache<T, U>(config: &crate::config::Cache, name: &str) -> Cache<T, U>
+fn new_cache<T, U>(config: &crate::config::Cache, name: &'static str) -> Cache<T, U>
 where
     T: super::Cacheable<U>,
 {
-    let cache = moka::future::CacheBuilder::new(config.max_capacity).name(name);
+    let cache = moka::future::CacheBuilder::new(config.max_capacity)
+        .name(name)
+        .eviction_listener(move |_key, _value, removal_cause| {
+            cache_eviction_listener(name, removal_cause);
+        });
     let cache = match config.tti {
         Some(value) => cache.time_to_idle(std::time::Duration::from_secs(value)),
         None => cache,
@@ -60,11 +64,34 @@ where
     cache.build()
 }
 
+fn cache_eviction_listener(
+    cache_name: &'static str,
+    removal_cause: moka::notification::RemovalCause,
+) {
+    use moka::notification::RemovalCause;
+
+    let removal_cause_label = match removal_cause {
+        RemovalCause::Expired => "expired",
+        RemovalCause::Explicit => "explicit",
+        RemovalCause::Replaced => "replaced",
+        RemovalCause::Size => "size",
+    };
+
+    crate::observability::metrics::CACHE_EVICTION_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("cache", cache_name),
+            ("removal_cause", removal_cause_label)
+        ),
+    );
+}
+
 pub trait GetCache<T, U>
 where
     T: super::Cacheable<U>,
 {
     fn get_cache(&self) -> &Cache<T, U>;
+    fn cache_name(&self) -> &'static str;
 }
 
 impl<T> GetCache<T, types::Merchant> for Caching<T>
@@ -76,6 +103,10 @@ where
 {
     fn get_cache(&self) -> &Cache<T, types::Merchant> {
         &self.merchant_cache
+    }
+
+    fn cache_name(&self) -> &'static str {
+        types::Merchant::CACHE_NAME
     }
 }
 
@@ -89,6 +120,10 @@ where
     fn get_cache(&self) -> &Cache<T, types::HashTable> {
         &self.hash_table_cache
     }
+
+    fn cache_name(&self) -> &'static str {
+        types::HashTable::CACHE_NAME
+    }
 }
 
 impl<T> GetCache<T, types::Fingerprint> for Caching<T>
@@ -100,6 +135,10 @@ where
 {
     fn get_cache(&self) -> &Cache<T, types::Fingerprint> {
         &self.fingerprint_cache
+    }
+
+    fn cache_name(&self) -> &'static str {
+        types::Fingerprint::CACHE_NAME
     }
 }
 
@@ -114,6 +153,10 @@ where
     fn get_cache(&self) -> &Cache<T, types::Entity> {
         &self.entity_cache
     }
+
+    fn cache_name(&self) -> &'static str {
+        types::Entity::CACHE_NAME
+    }
 }
 
 impl<T> Caching<T>
@@ -123,6 +166,27 @@ where
         + super::Cacheable<types::Fingerprint>
         + CacheableWithEntity<T>,
 {
+    pub async fn collect_cache_entry_count(&self, tenant_id: &str) {
+        macro_rules! collect {
+            ($type:ty) => {{
+                let cache = <Self as GetCache<T, $type>>::get_cache(self);
+                let name = <Self as GetCache<T, $type>>::cache_name(self);
+
+                cache.run_pending_tasks().await;
+                crate::observability::metrics::CACHE_ENTRY_COUNT.record(
+                    cache.entry_count(),
+                    crate::metric_attributes!(("cache", name), ("tenant_id", tenant_id.to_owned())),
+                );
+            }};
+        }
+
+        collect!(types::Merchant);
+        collect!(types::HashTable);
+        collect!(types::Fingerprint);
+        #[cfg(feature = "external_key_manager")]
+        collect!(types::Entity);
+    }
+
     #[inline(always)]
     pub async fn lookup<U>(
         &self,
@@ -132,13 +196,22 @@ where
         T: super::Cacheable<U>,
         Self: GetCache<T, U>,
     {
-        self.get_cache()
-            .get(&key)
-            .await
-            .map(|value: Arc<<T as super::Cacheable<U>>::Value>| {
+        let value = self.get_cache().get(&key).await.map(
+            |value: Arc<<T as super::Cacheable<U>>::Value>| {
                 let data = value.as_ref();
                 data.clone()
-            })
+            },
+        );
+
+        crate::observability::metrics::CACHE_LOOKUP_COUNT.add(
+            1,
+            crate::metric_attributes!(
+                ("cache", <Self as GetCache<T, U>>::cache_name(self)),
+                ("outcome", if value.is_some() { "hit" } else { "miss" })
+            ),
+        );
+
+        value
     }
 
     #[inline(always)]
@@ -151,15 +224,24 @@ where
         Self: GetCache<T, U>,
     {
         self.get_cache().insert(key, value.into()).await;
+
+        crate::observability::metrics::CACHE_INSERT_COUNT.add(
+            1,
+            crate::metric_attributes!(("cache", <Self as GetCache<T, U>>::cache_name(self))),
+        );
     }
 
     pub fn implement_cache(config: &'_ crate::config::Cache) -> impl Fn(T) -> Self + '_ {
         move |inner: T| {
-            let merchant_cache = new_cache::<T, types::Merchant>(config, "merchant");
-            let hash_table_cache = new_cache::<T, types::HashTable>(config, "hash_table");
-            let fingerprint_cache = new_cache::<T, types::Fingerprint>(config, "fingerprint");
+            let merchant_cache =
+                new_cache::<T, types::Merchant>(config, types::Merchant::CACHE_NAME);
+            let hash_table_cache =
+                new_cache::<T, types::HashTable>(config, types::HashTable::CACHE_NAME);
+            let fingerprint_cache =
+                new_cache::<T, types::Fingerprint>(config, types::Fingerprint::CACHE_NAME);
             #[cfg(feature = "external_key_manager")]
-            let entity_cache = new_cache::<T, types::Entity>(config, "entity");
+            let entity_cache = new_cache::<T, types::Entity>(config, types::Entity::CACHE_NAME);
+
             Self {
                 inner,
                 merchant_cache,

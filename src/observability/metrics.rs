@@ -149,6 +149,42 @@ pub fn start_prometheus_metrics_server(
     Ok(())
 }
 
+pub fn spawn_bg_metrics_collector(
+    global_app_state: &std::sync::Arc<crate::tenant::GlobalAppState>,
+    metrics_collection_interval_secs: Option<u64>,
+) {
+    const DEFAULT_BG_METRICS_COLLECTION_INTERVAL_SECS: u64 = 15;
+
+    let metrics_collection_interval = match metrics_collection_interval_secs {
+        Some(0) | None => DEFAULT_BG_METRICS_COLLECTION_INTERVAL_SECS,
+        Some(t) => t,
+    };
+
+    let interval = std::time::Duration::from_secs(metrics_collection_interval);
+
+    let global_app_state = global_app_state.clone();
+
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(interval);
+
+        // Skip the first tick, which resolves immediately.
+        // We want to start metrics collection after the first interval has elapsed.
+        interval.tick().await;
+
+        loop {
+            interval.tick().await;
+
+            #[cfg(feature = "caching")]
+            {
+                let tenants = global_app_state.tenants_app_state.read().await;
+                for (tenant_id, tenant_state) in tenants.iter() {
+                    tenant_state.db.collect_cache_entry_count(tenant_id).await;
+                }
+            }
+        }
+    });
+}
+
 pub(crate) fn f64_histogram_buckets() -> Vec<f64> {
     let mut init = 0.000_001;
     let mut buckets: [f64; 30] = [0.0; 30];
@@ -257,4 +293,34 @@ histogram_metric_f64!(
     description: "Duration of completed external HTTP requests",
     unit: "s",
     buckets: f64_histogram_buckets(),
+);
+
+// Cache
+#[cfg(feature = "caching")]
+counter_metric!(
+    pub(crate) CACHE_LOOKUP_COUNT, CARD_VAULT_METER,
+    name: "cache.lookup.count",
+    description: "Number of cache lookup attempts",
+    unit: "1",
+);
+#[cfg(feature = "caching")]
+counter_metric!(
+    pub(crate) CACHE_INSERT_COUNT, CARD_VAULT_METER,
+    name: "cache.insert.count",
+    description: "Number of cache insert attempts",
+    unit: "1",
+);
+#[cfg(feature = "caching")]
+counter_metric!(
+    pub(crate) CACHE_EVICTION_COUNT, CARD_VAULT_METER,
+    name: "cache.eviction.count",
+    description: "Number of cache eviction events",
+    unit: "1",
+);
+#[cfg(feature = "caching")]
+gauge_metric!(
+    pub(crate) CACHE_ENTRY_COUNT, CARD_VAULT_METER,
+    name: "cache.entry.count",
+    description: "Current number of cache entries",
+    unit: "1",
 );

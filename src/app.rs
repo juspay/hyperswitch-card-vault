@@ -242,6 +242,17 @@ pub async fn server_builder(
         observability::start_prometheus_metrics_server(host, *port, registry.clone())?;
     }
 
+    if metrics_handle.provider().is_some() {
+        #[cfg(feature = "caching")]
+        observability::spawn_bg_metrics_collector(
+            &global_app_state,
+            global_app_state
+                .global_config
+                .cache
+                .metrics_collection_interval_secs,
+        );
+    }
+
     router = router.layer(
         tower_trace::TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| utils::record_fields_from_header(request))
