@@ -90,6 +90,21 @@ pub(crate) trait KvDeleteResource: KvResource {
     ) -> Result<usize, ContainerError<Self::Error>>;
 }
 
+pub(crate) trait KvUpdateResource: KvResource {
+    fn generate_update_drainer_query(
+        new_object: &Self::DieselNew,
+        pk: &Self::PrimaryKeyType,
+    ) -> error_stack::Result<SerializableQuery, KvError>;
+
+    fn apply_update(new_object: Self::DieselNew, current: Self) -> Self;
+
+    async fn storage_update(
+        store: &Storage,
+        new_object: Self::DieselNew,
+        pk: Self::PrimaryKeyType,
+    ) -> Result<Self, ContainerError<Self::Error>>;
+}
+
 /// KV reverse lookup trait
 pub(crate) trait KvReverseLookupResource:
     serde::Serialize
@@ -279,6 +294,10 @@ where
                     Report::new(KvError::Backend)
                         .attach_printable("unexpected HSetNx result for an HGet operation"),
                 )),
+                Ok(KvResult::Hset(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected Hset result for an HGet operation"),
+                )),
                 Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
                     Report::new(KvError::Backend)
                         .attach_printable("unexpected HDel result for an HGet operation"),
@@ -346,6 +365,10 @@ where
                     Report::new(KvError::Backend)
                         .attach_printable("unexpected HSetNx result for an HGet operation"),
                 )),
+                Ok(KvResult::Hset(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected Hset result for an HGet operation"),
+                )),
                 Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
                     Report::new(KvError::Backend)
                         .attach_printable("unexpected HDel result for an HGet operation"),
@@ -367,6 +390,52 @@ where
         Ok(resource) => Ok(Some(resource)),
         Err(err) if err.get_inner().is_not_found() => Ok(None),
         Err(err) => Err(err),
+    }
+}
+
+#[instrument(skip(store, diesel_new, primary_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn update_resource_by_id<M>(
+    store: &Storage,
+    mut diesel_new: M::DieselNew,
+    primary_key: M::PrimaryKeyType,
+) -> Result<M, ContainerError<M::Error>>
+where
+    M: KvUpdateResource,
+    M::PrimaryKeyType: Clone,
+{
+    let scheme = decide(store, Op::Update).await;
+    M::set_storage_scheme(&mut diesel_new, scheme);
+
+    match scheme {
+        StorageScheme::PostgresOnly => M::storage_update(store, diesel_new, primary_key).await,
+        StorageScheme::RedisKv => {
+            let key = primary_key.get_partition_key();
+            let current = find_resource_by_id::<M>(store, primary_key.clone()).await?;
+            let update_query = M::generate_update_drainer_query(&diesel_new, &primary_key)
+                .map_err(kv_backend_error::<M::Error>)?;
+            let updated_model = M::apply_update(diesel_new, current);
+            let redis_value = serde_json::to_string(&updated_model).map_err(|err| {
+                kv_backend_error::<M::Error>(
+                    Report::new(KvError::SerializationFailed)
+                        .attach_printable(format!("failed to serialize updated resource: {err}")),
+                )
+            })?;
+
+            let key_str = key.to_string();
+            kv_wrapper::<(), M>(
+                store,
+                KvOperation::<M>::Hset((&key_str, redis_value), update_query),
+                key.clone(),
+            )
+            .await
+            .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?
+            .try_into_hset()
+            .map_err(|e| {
+                kv_backend_error::<M::Error>(Report::new(e).change_context(KvError::Backend))
+            })?;
+
+            Ok(updated_model)
+        }
     }
 }
 

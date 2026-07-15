@@ -1,17 +1,20 @@
 #[cfg(not(feature = "kv"))]
-use diesel::QueryDsl;
-use diesel::{BoolExpressionMethods, ExpressionMethods, associations::HasTable};
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
+#[cfg(not(feature = "kv"))]
 use diesel_async::RunQueryDsl;
+#[cfg(not(feature = "kv"))]
+use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "kv")]
 use hyperswitch_masking::PeekInterface;
-use hyperswitch_masking::{ExposeInterface, Secret};
+use hyperswitch_masking::Secret;
 
 use super::{VaultInterface, types};
 use crate::{
     error::{self, ContainerError},
-    logger,
-    storage::{Storage, schema},
+    storage::Storage,
 };
+#[cfg(not(feature = "kv"))]
+use crate::{logger, storage::schema};
 
 impl VaultInterface for Storage {
     type Error = error::VaultDBError;
@@ -92,24 +95,43 @@ impl VaultInterface for Storage {
         &self,
         new: types::VaultNew,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let vault_id = new.vault_id.peek().clone();
+            let entity_id = new.entity_id.clone();
 
-        logger::info!("performing update operation on vault data");
-
-        let output: types::VaultInner = diesel::update(types::VaultInner::table())
-            .filter(
-                schema::vault::vault_id
-                    .eq(new.vault_id.expose())
-                    .and(schema::vault::entity_id.eq(&new.entity_id)),
+            return crate::storage::kv::update_resource_by_id::<types::Vault>(
+                self,
+                new,
+                crate::storage::kv::impls::vault::VaultPrimaryKey {
+                    entity_id,
+                    vault_id,
+                },
             )
-            .set((
-                schema::vault::encrypted_data.eq(new.encrypted_data),
-                schema::vault::expires_at.eq(new.expires_at),
-            ))
-            .get_result(&mut conn)
-            .await?;
+            .await;
+        }
 
-        Ok(output.into())
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            logger::info!("performing update operation on vault data");
+
+            let output: types::VaultInner = diesel::update(types::VaultInner::table())
+                .filter(
+                    schema::vault::vault_id
+                        .eq(new.vault_id.expose())
+                        .and(schema::vault::entity_id.eq(&new.entity_id)),
+                )
+                .set((
+                    schema::vault::encrypted_data.eq(new.encrypted_data),
+                    schema::vault::expires_at.eq(new.expires_at),
+                ))
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn delete_from_vault(

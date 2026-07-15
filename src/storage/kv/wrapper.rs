@@ -92,6 +92,7 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
 
 /// Operation to perform on Redis.
 pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
+    Hset((&'a str, String), SerializableQuery),
     HSetNx(&'a str, &'a S, SerializableQuery),
     HGet(&'a str),
     HDel(&'a str, SerializableQuery),
@@ -101,11 +102,19 @@ pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
 #[derive(Debug)]
 pub(crate) enum KvResult<T: de::DeserializeOwned> {
     HGet(T),
+    Hset(()),
     HSetNx(HsetnxReply),
     HDel(usize),
 }
 
 impl<T: de::DeserializeOwned> KvResult<T> {
+    pub(crate) fn try_into_hset(self) -> Result<(), RedisError> {
+        match self {
+            Self::Hset(v) => Ok(v),
+            _ => Err(RedisError::UnknownResult),
+        }
+    }
+
     pub(crate) fn try_into_hsetnx(self) -> Result<HsetnxReply, RedisError> {
         match self {
             Self::HSetNx(v) => Ok(v),
@@ -127,6 +136,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Hset(_, _) => f.write_str("Hset"),
             Self::HSetNx(_, _, _) => f.write_str("HSetNx"),
             Self::HGet(_) => f.write_str("HGet"),
             Self::HDel(_, _) => f.write_str("HDel"),
@@ -154,6 +164,16 @@ where
 
     let result = async {
         match op {
+            KvOperation::Hset(value, query) => {
+                redis_conn
+                    .set_hash_fields(&key.into(), vec![value], Some(ttl.into()))
+                    .await
+                    .bridge()?;
+
+                push_to_drainer_stream::<S>(store, query, partition_key).await?;
+                Ok(KvResult::Hset(()))
+            }
+
             KvOperation::HSetNx(field, value, query) => {
                 let result = redis_conn
                     .serialize_and_set_hash_field_if_not_exist(&key.into(), field, value, Some(ttl))
