@@ -45,9 +45,9 @@ pub struct MerchantNew<'a> {
     pub enc_key: Secret<Vec<u8>>,
 }
 
-#[derive(Debug, Identifiable, Queryable)]
+#[derive(Debug, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::locker)]
-pub(super) struct LockerInner {
+pub(crate) struct LockerInner {
     id: i32,
     locker_id: Secret<String>,
     merchant_id: String,
@@ -57,6 +57,22 @@ pub(super) struct LockerInner {
     hash_id: String,
     ttl: Option<time::PrimitiveDateTime>,
     pub updated_by: StorageScheme,
+}
+
+impl From<LockerNew> for LockerInner {
+    fn from(value: LockerNew) -> Self {
+        Self {
+            id: 0,
+            locker_id: value.locker_id,
+            merchant_id: value.merchant_id,
+            customer_id: value.customer_id,
+            enc_data: value.enc_data,
+            created_at: value.created_at,
+            hash_id: value.hash_id,
+            ttl: value.ttl,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 impl From<LockerInner> for Locker {
@@ -74,7 +90,7 @@ impl From<LockerInner> for Locker {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct Locker {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
@@ -86,7 +102,7 @@ pub struct Locker {
     pub updated_by: StorageScheme,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub enum Encryptable {
     Encrypted(Secret<Vec<u8>>),
     Decrypted(StrongSecret<Vec<u8>>),
