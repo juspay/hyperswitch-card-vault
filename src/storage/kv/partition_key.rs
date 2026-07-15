@@ -12,8 +12,12 @@ pub(crate) enum PartitionKey<'a> {
         customer_id: &'a str,
         locker_id: &'a str,
     },
-    HashTable { data_hash: &'a [u8] },
-    ReverseLookup { lookup_id: &'a str },
+    HashTable {
+        data_hash: &'a [u8],
+    },
+    ReverseLookup {
+        lookup_id: &'a str,
+    },
     Vault {
         entity_id: &'a str,
         vault_id: &'a str,

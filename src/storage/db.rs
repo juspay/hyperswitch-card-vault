@@ -1,6 +1,6 @@
-use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable,
-};
+#[cfg(not(feature = "kv"))]
+use diesel::OptionalExtension;
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 #[cfg(feature = "kv")]
 use hyperswitch_masking::PeekInterface;
@@ -522,8 +522,12 @@ impl super::ReverseLookupInterface for Storage {
                 lookup_id: &lookup_id,
             };
 
-            return super::kv::insert_resource::<types::ReverseLookup>(self, new, partition_key)
-                .await;
+            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(
+                self,
+                new,
+                partition_key,
+            ))
+            .await;
         }
 
         #[cfg(not(feature = "kv"))]
