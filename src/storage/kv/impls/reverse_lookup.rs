@@ -9,8 +9,10 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::{self as kv_resouce, KvResource},
-            serializable_query::{SerializableQuery, generate_insert_query},
+            resource::{
+                self as kv_resouce, KvDeletableResource, KvDeleteWithoutLookup, KvResource,
+            },
+            serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
         schema,
         types::{ReverseLookup, ReverseLookupNew},
@@ -26,6 +28,7 @@ impl EntityType for ReverseLookup {
 
 impl KvStorePartition for ReverseLookup {}
 
+#[derive(Clone)]
 pub(crate) struct ReverseLookupPrimaryKey {
     pub lookup_id: String,
 }
@@ -105,3 +108,38 @@ impl KvResource for ReverseLookup {
         Ok(output)
     }
 }
+
+impl KvDeletableResource for ReverseLookup {
+    fn generate_delete_drainer_query(
+        pk: &Self::PrimaryKeyType,
+    ) -> error_stack::Result<SerializableQuery, KvError> {
+        let query = diesel::delete(crate::storage::schema::reverse_lookup::table)
+            .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id.clone()));
+
+        generate_delete_query::<_, Self>(query)
+    }
+
+    async fn storage_delete(
+        store: &Storage,
+        pk: Self::PrimaryKeyType,
+    ) -> Result<usize, ContainerError<ReverseLookupDBError>> {
+        let mut conn = store.get_conn().await?;
+
+        let query = diesel::delete(Self::table())
+            .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id));
+
+        let pool = conn.pool();
+        let operation = storage::DbOperation::Delete;
+        crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
+
+        let output = crate::storage::record_db_query_rows::<<Self as HasTable>::Table, _, _>(
+            query.execute(conn.get_mut()),
+            operation,
+            pool,
+        )
+        .await?;
+        Ok(output)
+    }
+}
+
+impl KvDeleteWithoutLookup for ReverseLookup {}
