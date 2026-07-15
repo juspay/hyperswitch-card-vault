@@ -20,13 +20,12 @@ pub(crate) enum KvState {
 
 /// Operation type used by `decide_storage_scheme`.
 ///
-/// `Update` is not yet included — fingerprint only has insert/find. When vault
-/// migrates, `Op::Update` will be added with a Redis probe in SoftKill mode.
 #[derive(Debug, Clone, Copy, strum::Display)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum Op {
     Insert,
     Find,
+    Update,
     Delete,
 }
 
@@ -41,9 +40,8 @@ pub(crate) fn decide_storage_scheme(state: KvState, operation: Op) -> StorageSch
         KvState::Enabled => StorageScheme::RedisKv,
         KvState::SoftKill => {
             let scheme = match operation {
-                Op::Insert => StorageScheme::PostgresOnly,
+                Op::Insert | Op::Update | Op::Delete => StorageScheme::PostgresOnly,
                 Op::Find => StorageScheme::RedisKv,
-                Op::Delete => StorageScheme::PostgresOnly,
             };
             debug!(%scheme, %operation, "soft-kill routing");
             scheme
