@@ -1,23 +1,3 @@
-use std::sync::Arc;
-
-use diesel_async::{
-    AsyncPgConnection,
-    pooled_connection::{
-        self,
-        deadpool::{Object, Pool},
-    },
-};
-use error_stack::ResultExt;
-use hyperswitch_masking::{PeekInterface, Secret};
-
-#[cfg(feature = "kv")]
-use crate::storage::redis as redis_store;
-use crate::{
-    config::Database,
-    crypto::encryption_manager::encryption_interface::Encryption,
-    error::{self, ContainerError},
-};
-
 #[cfg(feature = "caching")]
 pub mod caching;
 pub mod consts;
@@ -32,9 +12,26 @@ pub mod storage_v2;
 pub mod types;
 pub mod utils;
 
-pub use scheme::StorageScheme;
+use std::sync::Arc;
 
-pub trait State {}
+use diesel_async::{
+    AsyncPgConnection,
+    pooled_connection::{
+        self,
+        deadpool::{Object, Pool},
+    },
+};
+use error_stack::ResultExt;
+use hyperswitch_masking::{PeekInterface, Secret};
+
+pub use self::scheme::StorageScheme;
+#[cfg(feature = "kv")]
+use crate::storage::redis as redis_store;
+use crate::{
+    config::Database,
+    crypto::encryption_manager::encryption_interface::Encryption,
+    error::{self, ContainerError},
+};
 
 /// All runtime configs, deserialized directly from the config endpoint's JSON body. Field names
 /// match the keys the endpoint returns; each `#[serde(default)]` field fails closed when absent.
