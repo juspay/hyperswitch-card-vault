@@ -165,9 +165,8 @@ impl From<LockerNew> for Locker {
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::reverse_lookup, primary_key(lookup_id))]
-#[expect(dead_code)]
 pub(crate) struct ReverseLookup {
     pub lookup_id: String,
     pub secondary_key: String,

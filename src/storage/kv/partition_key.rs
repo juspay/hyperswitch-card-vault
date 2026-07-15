@@ -13,6 +13,7 @@ pub(crate) enum PartitionKey<'a> {
         locker_id: &'a str,
     },
     HashTable { data_hash: &'a [u8] },
+    ReverseLookup { lookup_id: &'a str },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
@@ -29,6 +30,9 @@ impl std::fmt::Display for PartitionKey<'_> {
             } => f.write_str(&format!("locker_{merchant_id}_{customer_id}_{locker_id}")),
             Self::HashTable { data_hash } => {
                 f.write_str(&format!("hash_table_{}", hex::encode(data_hash)))
+            }
+            Self::ReverseLookup { lookup_id } => {
+                f.write_str(&format!("reverse_lookup_{lookup_id}"))
             }
         }
     }
