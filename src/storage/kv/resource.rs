@@ -79,6 +79,17 @@ pub(crate) trait KvResource:
     ) -> Result<Self, ContainerError<Self::Error>>;
 }
 
+pub(crate) trait KvDeleteResource: KvResource {
+    fn generate_delete_drainer_query(
+        pk: &Self::PrimaryKeyType,
+    ) -> error_stack::Result<SerializableQuery, KvError>;
+
+    async fn storage_delete(
+        store: &Storage,
+        pk: Self::PrimaryKeyType,
+    ) -> Result<usize, ContainerError<Self::Error>>;
+}
+
 /// KV reverse lookup trait
 pub(crate) trait KvReverseLookupResource:
     serde::Serialize
@@ -268,6 +279,10 @@ where
                     Report::new(KvError::Backend)
                         .attach_printable("unexpected HSetNx result for an HGet operation"),
                 )),
+                Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected HDel result for an HGet operation"),
+                )),
             }
         }
     }
@@ -331,6 +346,10 @@ where
                     Report::new(KvError::Backend)
                         .attach_printable("unexpected HSetNx result for an HGet operation"),
                 )),
+                Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected HDel result for an HGet operation"),
+                )),
             }
         }
     }
@@ -348,6 +367,39 @@ where
         Ok(resource) => Ok(Some(resource)),
         Err(err) if err.get_inner().is_not_found() => Ok(None),
         Err(err) => Err(err),
+    }
+}
+
+#[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn delete_resource_by_id<M>(
+    store: &Storage,
+    primary_key: M::PrimaryKeyType,
+) -> Result<usize, ContainerError<M::Error>>
+where
+    M: KvDeleteResource,
+{
+    let key = primary_key.get_partition_key();
+    let scheme = decide(store, Op::Delete).await;
+
+    match scheme {
+        StorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
+        StorageScheme::RedisKv => {
+            let delete_query = M::generate_delete_drainer_query(&primary_key)
+                .map_err(kv_backend_error::<M::Error>)?;
+
+            let key_str = key.to_string();
+            let reply = kv_wrapper::<(), M>(
+                store,
+                KvOperation::<M>::HDel(&key_str, delete_query),
+                key.clone(),
+            )
+            .await
+            .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
+
+            reply.try_into_hdel().map_err(|e| {
+                kv_backend_error::<M::Error>(Report::new(e).change_context(KvError::Backend))
+            })
+        }
     }
 }
 

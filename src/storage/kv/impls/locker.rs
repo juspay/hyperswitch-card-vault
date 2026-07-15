@@ -1,6 +1,6 @@
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
-use hyperswitch_masking::PeekInterface;
+use hyperswitch_masking::{ExposeInterface, PeekInterface};
 
 use crate::{
     error::{ContainerError, VaultDBError},
@@ -11,10 +11,10 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                GetLookupKey, GetPartitionKey, KvResource, KvReverseLookupResource,
-                ReverseLookupKey,
+                GetLookupKey, GetPartitionKey, KvDeleteResource, KvResource,
+                KvReverseLookupResource, ReverseLookupKey,
             },
-            serializable_query::{SerializableQuery, generate_insert_query},
+            serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
         types::{Locker, LockerInner, LockerNew},
     },
@@ -151,5 +151,39 @@ impl KvResource for Locker {
             .await?;
 
         Ok(output.into())
+    }
+}
+
+impl KvDeleteResource for Locker {
+    fn generate_delete_drainer_query(
+        pk: &Self::PrimaryKeyType,
+    ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
+        let query = diesel::delete(crate::storage::schema::locker::table).filter(
+            crate::storage::schema::locker::locker_id
+                .eq(pk.locker_id.peek().clone())
+                .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id.clone()))
+                .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.clone())),
+        );
+
+        generate_delete_query(query, Self::ENTITY_TYPE.to_owned())
+    }
+
+    async fn storage_delete(
+        store: &Storage,
+        pk: Self::PrimaryKeyType,
+    ) -> Result<usize, ContainerError<VaultDBError>> {
+        let mut conn = store.get_conn().await?;
+
+        let output = diesel::delete(crate::storage::schema::locker::table)
+            .filter(
+                crate::storage::schema::locker::locker_id
+                    .eq(pk.locker_id.expose())
+                    .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id))
+                    .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id)),
+            )
+            .execute(&mut conn)
+            .await?;
+
+        Ok(output)
     }
 }
