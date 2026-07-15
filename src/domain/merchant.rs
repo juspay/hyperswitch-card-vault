@@ -4,6 +4,7 @@ use crate::{
     app::TenantAppState,
     crypto::encryption_manager::managers::aes::{self, GcmAes256},
     error::{self, ContainerError, NotFoundError, StorageErrorExt},
+    observability::metrics,
     storage::{
         MerchantInterface,
         types::{Merchant, MerchantNew},
@@ -20,7 +21,14 @@ pub async fn find_or_create(
     key: &GcmAes256,
 ) -> Result<Merchant, ContainerError<error::MerchantDBError>> {
     match state.db.find_by_merchant_id(merchant_id, key).await {
-        Ok(merchant) => Ok(merchant),
+        Ok(merchant) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Merchant,
+                metrics::DomainGetOrInsertOutcome::FoundExisting,
+            );
+            Ok(merchant)
+        }
+
         Err(err) if err.is_not_found() => {
             let new = MerchantNew {
                 merchant_id,
@@ -28,14 +36,50 @@ pub async fn find_or_create(
             };
 
             match state.db.insert_merchant(new, key).await {
-                Ok(merchant) => Ok(merchant),
+                Ok(merchant) => {
+                    super::record_get_or_insert_outcome(
+                        metrics::Resource::Merchant,
+                        metrics::DomainGetOrInsertOutcome::Created,
+                    );
+                    Ok(merchant)
+                }
+
                 // Concurrent create won the race — re-read the winner row.
                 Err(err) if err.get_inner().is_duplicate() => {
-                    state.db.find_by_merchant_id(merchant_id, key).await
+                    match state.db.find_by_merchant_id(merchant_id, key).await {
+                        Ok(merchant) => {
+                            super::record_get_or_insert_outcome(
+                                metrics::Resource::Merchant,
+                                metrics::DomainGetOrInsertOutcome::FoundExistingAfterDuplicateInsert,
+                            );
+                            Ok(merchant)
+                        }
+                        Err(err) => {
+                            super::record_get_or_insert_outcome(
+                                metrics::Resource::Merchant,
+                                metrics::DomainGetOrInsertOutcome::Error,
+                            );
+                            Err(err)
+                        }
+                    }
                 }
-                Err(err) => Err(err),
+
+                Err(err) => {
+                    super::record_get_or_insert_outcome(
+                        metrics::Resource::Merchant,
+                        metrics::DomainGetOrInsertOutcome::Error,
+                    );
+                    Err(err)
+                }
             }
         }
-        Err(err) => Err(err),
+
+        Err(err) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Merchant,
+                metrics::DomainGetOrInsertOutcome::Error,
+            );
+            Err(err)
+        }
     }
 }

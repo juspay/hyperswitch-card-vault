@@ -1,6 +1,7 @@
 use crate::{
     app::TenantAppState,
     error::{self, ContainerError, StorageErrorExt},
+    observability::metrics,
     storage::{
         LockerInterface,
         types::{Locker, LockerNew},
@@ -20,13 +21,41 @@ pub async fn get_or_insert(
     let customer_id = new.customer_id.clone();
 
     match state.db.insert_locker(new).await {
-        Ok(locker) => Ok(locker),
-        Err(err) if err.get_inner().is_duplicate() => {
-            state
-                .db
-                .find_by_locker_id_merchant_id_customer_id(locker_id, &merchant_id, &customer_id)
-                .await
+        Ok(locker) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Locker,
+                metrics::DomainGetOrInsertOutcome::Created,
+            );
+            Ok(locker)
         }
-        Err(err) => Err(err),
+
+        Err(err) if err.get_inner().is_duplicate() => match state
+            .db
+            .find_by_locker_id_merchant_id_customer_id(locker_id, &merchant_id, &customer_id)
+            .await
+        {
+            Ok(locker) => {
+                super::record_get_or_insert_outcome(
+                    metrics::Resource::Locker,
+                    metrics::DomainGetOrInsertOutcome::FoundExistingAfterDuplicateInsert,
+                );
+                Ok(locker)
+            }
+            Err(err) => {
+                super::record_get_or_insert_outcome(
+                    metrics::Resource::Locker,
+                    metrics::DomainGetOrInsertOutcome::Error,
+                );
+                Err(err)
+            }
+        },
+
+        Err(err) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Locker,
+                metrics::DomainGetOrInsertOutcome::Error,
+            );
+            Err(err)
+        }
     }
 }

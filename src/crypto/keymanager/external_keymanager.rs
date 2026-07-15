@@ -19,6 +19,7 @@ use crate::{
         },
     },
     error::{self, ContainerError, NotFoundError},
+    observability::metrics,
     routes::health,
     storage::{EntityInterface, types::Entity},
 };
@@ -205,7 +206,14 @@ impl super::KeyProvider for ExternalKeyManager {
         let entity = tenant_app_state.db.find_by_entity_id(&entity_id).await;
 
         let entity = match entity {
-            Ok(entity) => Ok(entity),
+            Ok(entity) => {
+                crate::domain::record_get_or_insert_outcome(
+                    metrics::Resource::Entity,
+                    metrics::DomainGetOrInsertOutcome::FoundExisting,
+                );
+                Ok(entity)
+            }
+
             Err(inner_err) => match inner_err.is_not_found() {
                 true => {
                     let external_keymanager_resp = external_keymanager::create_key_in_key_manager(
@@ -214,17 +222,41 @@ impl super::KeyProvider for ExternalKeyManager {
                     )
                     .await?;
 
-                    Ok(tenant_app_state
+                    match tenant_app_state
                         .db
                         .insert_entity(
                             &entity_id,
                             &external_keymanager_resp.identifier.get_identifier(),
                         )
-                        .await?)
+                        .await
+                    {
+                        Ok(entity) => {
+                            crate::domain::record_get_or_insert_outcome(
+                                metrics::Resource::Entity,
+                                metrics::DomainGetOrInsertOutcome::Created,
+                            );
+                            Ok(entity)
+                        }
+                        Err(err) => {
+                            crate::domain::record_get_or_insert_outcome(
+                                metrics::Resource::Entity,
+                                metrics::DomainGetOrInsertOutcome::Error,
+                            );
+                            Err::<_, ContainerError<error::ApiError>>(err.into())
+                        }
+                    }
                 }
-                false => Err::<_, ContainerError<error::ApiError>>(inner_err.into()),
+
+                false => {
+                    crate::domain::record_get_or_insert_outcome(
+                        metrics::Resource::Entity,
+                        metrics::DomainGetOrInsertOutcome::Error,
+                    );
+                    Err::<_, ContainerError<error::ApiError>>(inner_err.into())
+                }
             },
         };
+
         Ok(entity
             .map(ExternalCryptoManager::from_entity)
             .map(Box::new)?)

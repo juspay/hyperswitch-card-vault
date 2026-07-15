@@ -336,11 +336,33 @@ counter_metric!(
     unit: "1",
 );
 
+// Domain
+counter_metric!(
+    pub(crate) DOMAIN_GET_OR_INSERT_COUNT, CARD_VAULT_METER,
+    name: "domain.get_or_insert.count",
+    description: "Number of domain get-or-insert workflow outcomes",
+    unit: "1",
+);
+
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum Resource {
+    Entity,
+    Fingerprint,
+    HashTable,
     Locker,
+    Merchant,
     Vault,
+}
+
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub(crate) enum DomainGetOrInsertOutcome {
+    FoundExisting,
+    FoundExistingAfterDuplicateInsert,
+    Created,
+    Updated,
+    Error,
 }
 
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
@@ -350,4 +372,4 @@ pub(crate) enum TtlDeletionOutcome {
     Failed,
 }
 
-crate::impl_metric_value_from!(Resource, TtlDeletionOutcome);
+crate::impl_metric_value_from!(Resource, DomainGetOrInsertOutcome, TtlDeletionOutcome);

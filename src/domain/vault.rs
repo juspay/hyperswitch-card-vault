@@ -1,6 +1,7 @@
 use crate::{
     app::TenantAppState,
     error::{self, ContainerError, StorageErrorExt},
+    observability::metrics,
     storage::storage_v2::{
         VaultInterface,
         types::{Vault, VaultNew},
@@ -16,14 +17,42 @@ pub async fn get_or_insert(
     let entity_id = new.entity_id.clone();
 
     match state.db.insert_vault(new).await {
-        Ok(vault) => Ok(vault),
-        Err(err) if err.get_inner().is_duplicate() => {
-            state
-                .db
-                .find_by_vault_id_entity_id(vault_id, &entity_id)
-                .await
+        Ok(vault) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Vault,
+                metrics::DomainGetOrInsertOutcome::Created,
+            );
+            Ok(vault)
         }
-        Err(err) => Err(err),
+
+        Err(err) if err.get_inner().is_duplicate() => match state
+            .db
+            .find_by_vault_id_entity_id(vault_id, &entity_id)
+            .await
+        {
+            Ok(vault) => {
+                super::record_get_or_insert_outcome(
+                    metrics::Resource::Vault,
+                    metrics::DomainGetOrInsertOutcome::FoundExistingAfterDuplicateInsert,
+                );
+                Ok(vault)
+            }
+            Err(err) => {
+                super::record_get_or_insert_outcome(
+                    metrics::Resource::Vault,
+                    metrics::DomainGetOrInsertOutcome::Error,
+                );
+                Err(err)
+            }
+        },
+
+        Err(err) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Vault,
+                metrics::DomainGetOrInsertOutcome::Error,
+            );
+            Err(err)
+        }
     }
 }
 
@@ -35,8 +64,39 @@ pub async fn upsert(
     let cloned_new = new.clone();
 
     match state.db.insert_vault(new).await {
-        Ok(vault) => Ok(vault),
-        Err(err) if err.get_inner().is_duplicate() => state.db.update_vault_data(cloned_new).await,
-        Err(err) => Err(err),
+        Ok(vault) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Vault,
+                metrics::DomainGetOrInsertOutcome::Created,
+            );
+            Ok(vault)
+        }
+
+        Err(err) if err.get_inner().is_duplicate() => {
+            match state.db.update_vault_data(cloned_new).await {
+                Ok(vault) => {
+                    super::record_get_or_insert_outcome(
+                        metrics::Resource::Vault,
+                        metrics::DomainGetOrInsertOutcome::Updated,
+                    );
+                    Ok(vault)
+                }
+                Err(err) => {
+                    super::record_get_or_insert_outcome(
+                        metrics::Resource::Vault,
+                        metrics::DomainGetOrInsertOutcome::Error,
+                    );
+                    Err(err)
+                }
+            }
+        }
+
+        Err(err) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Vault,
+                metrics::DomainGetOrInsertOutcome::Error,
+            );
+            Err(err)
+        }
     }
 }
