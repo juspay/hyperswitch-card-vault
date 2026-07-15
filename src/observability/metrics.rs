@@ -346,6 +346,15 @@ counter_metric!(
     unit: "1",
 );
 
+// Runtime config
+histogram_metric_f64!(
+    pub(crate) RUNTIME_CONFIG_FETCH_DURATION, CARD_VAULT_METER,
+    name: "runtime_config.fetch.duration",
+    description: "Duration of completed runtime config fetch attempts",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
+
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum Resource {
