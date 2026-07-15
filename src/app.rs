@@ -243,13 +243,12 @@ pub async fn server_builder(
     }
 
     if metrics_handle.provider().is_some() {
-        #[cfg(feature = "caching")]
         observability::spawn_bg_metrics_collector(
             &global_app_state,
             global_app_state
                 .global_config
-                .cache
-                .metrics_collection_interval_secs,
+                .metrics
+                .background_metrics_collection_interval_secs(),
         );
     }
 

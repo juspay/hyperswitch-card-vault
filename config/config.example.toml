@@ -15,7 +15,6 @@ duration = 60     # duration to rate limit the delete api (in sec)
 [cache]
 tti = 7200          # Idle time after a get/insert of a cache entry to free the cache (in secs)
 max_capacity = 5000 # Max capacity of a single table cache
-metrics_collection_interval_secs = 15 # Interval for collecting cache entry-count (in secs)
 
 [database]
 username = "sam"   # username for the database
@@ -141,13 +140,15 @@ ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 mode = "otlp" # Options: "disabled", "otlp", "prometheus"
 
 # When mode is "otlp", configure endpoint, endpoint_timeout_secs and metrics_export_interval_secs:
-endpoint = "http://localhost:4317" # OTLP gRPC endpoint
-endpoint_timeout_secs = 10         # OTLP exporter connection timeout (seconds)
-metrics_export_interval_secs = 60  # How often to export metrics (seconds)
+endpoint = "http://localhost:4317"               # OTLP gRPC endpoint
+endpoint_timeout_secs = 10                       # OTLP exporter connection timeout (seconds)
+metrics_export_interval_secs = 60                # How often to export metrics (seconds)
+background_metrics_collection_interval_secs = 15 # How often to collect metrics in the background (in secs)
 
 # When mode is "prometheus", configure host and port:
-# host = "127.0.0.1" # IP address the Prometheus HTTP server binds to
-# port = 9090        # Port the Prometheus HTTP server listens on
+# host = "127.0.0.1"                               # IP address the Prometheus HTTP server binds to
+# port = 9090                                      # Port the Prometheus HTTP server listens on
+# background_metrics_collection_interval_secs = 15 # How often to collect metrics in the background (in secs)
 
 # Runtime configuration endpoint
 # [runtime_config]

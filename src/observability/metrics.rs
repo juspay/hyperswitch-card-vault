@@ -8,7 +8,6 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
 pub use self::middleware::HttpRequestMetricsLayer;
 use super::{MetricsConfig, MetricsHandle};
-#[cfg_attr(not(feature = "caching"), expect(unused_imports))]
 use crate::{
     counter_metric, error, gauge_metric, global_meter, histogram_metric_f64, up_down_counter_metric,
 };
@@ -20,6 +19,7 @@ pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
             endpoint,
             endpoint_timeout_secs,
             metrics_export_interval_secs,
+            ..
         } => {
             let exporter = match MetricExporter::builder()
                 .with_tonic()
@@ -55,7 +55,7 @@ pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
 
             MetricsHandle::Otlp { provider }
         }
-        MetricsConfig::Prometheus { host, port } => {
+        MetricsConfig::Prometheus { host, port, .. } => {
             let registry = prometheus::Registry::new();
 
             let exporter = match opentelemetry_prometheus::exporter()
@@ -149,18 +149,10 @@ pub fn start_prometheus_metrics_server(
 
 pub fn spawn_bg_metrics_collector(
     global_app_state: &std::sync::Arc<crate::tenant::GlobalAppState>,
-    metrics_collection_interval_secs: Option<u64>,
+    background_metrics_collection_interval_secs: u64,
 ) {
-    const DEFAULT_BG_METRICS_COLLECTION_INTERVAL_SECS: u64 = 15;
+    let interval = std::time::Duration::from_secs(background_metrics_collection_interval_secs);
 
-    let metrics_collection_interval = match metrics_collection_interval_secs {
-        Some(0) | None => DEFAULT_BG_METRICS_COLLECTION_INTERVAL_SECS,
-        Some(t) => t,
-    };
-
-    let interval = std::time::Duration::from_secs(metrics_collection_interval);
-
-    #[cfg_attr(not(feature = "caching"), expect(unused_variables))]
     let global_app_state = global_app_state.clone();
 
     tokio::spawn(async move {
@@ -173,12 +165,12 @@ pub fn spawn_bg_metrics_collector(
         loop {
             interval.tick().await;
 
-            #[cfg(feature = "caching")]
-            {
-                let tenants = global_app_state.tenants_app_state.read().await;
-                for (tenant_id, tenant_state) in tenants.iter() {
-                    tenant_state.db.collect_cache_entry_count(tenant_id).await;
-                }
+            let tenants = global_app_state.tenants_app_state.read().await;
+            for (tenant_id, tenant_state) in tenants.iter() {
+                tenant_state.db.collect_db_pool_state(tenant_id);
+
+                #[cfg(feature = "caching")]
+                tenant_state.db.collect_cache_entry_count(tenant_id).await;
             }
         }
     });
@@ -277,6 +269,24 @@ histogram_metric_f64!(
     description: "Duration of database connection acquisition attempts",
     unit: "s",
     buckets: f64_histogram_buckets(),
+);
+gauge_metric!(
+    pub(crate) DATABASE_POOL_SIZE, CARD_VAULT_METER,
+    name: "database.pool.size",
+    description: "Total number of connections in the database pool",
+    unit: "1",
+);
+gauge_metric!(
+    pub(crate) DATABASE_POOL_AVAILABLE, CARD_VAULT_METER,
+    name: "database.pool.available",
+    description: "Number of available connections in the database pool",
+    unit: "1",
+);
+gauge_metric!(
+    pub(crate) DATABASE_POOL_WAITING, CARD_VAULT_METER,
+    name: "database.pool.waiting",
+    description: "Number of callers waiting for a database connection",
+    unit: "1",
 );
 
 // External HTTP client

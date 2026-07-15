@@ -18,6 +18,8 @@ pub enum MetricsConfig {
         endpoint_timeout_secs: u64,
         #[serde(default = "default_export_interval")]
         metrics_export_interval_secs: u64,
+        #[serde(default = "default_bg_metrics_interval")]
+        background_metrics_collection_interval_secs: u64,
     },
 
     Prometheus {
@@ -25,14 +27,16 @@ pub enum MetricsConfig {
         host: String,
         #[serde(default = "default_prometheus_port")]
         port: u16,
+        #[serde(default = "default_bg_metrics_interval")]
+        background_metrics_collection_interval_secs: u64,
     },
 }
 
-fn default_endpoint_timeout() -> u64 {
+const fn default_endpoint_timeout() -> u64 {
     10
 }
 
-fn default_export_interval() -> u64 {
+const fn default_export_interval() -> u64 {
     15
 }
 
@@ -40,8 +44,12 @@ fn default_prometheus_host() -> String {
     "127.0.0.1".to_string()
 }
 
-fn default_prometheus_port() -> u16 {
+const fn default_prometheus_port() -> u16 {
     9090
+}
+
+const fn default_bg_metrics_interval() -> u64 {
+    15
 }
 
 impl MetricsConfig {
@@ -58,7 +66,7 @@ impl MetricsConfig {
                 }
                 Ok(())
             }
-            Self::Prometheus { host, port } => {
+            Self::Prometheus { host, port, .. } => {
                 if host.parse::<std::net::IpAddr>().is_err() {
                     return Err(
                         crate::error::ConfigurationError::InvalidConfigurationValueError(
@@ -77,6 +85,22 @@ impl MetricsConfig {
                 }
                 Ok(())
             }
+        }
+    }
+
+    pub fn background_metrics_collection_interval_secs(&self) -> u64 {
+        match self {
+            // We shouldn't be reaching this arm preferably,
+            // we shouldn't be launching the metrics collection task if metrics are disabled.
+            Self::Disabled => default_bg_metrics_interval(),
+            Self::Otlp {
+                background_metrics_collection_interval_secs,
+                ..
+            }
+            | Self::Prometheus {
+                background_metrics_collection_interval_secs,
+                ..
+            } => *background_metrics_collection_interval_secs,
         }
     }
 }

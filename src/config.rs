@@ -122,7 +122,6 @@ pub struct Cache {
     pub tti: Option<u64>,
     // maximum capacity of the cache
     pub max_capacity: u64,
-    pub metrics_collection_interval_secs: Option<u64>,
 }
 
 #[derive(Clone, serde::Deserialize, Debug)]

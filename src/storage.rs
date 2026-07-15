@@ -226,6 +226,59 @@ impl Storage {
             .map(|runtime_config_values| runtime_config_values.enable_kv)
             .unwrap_or(kv::KvState::Disabled)
     }
+
+    pub fn collect_db_pool_state(&self, tenant_id: &str) {
+        use crate::observability::metrics::{
+            DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE, DATABASE_POOL_WAITING,
+        };
+
+        fn to_u64(value: usize, field: &'static str, pool: DbPool, tenant_id: &str) -> Option<u64> {
+            match u64::try_from(value) {
+                Ok(v) => Some(v),
+                Err(_) => {
+                    tracing::warn!(
+                        field,
+                        pool = %<&'static str>::from(pool),
+                        tenant_id,
+                        value,
+                        "Database pool metric value overflows u64, skipping"
+                    );
+                    None
+                }
+            }
+        }
+
+        let primary = self.primary_pg_pool.status();
+        let pool = DbPool::Primary;
+        let attrs = crate::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
+
+        if let Some(size) = to_u64(primary.size, "size", pool, tenant_id) {
+            DATABASE_POOL_SIZE.record(size, attrs);
+        }
+        if let Some(available) = to_u64(primary.available, "available", pool, tenant_id) {
+            DATABASE_POOL_AVAILABLE.record(available, attrs);
+        }
+        if let Some(waiting) = to_u64(primary.waiting, "waiting", pool, tenant_id) {
+            DATABASE_POOL_WAITING.record(waiting, attrs);
+        }
+
+        if let Some(replica) = &self.replica_pg_pool {
+            let replica = replica.status();
+            let pool = DbPool::Replica;
+            let attrs =
+                crate::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
+
+            if let Some(size) = to_u64(replica.size, "size", pool, tenant_id) {
+                DATABASE_POOL_SIZE.record(size, attrs);
+            }
+            if let Some(available) = to_u64(replica.available, "available", pool, tenant_id) {
+                DATABASE_POOL_AVAILABLE.record(available, attrs);
+            }
+            if let Some(waiting) = to_u64(replica.waiting, "waiting", pool, tenant_id) {
+                DATABASE_POOL_WAITING.record(waiting, attrs);
+            }
+        }
+    }
 }
 
 #[cfg(feature = "kv")]
