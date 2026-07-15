@@ -40,6 +40,7 @@ pub struct HealthRespPayload {
 }
 
 /// '/health` API handler`
+#[tracing::instrument(skip_all)]
 pub async fn health() -> Json<HealthRespPayload> {
     crate::logger::debug!("Health was called");
     Json(HealthRespPayload {
@@ -75,6 +76,7 @@ pub enum HealthState {
 }
 
 /// '/health/diagnostics` API handler`
+#[tracing::instrument(skip_all)]
 pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Json<Diagnostics> {
     crate::logger::info!("Health diagnostics was called");
 

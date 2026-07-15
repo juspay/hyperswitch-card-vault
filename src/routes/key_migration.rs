@@ -33,6 +33,7 @@ pub struct TransferKeyResponse {
     pub total_transferred: usize,
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn transfer_keys(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<MerchantKeyTransferRequest>,

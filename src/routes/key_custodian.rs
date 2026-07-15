@@ -60,6 +60,7 @@ pub fn serve() -> axum::Router<Arc<GlobalAppState>> {
 }
 
 /// Handler for `/custodian/key1`
+#[tracing::instrument(skip_all)]
 pub async fn key1(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
@@ -77,6 +78,7 @@ pub async fn key1(
 }
 
 /// Handler for `/custodian/key2`
+#[tracing::instrument(skip_all)]
 pub async fn key2(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
@@ -94,6 +96,7 @@ pub async fn key2(
 }
 
 /// Handler for `/custodian/decrypt`
+#[tracing::instrument(skip_all)]
 pub async fn decrypt(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,

@@ -1,7 +1,8 @@
+pub mod types;
+
 use axum::{Json, extract::Query};
 use error_stack::ResultExt;
 use hyperswitch_masking::PeekInterface;
-pub mod types;
 
 use crate::{
     crypto::keymanager,
@@ -14,6 +15,7 @@ use crate::{
     utils,
 };
 
+#[tracing::instrument(skip_all)]
 pub async fn delete_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::DeleteDataRequest>,
@@ -40,6 +42,7 @@ pub async fn delete_data(
     Ok(response)
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn retrieve_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::RetrieveDataRequest>,
@@ -97,6 +100,7 @@ pub async fn retrieve_data(
     Ok(Json(types::RetrieveDataResponse { data: data_value }))
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn add_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Query(params): Query<types::StoreDataRequestQueryParams>,

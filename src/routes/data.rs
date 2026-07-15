@@ -85,6 +85,7 @@ pub fn serve(
 }
 
 /// `/data/add` handling the requirement of storing data
+#[tracing::instrument(skip_all)]
 pub async fn add_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::StoreCardRequest>,
@@ -164,6 +165,7 @@ pub async fn add_card(
 }
 
 /// `/data/delete` handling the requirement of deleting data
+#[tracing::instrument(skip_all)]
 pub async fn delete_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::DeleteCardRequest>,
@@ -190,6 +192,7 @@ pub async fn delete_card(
 }
 
 /// `/data/retrieve` handling the requirement of retrieving data
+#[tracing::instrument(skip_all)]
 pub async fn retrieve_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::RetrieveCardRequest>,
@@ -250,6 +253,7 @@ pub async fn retrieve_card(
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
+#[tracing::instrument(skip_all)]
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     OptionalFingerprintId(fingerprint_id): OptionalFingerprintId,
