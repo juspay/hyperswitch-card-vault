@@ -12,8 +12,10 @@ use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
     routes::data::types::{StoreCardRequest, Validation},
-    storage::kv,
 };
+
+#[cfg(feature = "kv")]
+use crate::storage::kv;
 
 #[derive(Debug, Identifiable, Queryable)]
 #[diesel(table_name = schema::merchant)]
@@ -175,6 +177,7 @@ pub(crate) struct ReverseLookup {
     pub update_by: String,
 }
 
+#[cfg(feature = "kv")]
 impl ReverseLookup {
     pub(crate) fn get_partition_key(&self) -> kv::PartitionKey<'_> {
         kv::PartitionKey::CombinationKey {
