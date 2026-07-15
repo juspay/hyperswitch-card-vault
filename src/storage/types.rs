@@ -54,7 +54,7 @@ pub(super) struct LockerInner {
     created_at: time::PrimitiveDateTime,
     hash_id: String,
     ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl From<LockerInner> for Locker {
@@ -81,7 +81,7 @@ pub struct Locker {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[derive(Debug)]
@@ -125,7 +125,7 @@ pub struct LockerNew<'a> {
     pub enc_data: Encrypted,
     pub hash_id: &'a str,
     pub ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl<'a> LockerNew<'a> {
@@ -141,7 +141,7 @@ impl<'a> LockerNew<'a> {
             hash_id,
             ttl: *request.ttl,
             // Placeholder — overwritten by `set_storage_scheme` when locker joins KV.
-            updated_by: StorageScheme::PostgresOnly,
+            updated_by: Some(StorageScheme::PostgresOnly),
         }
     }
 }
@@ -186,7 +186,7 @@ pub struct HashTable {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
@@ -195,7 +195,7 @@ pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl From<FingerprintTableNew> for Fingerprint {
@@ -251,7 +251,7 @@ impl std::ops::Deref for CardNumber {
 pub(crate) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -267,7 +267,7 @@ pub(super) struct EntityTableNew {
 pub(super) struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 ///

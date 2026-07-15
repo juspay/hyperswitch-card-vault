@@ -196,7 +196,7 @@ impl super::HashInterface for Storage {
                 hash_id: utils::generate_uuid(),
                 data_hash,
                 // Placeholder — overwritten by `set_storage_scheme` when hash_table joins KV.
-                updated_by: StorageScheme::PostgresOnly,
+                updated_by: Some(StorageScheme::PostgresOnly),
             })
             .get_result(&mut conn)
             .await?;
@@ -226,7 +226,7 @@ impl super::TestInterface for Storage {
                             hash_id: "test".to_string(),
                             data_hash: b"0".to_vec(),
                             // Test-only — always PostgresOnly.
-                            updated_by: StorageScheme::PostgresOnly,
+                            updated_by: Some(StorageScheme::PostgresOnly),
                         })
                         .execute(x)
                         .await
@@ -310,7 +310,7 @@ impl super::FingerprintInterface for Storage {
             let finger_print_new = types::FingerprintTableNew {
                 fingerprint_hash: fingerprint_hash.clone(),
                 fingerprint_id,
-                updated_by: StorageScheme::PostgresOnly,
+                updated_by: Some(StorageScheme::PostgresOnly),
             };
             let partition_key = super::kv::PartitionKey::Fingerprint {
                 fingerprint_hash: fingerprint_hash.peek().as_slice(),
@@ -332,7 +332,7 @@ impl super::FingerprintInterface for Storage {
                 .values(types::FingerprintTableNew {
                     fingerprint_hash,
                     fingerprint_id,
-                    updated_by: StorageScheme::PostgresOnly,
+                    updated_by: Some(StorageScheme::PostgresOnly),
                 })
                 .get_result(&mut conn)
                 .await?;
