@@ -8,6 +8,7 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
 pub use self::middleware::HttpRequestMetricsLayer;
 use super::{MetricsConfig, MetricsHandle};
+#[cfg_attr(not(feature = "caching"), expect(unused_imports))]
 use crate::{
     counter_metric, error, gauge_metric, global_meter, histogram_metric_f64, up_down_counter_metric,
 };
@@ -159,6 +160,7 @@ pub fn spawn_bg_metrics_collector(
 
     let interval = std::time::Duration::from_secs(metrics_collection_interval);
 
+    #[cfg_attr(not(feature = "caching"), expect(unused_variables))]
     let global_app_state = global_app_state.clone();
 
     tokio::spawn(async move {
@@ -347,6 +349,7 @@ counter_metric!(
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum Resource {
+    #[cfg(feature = "external_key_manager")]
     Entity,
     Fingerprint,
     HashTable,
