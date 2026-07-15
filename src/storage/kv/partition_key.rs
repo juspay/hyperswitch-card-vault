@@ -1,6 +1,9 @@
 /// Partition key for Redis hash-slot routing and drainer stream derivation.
 #[derive(Clone, Debug)]
 pub(crate) enum PartitionKey<'a> {
+    CombinationKey {
+        combination: &'a str,
+    },
     Fingerprint {
         fingerprint_hash: &'a [u8],
     },
@@ -14,6 +17,7 @@ pub(crate) enum PartitionKey<'a> {
 impl std::fmt::Display for PartitionKey<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::CombinationKey { combination } => f.write_str(&format!("{}", combination)),
             Self::Fingerprint { fingerprint_hash } => {
                 f.write_str(&format!("fingerprint_{}", hex::encode(fingerprint_hash)))
             }

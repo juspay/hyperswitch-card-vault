@@ -12,6 +12,7 @@ use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
     routes::data::types::{StoreCardRequest, Validation},
+    storage::kv,
 };
 
 #[derive(Debug, Identifiable, Queryable)]
@@ -172,6 +173,14 @@ pub(crate) struct ReverseLookup {
     pub partition_key: String,
     pub source: String,
     pub update_by: String,
+}
+
+impl ReverseLookup {
+    pub(crate) fn get_partition_key(&self) -> kv::PartitionKey<'_> {
+        kv::PartitionKey::CombinationKey {
+            combination: &self.partition_key,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Insertable)]

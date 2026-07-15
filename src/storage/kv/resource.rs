@@ -27,6 +27,14 @@ pub(crate) struct ReverseLookupKey {
     pub lookup_id: String,
 }
 
+pub(crate) trait GetPartitionKey {
+    fn get_partition_key(&self) -> PartitionKey<'_>;
+}
+
+pub(crate) trait GetLookupKey {
+    fn get_lookup_key(&self) -> ReverseLookupKey;
+}
+
 /// A KV-routed table's Diesel Queryable model: stored in Redis, read back, returned to
 /// callers.
 pub(crate) trait KvResource:
@@ -48,6 +56,10 @@ pub(crate) trait KvResource:
 
     type DieselNew: Into<Self>;
 
+    /// A type that represent the primary key of this table
+    /// could be composite key as well.
+    type PrimaryKeyType: GetPartitionKey;
+
     fn set_storage_scheme(diesel_new: &mut Self::DieselNew, scheme: StorageScheme);
 
     /// Drainer INSERT — built from the `Insertable` `New` projection (the model is not
@@ -56,13 +68,6 @@ pub(crate) trait KvResource:
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
-    fn get_reverse_lookup_key(
-        _new_object: &Self::DieselNew,
-        _partition_key: &PartitionKey<'_>,
-    ) -> Option<ReverseLookupKey> {
-        None
-    }
-
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
@@ -70,14 +75,40 @@ pub(crate) trait KvResource:
 
     async fn storage_find(
         store: &Storage,
-        pk: &PartitionKey<'_>,
+        pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<Self::Error>>;
 }
 
-/// Locator for a find. `Id` = plain-keyed (single HGet/HSetNx field).
-/// Extend with `LookupId(String)` for reverse-lookup tables when their first consumer lands.
-pub(crate) enum FindResourceBy<'a> {
-    Id(PartitionKey<'a>),
+/// KV reverse lookup trait
+pub(crate) trait KvReverseLookupResource:
+    serde::Serialize
+    + KvResource
+    + serde::de::DeserializeOwned
+    + std::fmt::Debug
+    + KvStorePartition
+    + EntityType
+    + Sync
+    + Send
+    + Sized
+{
+    // type Error: error_stack::Context
+    //     + Send
+    //     + Sync
+    //     + 'static
+    //     + StorageErrorExt
+    //     + for<'a> From<&'a KvError>;
+
+    type LookupKeyType: GetLookupKey;
+
+    fn get_reverse_lookup_key(
+        new_object: &Self::DieselNew,
+        partition_key: &PartitionKey<'_>,
+    ) -> Self::LookupKeyType;
+
+    async fn storage_find_by_lookup(
+        store: &Storage,
+        lookup_key: &Self::LookupKeyType,
+    ) -> Result<Self, ContainerError<Self::Error>>;
 }
 
 fn kv_backend_error<E>(report: Report<KvError>) -> ContainerError<E>
@@ -102,17 +133,15 @@ async fn decide(store: &Storage, op: Op) -> StorageScheme {
     decide_storage_scheme(state, op)
 }
 
-/// Insert via HSetNx. `KeyNotSet` → `Duplicate`. `PostgresOnly` → `storage_insert`.
-/// On the RedisKv path the model's serial `id` is unresolved (e.g. `0`); the drainer
-/// assigns it on PG replay. Callers only see the business id (`fingerprint_id`).
-#[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
-pub(crate) async fn insert_resource<M>(
+async fn insert_resource_inner<M, F>(
     store: &Storage,
     mut diesel_new: M::DieselNew,
     partition_key: PartitionKey<'_>,
+    get_reverse_lookup_key: F,
 ) -> Result<M, ContainerError<M::Error>>
 where
     M: KvResource,
+    F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
 {
     let scheme = decide(store, Op::Insert).await;
     M::set_storage_scheme(&mut diesel_new, scheme);
@@ -124,8 +153,7 @@ where
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let partition_key_str = partition_key.to_string();
-            if let Some(reverse_lookup_key) = M::get_reverse_lookup_key(&diesel_new, &partition_key)
-            {
+            if let Some(reverse_lookup_key) = get_reverse_lookup_key(&diesel_new, &partition_key) {
                 store
                     .insert_reverse_lookup(types::ReverseLookupNew {
                         lookup_id: reverse_lookup_key.lookup_id.clone(),
@@ -169,21 +197,56 @@ where
     }
 }
 
+/// Insert via HSetNx. `KeyNotSet` → `Duplicate`. `PostgresOnly` → `storage_insert`.
+/// On the RedisKv path the model's serial `id` is unresolved (e.g. `0`); the drainer
+/// assigns it on PG replay. Callers only see the business id (`fingerprint_id`).
+#[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn insert_resource<M>(
+    store: &Storage,
+    diesel_new: M::DieselNew,
+    partition_key: PartitionKey<'_>,
+) -> Result<M, ContainerError<M::Error>>
+where
+    M: KvResource,
+{
+    insert_resource_inner::<M, _>(store, diesel_new, partition_key, |_, _| None).await
+}
+
+#[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn insert_resource_with_reverse_lookup<M>(
+    store: &Storage,
+    diesel_new: M::DieselNew,
+    partition_key: PartitionKey<'_>,
+) -> Result<M, ContainerError<M::Error>>
+where
+    M: KvReverseLookupResource,
+{
+    insert_resource_inner::<M, _>(
+        store,
+        diesel_new,
+        partition_key,
+        |new_object, partition_key| {
+            Some(M::get_reverse_lookup_key(new_object, partition_key).get_lookup_key())
+        },
+    )
+    .await
+}
+
 /// Find by plain key. Redis hit → return model. `NotFound` → Postgres fallback.
 /// Other Redis errors are surfaced (not masked) to avoid duplicate inserts.
-#[instrument(skip(store, find_by), fields(resource = M::ENTITY_TYPE))]
+#[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn find_resource_by_id<M>(
     store: &Storage,
-    find_by: FindResourceBy<'_>,
+    primary_key: M::PrimaryKeyType,
 ) -> Result<M, ContainerError<M::Error>>
 where
     M: KvResource,
 {
     let scheme = decide(store, Op::Find).await;
-    let FindResourceBy::Id(key) = find_by;
+    let key = primary_key.get_partition_key();
 
     match scheme {
-        StorageScheme::PostgresOnly => M::storage_find(store, &key).await,
+        StorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
         StorageScheme::RedisKv => {
             let key_str = key.to_string();
             let result =
@@ -196,7 +259,7 @@ where
                     // never written to Redis, so we read from DB.
                     super::metrics::KV_MISS
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
-                    M::storage_find(store, &key).await
+                    M::storage_find(store, &primary_key).await
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&key_str),
@@ -210,15 +273,93 @@ where
     }
 }
 
-#[instrument(skip(store, find_by), fields(resource = M::ENTITY_TYPE))]
+/// Find by reverse lookup id. Reverse-lookup miss and Redis miss both fall back to Postgres.
+#[instrument(skip(store, lookup_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn find_resource_by_lookup_id<M>(
+    store: &Storage,
+    lookup_key: M::LookupKeyType,
+) -> Result<M, ContainerError<M::Error>>
+where
+    M: KvReverseLookupResource,
+{
+    let scheme = decide(store, Op::Find).await;
+    let lookup_id = lookup_key.get_lookup_key();
+    match scheme {
+        StorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
+        StorageScheme::RedisKv => {
+            let key_str = match store.find_by_lookup_id(&lookup_id.lookup_id).await {
+                Ok(lookup) => lookup.get_partition_key().to_string(),
+                Err(err)
+                    if matches!(
+                        err.get_inner(),
+                        crate::error::ReverseLookupDBError::NotFoundError
+                    ) =>
+                {
+                    super::metrics::KV_MISS
+                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    return M::storage_find_by_lookup(store, &lookup_key).await;
+                }
+                Err(err) => {
+                    return Err(kv_backend_error::<M::Error>(
+                        Report::new(KvError::Backend).attach_printable(format!(
+                            "failed to find reverse lookup record: {err}"
+                        )),
+                    ));
+                }
+            };
+
+            let result = kv_wrapper::<M, M>(
+                store,
+                KvOperation::<M>::HGet(&key_str),
+                PartitionKey::CombinationKey {
+                    combination: &key_str,
+                },
+            )
+            .await;
+
+            match result {
+                Ok(KvResult::HGet(v)) => Ok(v),
+                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                    super::metrics::KV_MISS
+                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    M::storage_find_by_lookup(store, &lookup_key).await
+                }
+                Err(e) => Err(kv_backend_error::<M::Error>(
+                    e.to_redis_failed_response(&key_str),
+                )),
+                Ok(KvResult::HSetNx(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected HSetNx result for an HGet operation"),
+                )),
+            }
+        }
+    }
+}
+
+#[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn find_optional_resource_by_id<M>(
     store: &Storage,
-    find_by: FindResourceBy<'_>,
+    primary_key: M::PrimaryKeyType,
 ) -> Result<Option<M>, ContainerError<M::Error>>
 where
     M: KvResource,
 {
-    match find_resource_by_id(store, find_by).await {
+    match find_resource_by_id(store, primary_key).await {
+        Ok(resource) => Ok(Some(resource)),
+        Err(err) if err.get_inner().is_not_found() => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+#[instrument(skip(store, lookup_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn find_optional_resource_by_lookup_id<M>(
+    store: &Storage,
+    lookup_key: M::LookupKeyType,
+) -> Result<Option<M>, ContainerError<M::Error>>
+where
+    M: KvReverseLookupResource,
+{
+    match find_resource_by_lookup_id(store, lookup_key).await {
         Ok(resource) => Ok(Some(resource)),
         Err(err) if err.get_inner().is_not_found() => Ok(None),
         Err(err) => Err(err),
