@@ -27,6 +27,7 @@ pub(crate) enum KvState {
 pub(crate) enum Op {
     Insert,
     Find,
+    Delete,
 }
 
 /// Effective storage scheme for an operation.
@@ -42,6 +43,7 @@ pub(crate) fn decide_storage_scheme(state: KvState, operation: Op) -> StorageSch
             let scheme = match operation {
                 Op::Insert => StorageScheme::PostgresOnly,
                 Op::Find => StorageScheme::RedisKv,
+                Op::Delete => StorageScheme::PostgresOnly,
             };
             debug!(%scheme, %operation, "soft-kill routing");
             scheme

@@ -56,6 +56,7 @@ impl RedisErrorExt for error_stack::Report<RedisError> {
             | RedisError::ConsumerGroupClaimFailed
             | RedisError::SetHashFailed
             | RedisError::SetHashFieldFailed
+            | RedisError::DeleteHashFieldFailed
             | RedisError::GetHashFieldFailed
             | RedisError::InvalidRedisEntryId
             | RedisError::RedisConnectionError

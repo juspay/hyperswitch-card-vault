@@ -9,8 +9,8 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::KvResource,
-            serializable_query::{SerializableQuery, generate_insert_query},
+            resource::{GetPartitionKey, KvDeleteResource, KvResource},
+            serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
         storage_v2::types::{Vault, VaultInner, VaultNew},
     },
@@ -76,5 +76,36 @@ impl KvResource for Vault {
             .await?;
 
         Ok(output.into())
+    }
+}
+
+impl KvDeleteResource for Vault {
+    fn generate_delete_drainer_query(
+        pk: &Self::PrimaryKeyType,
+    ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
+        let query = diesel::delete(crate::storage::schema::vault::table).filter(
+            crate::storage::schema::vault::vault_id
+                .eq(pk.vault_id.clone())
+                .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.clone())),
+        );
+
+        generate_delete_query(query, Self::ENTITY_TYPE.to_owned())
+    }
+
+    async fn storage_delete(
+        store: &Storage,
+        pk: Self::PrimaryKeyType,
+    ) -> Result<usize, ContainerError<VaultDBError>> {
+        let mut conn = store.get_conn().await?;
+        let output = diesel::delete(crate::storage::schema::vault::table)
+            .filter(
+                crate::storage::schema::vault::vault_id
+                    .eq(pk.vault_id)
+                    .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id)),
+            )
+            .execute(&mut conn)
+            .await?;
+
+        Ok(output)
     }
 }

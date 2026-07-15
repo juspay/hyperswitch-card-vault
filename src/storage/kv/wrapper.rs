@@ -59,6 +59,7 @@ fn redis_error_from_ref(err: &RedisError) -> RedisError {
         | RedisError::JsonDeserializationFailed
         | RedisError::SetHashFailed
         | RedisError::SetHashFieldFailed
+        | RedisError::DeleteHashFieldFailed
         | RedisError::GetHashFieldFailed
         | RedisError::InvalidRedisEntryId
         | RedisError::RedisConnectionError
@@ -93,6 +94,7 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
 pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
     HSetNx(&'a str, &'a S, SerializableQuery),
     HGet(&'a str),
+    HDel(&'a str, SerializableQuery),
 }
 
 /// The result of a KV operation.
@@ -100,12 +102,20 @@ pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
 pub(crate) enum KvResult<T: de::DeserializeOwned> {
     HGet(T),
     HSetNx(HsetnxReply),
+    HDel(usize),
 }
 
 impl<T: de::DeserializeOwned> KvResult<T> {
     pub(crate) fn try_into_hsetnx(self) -> Result<HsetnxReply, RedisError> {
         match self {
             Self::HSetNx(v) => Ok(v),
+            _ => Err(RedisError::UnknownResult),
+        }
+    }
+
+    pub(crate) fn try_into_hdel(self) -> Result<usize, RedisError> {
+        match self {
+            Self::HDel(v) => Ok(v),
             _ => Err(RedisError::UnknownResult),
         }
     }
@@ -119,6 +129,7 @@ where
         match self {
             Self::HSetNx(_, _, _) => f.write_str("HSetNx"),
             Self::HGet(_) => f.write_str("HGet"),
+            Self::HDel(_, _) => f.write_str("HDel"),
         }
     }
 }
@@ -166,6 +177,16 @@ where
                     .await
                     .bridge()?;
                 Ok(KvResult::HGet(result))
+            }
+
+            KvOperation::HDel(field, query) => {
+                let result = redis_conn
+                    .delete_hash_fields(&key.into(), field)
+                    .await
+                    .bridge()?;
+
+                push_to_drainer_stream::<S>(store, query, partition_key).await?;
+                Ok(KvResult::HDel(result))
             }
         }
     };

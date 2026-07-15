@@ -1,10 +1,14 @@
-use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable,
-};
+#[cfg(not(feature = "kv"))]
+use diesel::BoolExpressionMethods;
+#[cfg(not(feature = "kv"))]
+use diesel::OptionalExtension;
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+#[cfg(not(feature = "kv"))]
+use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "kv")]
 use hyperswitch_masking::PeekInterface;
-use hyperswitch_masking::{ExposeInterface, Secret};
+use hyperswitch_masking::Secret;
 
 use super::{
     MerchantInterface, Storage, schema, types,
@@ -203,19 +207,33 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let pk = super::kv::impls::locker::LockerPrimaryKeyType {
+                locker_id,
+                merchant_id: merchant_id.to_string(),
+                customer_id: customer_id.to_string(),
+            };
 
-        let output = diesel::delete(types::LockerInner::table())
-            .filter(
-                schema::locker::locker_id
-                    .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
-            )
-            .execute(&mut conn)
-            .await?;
+            return super::kv::delete_resource_by_id::<types::Locker>(self, pk).await;
+        }
 
-        Ok(output)
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output = diesel::delete(types::LockerInner::table())
+                .filter(
+                    schema::locker::locker_id
+                        .eq(locker_id.expose())
+                        .and(schema::locker::merchant_id.eq(merchant_id))
+                        .and(schema::locker::customer_id.eq(customer_id)),
+                )
+                .execute(&mut conn)
+                .await?;
+
+            Ok(output)
+        }
     }
 }
 
