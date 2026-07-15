@@ -251,3 +251,16 @@ macro_rules! metric_attributes {
         &[$(::opentelemetry::KeyValue::new($key, $value)),+]
     };
 }
+
+#[macro_export]
+macro_rules! impl_metric_value_from {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl From<$ty> for opentelemetry::Value {
+                fn from(v: $ty) -> Self {
+                    Self::from(<&'static str>::from(v))
+                }
+            }
+        )+
+    };
+}

@@ -4,10 +4,7 @@ use std::time::Duration;
 
 use opentelemetry::global;
 use opentelemetry_otlp::{MetricExporter, WithExportConfig};
-use opentelemetry_sdk::{
-    Resource,
-    metrics::{PeriodicReader, SdkMeterProvider, Temporality},
-};
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
 pub use self::middleware::HttpRequestMetricsLayer;
 use super::{MetricsConfig, MetricsHandle};
@@ -47,7 +44,7 @@ pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
             let provider = SdkMeterProvider::builder()
                 .with_reader(reader)
                 .with_resource(
-                    Resource::builder()
+                    opentelemetry_sdk::Resource::builder()
                         .with_service_name(env!("CARGO_PKG_NAME"))
                         .build(),
                 )
@@ -77,7 +74,7 @@ pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
             let provider = SdkMeterProvider::builder()
                 .with_reader(exporter)
                 .with_resource(
-                    Resource::builder()
+                    opentelemetry_sdk::Resource::builder()
                         .with_service_name(env!("CARGO_PKG_NAME"))
                         .build(),
                 )
@@ -338,3 +335,19 @@ counter_metric!(
     description: "Number of background TTL-based deletions",
     unit: "1",
 );
+
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub(crate) enum Resource {
+    Locker,
+    Vault,
+}
+
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub(crate) enum TtlDeletionOutcome {
+    Deleted,
+    Failed,
+}
+
+crate::impl_metric_value_from!(Resource, TtlDeletionOutcome);

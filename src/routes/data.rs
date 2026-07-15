@@ -15,6 +15,7 @@ use crate::{
     domain::{fingerprint, hash},
     error::{self, ContainerError, ResultContainerExt},
     logger,
+    observability::metrics,
     storage::{HashInterface, LockerInterface},
     tenant::GlobalAppState,
     utils,
@@ -213,7 +214,7 @@ pub async fn retrieve_card(
         .ttl
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
-                super::record_expired_data_encountered("locker");
+                super::record_expired_data_encountered(metrics::Resource::Locker);
 
                 tokio::spawn(async move {
                     let result = tenant_app_state
@@ -226,8 +227,12 @@ pub async fn retrieve_card(
                         .await;
 
                     super::record_ttl_deletion_result(
-                        "locker",
-                        if result.is_ok() { "deleted" } else { "failed" },
+                        metrics::Resource::Locker,
+                        if result.is_ok() {
+                            metrics::TtlDeletionOutcome::Deleted
+                        } else {
+                            metrics::TtlDeletionOutcome::Failed
+                        },
                     );
                 });
 

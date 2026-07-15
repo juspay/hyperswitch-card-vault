@@ -61,22 +61,15 @@ pub struct Storage {
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 enum DbPool {
     Primary,
     Replica,
 }
 
-impl DbPool {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Primary => "primary",
-            Self::Replica => "replica",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 enum DbOperation {
     Insert,
     Update,
@@ -85,17 +78,7 @@ enum DbOperation {
     Filter,
 }
 
-impl DbOperation {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Insert => "insert",
-            Self::Update => "update",
-            Self::Delete => "delete",
-            Self::FindOne => "find_one",
-            Self::Filter => "filter",
-        }
-    }
-}
+crate::impl_metric_value_from!(DbPool, DbOperation);
 
 pub struct DbConnection {
     conn: DeadPoolConnType,
@@ -493,7 +476,7 @@ where
 
     crate::observability::metrics::DATABASE_CONNECTION_ACQUIRE_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(("pool", pool.as_str()), ("outcome", outcome)),
+        crate::metric_attributes!(("pool", pool), ("outcome", outcome)),
     );
 
     result
@@ -513,8 +496,8 @@ where
     crate::logger::debug!(
         query = %diesel::debug_query(query),
         table = %table_name,
-        operation = %operation.as_str(),
-        pool = %pool.as_str(),
+        operation = %<&'static str>::from(operation),
+        pool = %<&'static str>::from(pool),
         "Executing database query",
     );
 }
@@ -537,8 +520,8 @@ where
         1,
         crate::metric_attributes!(
             ("table", table_name),
-            ("operation", operation.as_str()),
-            ("pool", pool.as_str())
+            ("operation", operation),
+            ("pool", pool)
         ),
     );
 
@@ -551,8 +534,8 @@ where
         duration.as_secs_f64(),
         crate::metric_attributes!(
             ("table", table_name),
-            ("operation", operation.as_str()),
-            ("pool", pool.as_str()),
+            ("operation", operation),
+            ("pool", pool),
             ("outcome", outcome),
         ),
     );
@@ -579,8 +562,8 @@ where
         1,
         crate::metric_attributes!(
             ("table", table_name),
-            ("operation", operation.as_str()),
-            ("pool", pool.as_str())
+            ("operation", operation),
+            ("pool", pool)
         ),
     );
 
@@ -597,8 +580,8 @@ where
         duration.as_secs_f64(),
         crate::metric_attributes!(
             ("table", table_name),
-            ("operation", operation.as_str()),
-            ("pool", pool.as_str()),
+            ("operation", operation),
+            ("pool", pool),
             ("outcome", outcome),
         ),
     );
@@ -624,8 +607,8 @@ where
         1,
         crate::metric_attributes!(
             ("table", table_name),
-            ("operation", operation.as_str()),
-            ("pool", pool.as_str())
+            ("operation", operation),
+            ("pool", pool)
         ),
     );
 
@@ -642,8 +625,8 @@ where
         duration.as_secs_f64(),
         crate::metric_attributes!(
             ("table", table_name),
-            ("operation", operation.as_str()),
-            ("pool", pool.as_str()),
+            ("operation", operation),
+            ("pool", pool),
             ("outcome", outcome),
         ),
     );

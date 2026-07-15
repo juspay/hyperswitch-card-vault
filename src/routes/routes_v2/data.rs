@@ -8,6 +8,7 @@ use crate::{
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     logger,
+    observability::metrics,
     routes::data::{crypto_operation, types::Validation},
     storage::storage_v2::VaultInterface,
     utils,
@@ -59,7 +60,7 @@ pub async fn retrieve_data(
         .expires_at
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
-                crate::routes::record_expired_data_encountered("vault");
+                crate::routes::record_expired_data_encountered(metrics::Resource::Vault);
 
                 tokio::spawn(async move {
                     let result = tenant_app_state
@@ -68,8 +69,12 @@ pub async fn retrieve_data(
                         .await;
 
                     crate::routes::record_ttl_deletion_result(
-                        "vault",
-                        if result.is_ok() { "deleted" } else { "failed" },
+                        metrics::Resource::Vault,
+                        if result.is_ok() {
+                            metrics::TtlDeletionOutcome::Deleted
+                        } else {
+                            metrics::TtlDeletionOutcome::Failed
+                        },
                     );
                 });
 

@@ -42,20 +42,14 @@ impl HeaderExt for Headers {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "UPPERCASE")]
 pub enum Method {
     Get,
     Post,
 }
 
-impl Method {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Get => "GET",
-            Self::Post => "POST",
-        }
-    }
-}
+crate::impl_metric_value_from!(Method);
 
 #[derive(Clone, serde::Deserialize, Debug)]
 #[serde(default)]
@@ -176,7 +170,7 @@ impl ApiClient {
             1,
             crate::metric_attributes!(
                 ("purpose", purpose),
-                ("method", method.as_str()),
+                ("method", method),
                 ("host", host.clone())
             ),
         );
@@ -207,7 +201,7 @@ impl ApiClient {
             start.elapsed().as_secs_f64(),
             crate::metric_attributes!(
                 ("purpose", purpose),
-                ("method", method.as_str()),
+                ("method", method),
                 ("host", host),
                 ("outcome", outcome),
                 ("status_code", status_code)
