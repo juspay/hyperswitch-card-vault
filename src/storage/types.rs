@@ -7,7 +7,9 @@ use diesel::{
 };
 use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
-use super::schema;
+use super::{schema, scheme::StorageScheme};
+#[cfg(feature = "kv")]
+use crate::storage::kv;
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
@@ -54,6 +56,7 @@ pub(super) struct LockerInner {
     created_at: time::PrimitiveDateTime,
     hash_id: String,
     ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
 impl From<LockerInner> for Locker {
@@ -66,11 +69,12 @@ impl From<LockerInner> for Locker {
             created_at: value.created_at,
             hash_id: value.hash_id,
             ttl: value.ttl,
+            updated_by: value.updated_by,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Locker {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
@@ -79,9 +83,10 @@ pub struct Locker {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum Encryptable {
     Encrypted(Secret<Vec<u8>>),
     Decrypted(StrongSecret<Vec<u8>>),
@@ -115,17 +120,19 @@ impl From<Encrypted> for Encryptable {
 
 #[derive(Debug, Insertable, Clone)]
 #[diesel(table_name = schema::locker)]
-pub struct LockerNew<'a> {
+pub struct LockerNew {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Encrypted,
-    pub hash_id: &'a str,
+    pub created_at: time::PrimitiveDateTime,
+    pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
 }
 
-impl<'a> LockerNew<'a> {
-    pub fn new(request: StoreCardRequest, hash_id: &'a str, enc_data: Encrypted) -> Self {
+impl LockerNew {
+    pub fn new(request: StoreCardRequest, hash_id: &str, enc_data: Encrypted) -> Self {
         Self {
             locker_id: request
                 .requestor_card_reference
@@ -134,21 +141,47 @@ impl<'a> LockerNew<'a> {
             merchant_id: request.merchant_id,
             customer_id: request.merchant_customer_id,
             enc_data,
-            hash_id,
+            created_at: crate::utils::date_time::now(),
+            hash_id: hash_id.to_string(),
             ttl: *request.ttl,
+            // Placeholder — overwritten by `set_storage_scheme` when locker joins KV.
+            updated_by: StorageScheme::PostgresOnly,
         }
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+impl From<LockerNew> for Locker {
+    fn from(value: LockerNew) -> Self {
+        Self {
+            locker_id: value.locker_id,
+            merchant_id: value.merchant_id,
+            customer_id: value.customer_id,
+            data: value.enc_data.into(),
+            created_at: value.created_at,
+            hash_id: value.hash_id,
+            ttl: value.ttl,
+            updated_by: value.updated_by,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::reverse_lookup, primary_key(lookup_id))]
-#[expect(dead_code)]
 pub(crate) struct ReverseLookup {
     pub lookup_id: String,
     pub secondary_key: String,
     pub partition_key: String,
     pub source: String,
     pub update_by: String,
+}
+
+#[cfg(feature = "kv")]
+impl ReverseLookup {
+    pub(crate) fn get_partition_key(&self) -> kv::PartitionKey<'_> {
+        kv::PartitionKey::CombinationKey {
+            combination: &self.partition_key,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Insertable)]
@@ -173,21 +206,34 @@ impl From<ReverseLookupNew> for ReverseLookup {
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
+    pub updated_by: StorageScheme,
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::fingerprint)]
 pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: StorageScheme,
+}
+
+impl From<FingerprintTableNew> for Fingerprint {
+    fn from(value: FingerprintTableNew) -> Self {
+        Self {
+            id: 0,
+            fingerprint_hash: value.fingerprint_hash,
+            fingerprint_id: value.fingerprint_id,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -227,11 +273,12 @@ impl std::ops::Deref for CardNumber {
     }
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
-pub(super) struct FingerprintTableNew {
+pub(crate) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: StorageScheme,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -242,17 +289,31 @@ pub(super) struct EntityTableNew {
     pub enc_key_id: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::hash_table)]
-pub(super) struct HashTableNew {
+pub(crate) struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
+    pub created_at: time::PrimitiveDateTime,
+    pub updated_by: StorageScheme,
+}
+
+impl From<HashTableNew> for HashTable {
+    fn from(value: HashTableNew) -> Self {
+        Self {
+            id: 0,
+            hash_id: value.hash_id,
+            data_hash: value.data_hash,
+            created_at: value.created_at,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression)]
+#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
 pub struct Encrypted {

@@ -1,37 +1,35 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
+use tokio::sync::RwLock;
+use tracing::Instrument;
 
 use crate::{config::RuntimeConfig, error};
 
 const API_KEY_HEADER_NAME: &str = "X-Internal-Api-Key";
 
-/// Response format from the runtime config endpoint:
-/// ```json
-/// {"key": "runtime_config", "value": "{\"use_read_replica\":true}"}
-/// ```
-#[derive(Debug, serde::Deserialize)]
+/// Endpoint envelope: `{"key": "...", "value": "<config json string>"}`. Only `value` is used —
+/// it's a JSON string holding the flat config object (`{"enable_kv": "...", ...}`).
+#[derive(serde::Deserialize)]
 struct RuntimeConfigResponse {
-    #[expect(dead_code)]
-    key: String,
     value: String,
 }
 
-#[derive(Clone)]
 enum RuntimeConfigState {
     Disabled,
     Enabled {
         endpoint_url: String,
+        endpoint_path: String,
         api_key: Secret<String>,
         client: reqwest::Client,
-        #[cfg(feature = "caching")]
-        cache: moka::future::Cache<String, String>,
+        refresh_interval: Duration,
+        /// Last-known-good config body; `None` until the first successful fetch.
+        cache: RwLock<Option<String>>,
     },
 }
 
-/// Manages on-demand fetching and caching of runtime configs.
-#[derive(Clone)]
+/// Fetches the runtime-config endpoint on a schedule and serves the last-known-good body.
 pub struct RuntimeConfigManager {
     state: RuntimeConfigState,
 }
@@ -67,11 +65,9 @@ impl RuntimeConfigManager {
             RuntimeConfig::Disabled => Self {
                 state: RuntimeConfigState::Disabled,
             },
-            #[cfg_attr(not(feature = "caching"), allow(unused_variables))]
             RuntimeConfig::Enabled {
                 endpoint,
-                ttl_seconds,
-                cache_max_capacity,
+                refresh_interval_seconds,
             } => {
                 let client = reqwest::Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
@@ -86,74 +82,115 @@ impl RuntimeConfigManager {
                 Self {
                     state: RuntimeConfigState::Enabled {
                         endpoint_url: endpoint.base_url.clone(),
+                        endpoint_path: endpoint.path.clone(),
                         api_key: endpoint.api_key.clone(),
                         client,
-                        #[cfg(feature = "caching")]
-                        cache: moka::future::CacheBuilder::new(*cache_max_capacity)
-                            .time_to_live(Duration::from_secs(*ttl_seconds))
-                            .build(),
+                        refresh_interval: Duration::from_secs(*refresh_interval_seconds),
+                        cache: RwLock::new(None),
                     },
                 }
             }
         })
     }
 
-    #[inline]
-    fn deserialize_config<T: serde::de::DeserializeOwned>(key: &str, raw: &str) -> Option<T> {
+    /// Deserialize the last-known-good config body into `T`.
+    ///
+    /// Returns `None` when the manager is disabled, no config has been fetched yet, or the
+    /// cached payload cannot be deserialized into `T`.
+    pub async fn get<T: serde::de::DeserializeOwned>(&self) -> Option<T> {
+        let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
+            crate::logger::debug!("Runtime config disabled");
+            return None;
+        };
+
+        let guard = cache.read().await;
+        let Some(raw) = guard.as_deref() else {
+            crate::logger::debug!("Runtime config not fetched yet");
+            return None;
+        };
+
         match serde_json::from_str::<T>(raw) {
             Ok(val) => Some(val),
             Err(error) => {
-                crate::logger::error!(?error, key, raw, "Failed to deserialize runtime config");
+                crate::logger::error!(?error, raw, "Failed to deserialize runtime config");
                 None
             }
         }
     }
 
-    /// Fetch a runtime config value by key, deserialized to the requested type.
-    ///
-    /// Returns `None` when the runtime config is disabled, the fetch fails, or
-    /// deserialization fails.
-    pub async fn get_config<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-        let (endpoint_url, api_key, client) = match &self.state {
+    /// Spawn a background task that refreshes the config on an interval. Returns `None` when disabled.
+    pub fn spawn_prefetch_task(self: &Arc<Self>) -> Option<tokio::task::JoinHandle<()>> {
+        let refresh_interval = match &self.state {
             RuntimeConfigState::Disabled => return None,
             RuntimeConfigState::Enabled {
-                endpoint_url,
-                api_key,
-                client,
-                ..
-            } => (endpoint_url, api_key, client),
+                refresh_interval, ..
+            } => *refresh_interval,
         };
 
-        #[cfg(feature = "caching")]
-        if let RuntimeConfigState::Enabled { cache, .. } = &self.state {
-            if let Some(val) = cache.get(key).await {
-                return Self::deserialize_config(key, &val);
+        let manager = Arc::clone(self);
+        crate::logger::info!(
+            refresh_interval_secs = refresh_interval.as_secs(),
+            "Spawning runtime config prefetch task"
+        );
+
+        Some(tokio::spawn(
+            async move {
+                manager.prefetch().await;
+
+                let mut ticker = tokio::time::interval(refresh_interval);
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+                loop {
+                    ticker.tick().await;
+                    manager.prefetch().await;
+                }
             }
-        }
-
-        let raw = match Self::fetch(endpoint_url, api_key, client, key).await {
-            Ok(val) => val,
-            Err(error) => {
-                crate::logger::error!(?error, key, "Failed to fetch runtime config from endpoint");
-                return None;
-            }
-        };
-
-        #[cfg(feature = "caching")]
-        if let RuntimeConfigState::Enabled { cache, .. } = &self.state {
-            cache.insert(key.to_string(), raw.clone()).await;
-        }
-
-        Self::deserialize_config(key, &raw)
+            .in_current_span(),
+        ))
     }
 
-    async fn fetch(
+    async fn prefetch(&self) {
+        let RuntimeConfigState::Enabled {
+            endpoint_url,
+            endpoint_path,
+            api_key,
+            client,
+            cache,
+            ..
+        } = &self.state
+        else {
+            return;
+        };
+
+        match Self::fetch_config(endpoint_url, endpoint_path, api_key, client).await {
+            Ok(body) => {
+                crate::logger::info!(config = %body, "Runtime config fetched");
+                *cache.write().await = Some(body);
+            }
+            Err(e) => {
+                crate::logger::warn!(
+                    error = ?e,
+                    "Failed to prefetch runtime config, keeping last-known-good"
+                );
+            }
+        }
+    }
+
+    /// Fetch the config endpoint and return the inner config JSON string (the envelope's `value`).
+    /// Validated as JSON so a malformed 2xx response can't overwrite the last-known-good entry.
+    async fn fetch_config(
         endpoint_url: &str,
+        endpoint_path: &str,
         api_key: &Secret<String>,
         client: &reqwest::Client,
-        key: &str,
     ) -> error_stack::Result<String, error::ConfigurationError> {
-        let url = format!("{}/{}", endpoint_url.trim_end_matches('/'), key);
+        let url = format!(
+            "{}/{}",
+            endpoint_url.trim_end_matches('/'),
+            endpoint_path.trim_start_matches('/')
+        );
+
+        crate::logger::debug!(url = %url, "Fetching runtime config");
 
         let response = client
             .get(&url)
@@ -173,14 +210,18 @@ impl RuntimeConfigManager {
             ));
         }
 
-        let parsed: RuntimeConfigResponse = response.json().await.change_context(
+        let RuntimeConfigResponse { value } = response.json().await.change_context(
             error::ConfigurationError::InvalidConfigurationValueError(
-                "Failed to parse runtime config response".into(),
+                "Failed to parse runtime config response envelope".into(),
             ),
         )?;
 
-        crate::logger::info!(%key, config = ?parsed, "Retrieved runtime config");
+        serde_json::from_str::<serde_json::Value>(&value).change_context(
+            error::ConfigurationError::InvalidConfigurationValueError(
+                "Runtime config value is not valid JSON".into(),
+            ),
+        )?;
 
-        Ok(parsed.value)
+        Ok(value)
     }
 }

@@ -112,6 +112,8 @@ pub enum ReverseLookupDBError {
     DBInsertError,
     #[error("Reverse lookup record not found in database")]
     NotFoundError,
+    #[error("Reverse lookup record already exists in database")]
+    Duplicate,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
@@ -152,6 +154,9 @@ impl NotFoundError for super::ContainerError<VaultDBError> {
 pub trait StorageErrorExt: Sized {
     /// True if this error represents a duplicate-key / already-exists outcome.
     fn is_duplicate(&self) -> bool;
+
+    /// True if this error represents a not-found outcome.
+    fn is_not_found(&self) -> bool;
 }
 
 /// Implements [`StorageErrorExt`] and the centralised raw-diesel-error classifier
@@ -165,6 +170,10 @@ macro_rules! impl_storage_error {
         impl StorageErrorExt for $err {
             fn is_duplicate(&self) -> bool {
                 matches!(self, Self::$dup)
+            }
+
+            fn is_not_found(&self) -> bool {
+                matches!(self, Self::$nf)
             }
         }
 
@@ -213,6 +222,12 @@ impl_storage_error!(
 );
 impl_storage_error!(
     EntityDBError,
+    duplicate = Duplicate,
+    not_found = NotFoundError,
+    other = DBError
+);
+impl_storage_error!(
+    ReverseLookupDBError,
     duplicate = Duplicate,
     not_found = NotFoundError,
     other = DBError

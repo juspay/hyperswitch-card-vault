@@ -1,7 +1,9 @@
-use diesel::{
-    BoolExpressionMethods, ExpressionMethods, associations::HasTable, query_dsl::methods::FilterDsl,
-};
+#[cfg(not(feature = "kv"))]
+use diesel::QueryDsl;
+use diesel::{BoolExpressionMethods, ExpressionMethods, associations::HasTable};
 use diesel_async::RunQueryDsl;
+#[cfg(feature = "kv")]
+use hyperswitch_masking::PeekInterface;
 use hyperswitch_masking::{ExposeInterface, Secret};
 
 use super::{VaultInterface, types};
@@ -18,16 +20,32 @@ impl VaultInterface for Storage {
         &self,
         new: types::VaultNew,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let vault_id = new.vault_id.peek().clone();
+            let entity_id = new.entity_id.clone();
+            let partition_key = crate::storage::kv::PartitionKey::Vault {
+                entity_id: &entity_id,
+                vault_id: &vault_id,
+            };
 
-        logger::info!("performing insert operation on vault data");
+            return crate::storage::kv::insert_resource::<types::Vault>(self, new, partition_key)
+                .await;
+        }
 
-        let output: types::VaultInner = diesel::insert_into(types::VaultInner::table())
-            .values(new)
-            .get_result(&mut conn)
-            .await?;
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
 
-        Ok(output.into())
+            logger::info!("performing insert operation on vault data");
+
+            let output: types::VaultInner = diesel::insert_into(types::VaultInner::table())
+                .values(new)
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn find_by_vault_id_entity_id(
@@ -35,21 +53,39 @@ impl VaultInterface for Storage {
         vault_id: Secret<String>,
         entity_id: &str,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let vault_id = vault_id.peek().clone();
 
-        logger::info!("performing retrieve operation on vault data");
-
-        // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
-        let output: types::VaultInner = types::VaultInner::table()
-            .filter(
-                schema::vault::vault_id
-                    .eq(vault_id.expose())
-                    .and(schema::vault::entity_id.eq(entity_id)),
+            return crate::storage::kv::find_optional_resource_by_id::<types::Vault>(
+                self,
+                crate::storage::kv::impls::vault::VaultPrimaryKey {
+                    entity_id: entity_id.to_string(),
+                    vault_id,
+                },
             )
-            .get_result(&mut conn)
-            .await?;
+            .await?
+            .ok_or_else(|| ContainerError::from(error::VaultDBError::NotFoundError));
+        }
 
-        Ok(output.into())
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            logger::info!("performing retrieve operation on vault data");
+
+            // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
+            let output: types::VaultInner = types::VaultInner::table()
+                .filter(
+                    schema::vault::vault_id
+                        .eq(vault_id.expose())
+                        .and(schema::vault::entity_id.eq(entity_id)),
+                )
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn update_vault_data(
@@ -81,19 +117,33 @@ impl VaultInterface for Storage {
         vault_id: Secret<String>,
         entity_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let vault_id = vault_id.peek().clone();
+            let pk = crate::storage::kv::impls::vault::VaultPrimaryKey {
+                entity_id: entity_id.to_string(),
+                vault_id,
+            };
 
-        logger::info!("performing delete operation on vault data");
+            return crate::storage::kv::delete_resource_by_id::<types::Vault>(self, pk).await;
+        }
 
-        let output = diesel::delete(types::VaultInner::table())
-            .filter(
-                schema::vault::vault_id
-                    .eq(vault_id.expose())
-                    .and(schema::vault::entity_id.eq(entity_id)),
-            )
-            .execute(&mut conn)
-            .await?;
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
 
-        Ok(output)
+            logger::info!("performing delete operation on vault data");
+
+            let output = diesel::delete(types::VaultInner::table())
+                .filter(
+                    schema::vault::vault_id
+                        .eq(vault_id.expose())
+                        .and(schema::vault::entity_id.eq(entity_id)),
+                )
+                .execute(&mut conn)
+                .await?;
+
+            Ok(output)
+        }
     }
 }
