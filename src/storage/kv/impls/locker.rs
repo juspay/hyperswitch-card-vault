@@ -30,6 +30,9 @@ impl EntityType for Locker {
 
 impl KvStorePartition for Locker {}
 
+
+impl KvStorePartition for LockerInner {}
+
 #[derive(Clone)]
 pub struct LockerPrimaryKeyType {
     pub locker_id: hyperswitch_masking::Secret<String>,
@@ -110,6 +113,8 @@ impl KvResource for Locker {
     type Error = VaultDBError;
 
     type DieselNew = LockerNew;
+
+    type DieselEntity = LockerInner;
 
     type PrimaryKeyType = LockerPrimaryKeyType;
 

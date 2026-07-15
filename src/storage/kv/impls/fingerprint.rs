@@ -47,6 +47,8 @@ impl KvResource for Fingerprint {
 
     type DieselNew = FingerprintTableNew;
 
+    type DieselEntity = Fingerprint;
+
     type PrimaryKeyType = FingerprintPrimaryKey;
 
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {

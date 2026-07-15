@@ -27,9 +27,9 @@ pub(crate) enum PartitionKey<'a> {
 impl std::fmt::Display for PartitionKey<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CombinationKey { combination } => f.write_str(&format!("{}", combination)),
+            Self::CombinationKey { combination } => f.write_str(combination),
             Self::Fingerprint { fingerprint_hash } => {
-                f.write_str(&format!("fingerprint_{}", hex::encode(fingerprint_hash)))
+                write!(f, "fingerprint_{}", hex::encode(fingerprint_hash))
             }
             Self::Locker {
                 merchant_id,

@@ -1,6 +1,6 @@
 //! Generic KV resource trait, key-shape locators, and CRUD helpers.
 //!
-//! Stores and returns the Diesel Queryable model (not the `New` projection).
+//! Stores the Diesel table-mapped entity in Redis and returns the resource model.
 
 use error_stack::Report;
 use hyperswitch_redis_interface::{errors::RedisError, types::HsetnxReply};
@@ -35,17 +35,10 @@ pub(crate) trait GetLookupKey {
     fn get_lookup_key(&self) -> ReverseLookupKey;
 }
 
-/// A KV-routed table's Diesel Queryable model: stored in Redis, read back, returned to
-/// callers.
+/// A KV-routed table's resource model. Its `DieselEntity` is stored in Redis and
+/// converted back to the resource returned to callers.
 pub(crate) trait KvResource:
-    serde::Serialize
-    + serde::de::DeserializeOwned
-    + std::fmt::Debug
-    + KvStorePartition
-    + EntityType
-    + Sync
-    + Send
-    + Sized
+    std::fmt::Debug + KvStorePartition + EntityType + Sync + Send + Sized
 {
     type Error: error_stack::Context
         + Send
@@ -54,7 +47,14 @@ pub(crate) trait KvResource:
         + StorageErrorExt
         + for<'a> From<&'a KvError>;
 
-    type DieselNew: Into<Self>;
+    type DieselNew: Into<Self::DieselEntity>;
+
+    type DieselEntity: serde::Serialize
+        + serde::de::DeserializeOwned
+        + std::fmt::Debug
+        + KvStorePartition
+        + Sync
+        + Into<Self>;
 
     /// A type that represent the primary key of this table
     /// could be composite key as well.
@@ -112,24 +112,7 @@ pub(crate) trait KvUpdateResource: KvResource {
 }
 
 /// KV reverse lookup trait
-pub(crate) trait KvReverseLookupResource:
-    serde::Serialize
-    + KvResource
-    + serde::de::DeserializeOwned
-    + std::fmt::Debug
-    + KvStorePartition
-    + EntityType
-    + Sync
-    + Send
-    + Sized
-{
-    // type Error: error_stack::Context
-    //     + Send
-    //     + Sync
-    //     + 'static
-    //     + StorageErrorExt
-    //     + for<'a> From<&'a KvError>;
-
+pub(crate) trait KvReverseLookupResource: KvResource {
     type LookupKeyType: GetLookupKey;
 
     fn get_reverse_lookup_key(
@@ -204,11 +187,10 @@ where
                     })?;
             }
 
-            // apply the changes in application
-            let diesel_model = diesel_new.into();
-            let reply = kv_wrapper::<(), M>(
+            let diesel_entity = diesel_new.into();
+            let reply = kv_wrapper::<(), M::DieselEntity>(
                 store,
-                KvOperation::HSetNx(&partition_key_str, &diesel_model, drainer_query),
+                KvOperation::HSetNx(&partition_key_str, &diesel_entity, drainer_query),
                 partition_key,
             )
             .await
@@ -217,7 +199,7 @@ where
             })?;
 
             match reply.try_into_hsetnx() {
-                Ok(HsetnxReply::KeySet) => Ok(diesel_model),
+                Ok(HsetnxReply::KeySet) => Ok(diesel_entity.into()),
                 Ok(HsetnxReply::KeyNotSet) => {
                     Err(kv_duplicate_error::<M::Error>(&partition_key_str))
                 }
@@ -281,11 +263,15 @@ where
         StorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
         StorageScheme::RedisKv => {
             let key_str = key.to_string();
-            let result =
-                kv_wrapper::<M, M>(store, KvOperation::<M>::HGet(&key_str), key.clone()).await;
+            let result = kv_wrapper::<M::DieselEntity, M::DieselEntity>(
+                store,
+                KvOperation::<M::DieselEntity>::HGet(&key_str),
+                key.clone(),
+            )
+            .await;
 
             match result {
-                Ok(KvResult::HGet(v)) => Ok(v),
+                Ok(KvResult::HGet(v)) => Ok(v.into()),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
@@ -348,9 +334,9 @@ where
                 }
             };
 
-            let result = kv_wrapper::<M, M>(
+            let result = kv_wrapper::<M::DieselEntity, M::DieselEntity>(
                 store,
-                KvOperation::<M>::HGet(&key_str),
+                KvOperation::<M::DieselEntity>::HGet(&key_str),
                 PartitionKey::CombinationKey {
                     combination: &key_str,
                 },
@@ -358,7 +344,7 @@ where
             .await;
 
             match result {
-                Ok(KvResult::HGet(v)) => Ok(v),
+                Ok(KvResult::HGet(v)) => Ok(v.into()),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
                     super::metrics::KV_MISS
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
