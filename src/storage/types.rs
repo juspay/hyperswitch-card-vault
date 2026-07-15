@@ -1,3 +1,4 @@
+use base64::Engine;
 use diesel::{
     AsExpression, Identifiable, Insertable, Queryable,
     backend::Backend,
@@ -317,11 +318,35 @@ pub(super) struct HashTableNew {
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
 pub struct Encrypted {
     inner: Secret<Vec<u8>>,
+}
+
+impl serde::Serialize for Encrypted {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer
+            .serialize_str(&base64::engine::general_purpose::STANDARD.encode(self.inner.peek()))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Encrypted {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+        base64::engine::general_purpose::STANDARD
+            .decode(value)
+            .map(Secret::new)
+            .map(Self::new)
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 impl Encrypted {
@@ -385,6 +410,27 @@ where
     type Row = Secret<Vec<u8>>;
     fn build(row: Self::Row) -> deserialize::Result<Self> {
         Ok(Self { inner: row })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encrypted_serializes_as_base64_string() {
+        let encrypted = Encrypted::new(Secret::new(vec![1, 2, 3, 254, 255]));
+
+        let serialized = serde_json::to_string(&encrypted).unwrap();
+
+        assert_eq!(serialized, "\"AQID/v8=\"");
+    }
+
+    #[test]
+    fn encrypted_deserializes_from_base64_string() {
+        let deserialized: Encrypted = serde_json::from_str("\"AQID/v8=\"").unwrap();
+
+        assert_eq!(deserialized.get_inner().peek(), &vec![1, 2, 3, 254, 255]);
     }
 }
 
