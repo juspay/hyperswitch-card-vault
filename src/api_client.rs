@@ -94,10 +94,10 @@ impl std::ops::Deref for ApiClient {
 }
 
 impl ApiClient {
-    #[allow(unused_mut)]
     pub fn new(
         global_config: &GlobalConfig,
     ) -> Result<Self, error::ContainerError<error::ApiClientError>> {
+        #[cfg_attr(not(feature = "external_key_manager"), expect(unused_mut))]
         let mut client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .pool_idle_timeout(std::time::Duration::from_secs(
