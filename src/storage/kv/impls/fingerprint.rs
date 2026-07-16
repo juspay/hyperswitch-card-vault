@@ -47,7 +47,7 @@ impl KvResource for Fingerprint {
 
     type DieselNew = FingerprintTableNew;
 
-    type DieselEntity = Fingerprint;
+    type DieselEntity = Self;
 
     type PrimaryKeyType = FingerprintPrimaryKey;
 

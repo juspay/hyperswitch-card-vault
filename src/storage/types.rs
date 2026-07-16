@@ -415,101 +415,6 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn primitive_datetime(second: u8, nanosecond: u32) -> time::PrimitiveDateTime {
-        time::PrimitiveDateTime::new(
-            time::Date::from_calendar_date(1970, time::Month::January, 1).unwrap(),
-            time::Time::from_hms_nano(0, 0, second, nanosecond).unwrap(),
-        )
-    }
-
-    #[test]
-    fn encrypted_serializes_as_base64_string() {
-        let encrypted = Encrypted::new(Secret::new(vec![1, 2, 3, 254, 255]));
-
-        let serialized = serde_json::to_string(&encrypted).unwrap();
-
-        assert_eq!(serialized, "\"AQID/v8=\"");
-    }
-
-    #[test]
-    fn encrypted_deserializes_from_base64_string() {
-        let deserialized: Encrypted = serde_json::from_str("\"AQID/v8=\"").unwrap();
-
-        assert_eq!(deserialized.get_inner().peek(), &vec![1, 2, 3, 254, 255]);
-    }
-
-    #[test]
-    fn locker_inner_serializes_timestamps_as_iso8601_strings() {
-        let locker = LockerInner {
-            id: 1,
-            locker_id: Secret::new("locker_id".to_string()),
-            merchant_id: "merchant_id".to_string(),
-            customer_id: "customer_id".to_string(),
-            enc_data: Encrypted::new(Secret::new(vec![1, 2, 3])),
-            created_at: primitive_datetime(1, 123_456_789),
-            hash_id: "hash_id".to_string(),
-            ttl: Some(primitive_datetime(2, 654_321_987)),
-            updated_by: StorageScheme::RedisKv,
-        };
-
-        let serialized = serde_json::to_value(&locker).unwrap();
-
-        assert_eq!(
-            serialized["created_at"],
-            serde_json::json!("1970-01-01T00:00:01.123456789Z")
-        );
-        assert_eq!(
-            serialized["ttl"],
-            serde_json::json!("1970-01-01T00:00:02.654321987Z")
-        );
-    }
-
-    #[test]
-    fn locker_inner_deserializes_timestamps_from_iso8601_strings() {
-        let serialized = serde_json::json!({
-            "id": 1,
-            "locker_id": "locker_id",
-            "merchant_id": "merchant_id",
-            "customer_id": "customer_id",
-            "enc_data": "AQID",
-            "created_at": "1970-01-01T00:00:01.123456789Z",
-            "hash_id": "hash_id",
-            "ttl": "1970-01-01T00:00:02.654321987Z",
-            "updated_by": "redis_kv"
-        });
-
-        let deserialized: LockerInner = serde_json::from_value(serialized).unwrap();
-
-        assert_eq!(deserialized.created_at, primitive_datetime(1, 123_456_789));
-        assert_eq!(deserialized.ttl, Some(primitive_datetime(2, 654_321_987)));
-    }
-
-    #[test]
-    fn locker_inner_round_trips_timestamps_without_precision_loss() {
-        let locker = LockerInner {
-            id: 1,
-            locker_id: Secret::new("locker_id".to_string()),
-            merchant_id: "merchant_id".to_string(),
-            customer_id: "customer_id".to_string(),
-            enc_data: Encrypted::new(Secret::new(vec![1, 2, 3])),
-            created_at: primitive_datetime(1, 123_456_789),
-            hash_id: "hash_id".to_string(),
-            ttl: Some(primitive_datetime(2, 654_321_987)),
-            updated_by: StorageScheme::RedisKv,
-        };
-
-        let serialized = serde_json::to_string(&locker).unwrap();
-        let deserialized: LockerInner = serde_json::from_str(&serialized).unwrap();
-
-        assert_eq!(deserialized.created_at, locker.created_at);
-        assert_eq!(deserialized.ttl, locker.ttl);
-    }
-}
-
 pub(super) trait StorageDecryption: Sized {
     type Output;
     type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
@@ -558,5 +463,143 @@ impl<'a> StorageEncryption for MerchantNew<'a> {
             merchant_id: self.merchant_id,
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn primitive_datetime(second: u8, nanosecond: u32) -> Option<time::PrimitiveDateTime> {
+        Some(time::PrimitiveDateTime::new(
+            time::Date::from_calendar_date(1970, time::Month::January, 1).ok()?,
+            time::Time::from_hms_nano(0, 0, second, nanosecond).ok()?,
+        ))
+    }
+
+    #[test]
+    fn encrypted_serializes_as_base64_string() {
+        let encrypted = Encrypted::new(Secret::new(vec![1, 2, 3, 254, 255]));
+
+        let serialized = serde_json::to_string(&encrypted);
+        assert!(serialized.is_ok(), "failed to serialize encrypted data");
+        let Ok(serialized) = serialized else { return };
+
+        assert_eq!(serialized, "\"AQID/v8=\"");
+    }
+
+    #[test]
+    fn encrypted_deserializes_from_base64_string() {
+        let deserialized = serde_json::from_str::<Encrypted>("\"AQID/v8=\"");
+        assert!(deserialized.is_ok(), "failed to deserialize encrypted data");
+        let Ok(deserialized) = deserialized else {
+            return;
+        };
+
+        assert_eq!(deserialized.get_inner().peek(), &vec![1, 2, 3, 254, 255]);
+    }
+
+    #[test]
+    fn locker_inner_serializes_timestamps_as_iso8601_strings() {
+        let created_at = primitive_datetime(1, 123_456_789);
+        assert!(created_at.is_some(), "failed to build created_at");
+        let Some(created_at) = created_at else { return };
+
+        let ttl = primitive_datetime(2, 654_321_987);
+        assert!(ttl.is_some(), "failed to build ttl");
+        let Some(ttl) = ttl else { return };
+
+        let locker = LockerInner {
+            id: 1,
+            locker_id: Secret::new("locker_id".to_string()),
+            merchant_id: "merchant_id".to_string(),
+            customer_id: "customer_id".to_string(),
+            enc_data: Encrypted::new(Secret::new(vec![1, 2, 3])),
+            created_at,
+            hash_id: "hash_id".to_string(),
+            ttl: Some(ttl),
+            updated_by: StorageScheme::RedisKv,
+        };
+
+        let serialized = serde_json::to_value(&locker);
+        assert!(serialized.is_ok(), "failed to serialize locker");
+        let Ok(serialized) = serialized else { return };
+
+        assert_eq!(
+            serialized["created_at"],
+            serde_json::json!("1970-01-01T00:00:01.123456789Z")
+        );
+        assert_eq!(
+            serialized["ttl"],
+            serde_json::json!("1970-01-01T00:00:02.654321987Z")
+        );
+    }
+
+    #[test]
+    fn locker_inner_deserializes_timestamps_from_iso8601_strings() {
+        let serialized = serde_json::json!({
+            "id": 1,
+            "locker_id": "locker_id",
+            "merchant_id": "merchant_id",
+            "customer_id": "customer_id",
+            "enc_data": "AQID",
+            "created_at": "1970-01-01T00:00:01.123456789Z",
+            "hash_id": "hash_id",
+            "ttl": "1970-01-01T00:00:02.654321987Z",
+            "updated_by": "redis_kv"
+        });
+
+        let deserialized = serde_json::from_value::<LockerInner>(serialized);
+        assert!(deserialized.is_ok(), "failed to deserialize locker");
+        let Ok(deserialized) = deserialized else {
+            return;
+        };
+
+        let created_at = primitive_datetime(1, 123_456_789);
+        assert!(created_at.is_some(), "failed to build created_at");
+        let Some(created_at) = created_at else { return };
+
+        let ttl = primitive_datetime(2, 654_321_987);
+        assert!(ttl.is_some(), "failed to build ttl");
+        let Some(ttl) = ttl else { return };
+
+        assert_eq!(deserialized.created_at, created_at);
+        assert_eq!(deserialized.ttl, Some(ttl));
+    }
+
+    #[test]
+    fn locker_inner_round_trips_timestamps_without_precision_loss() {
+        let created_at = primitive_datetime(1, 123_456_789);
+        assert!(created_at.is_some(), "failed to build created_at");
+        let Some(created_at) = created_at else { return };
+
+        let ttl = primitive_datetime(2, 654_321_987);
+        assert!(ttl.is_some(), "failed to build ttl");
+        let Some(ttl) = ttl else { return };
+
+        let locker = LockerInner {
+            id: 1,
+            locker_id: Secret::new("locker_id".to_string()),
+            merchant_id: "merchant_id".to_string(),
+            customer_id: "customer_id".to_string(),
+            enc_data: Encrypted::new(Secret::new(vec![1, 2, 3])),
+            created_at,
+            hash_id: "hash_id".to_string(),
+            ttl: Some(ttl),
+            updated_by: StorageScheme::RedisKv,
+        };
+
+        let serialized = serde_json::to_string(&locker);
+        assert!(serialized.is_ok(), "failed to serialize locker");
+        let Ok(serialized) = serialized else { return };
+
+        let deserialized = serde_json::from_str::<LockerInner>(&serialized);
+        assert!(deserialized.is_ok(), "failed to deserialize locker");
+        let Ok(deserialized) = deserialized else {
+            return;
+        };
+
+        assert_eq!(deserialized.created_at, locker.created_at);
+        assert_eq!(deserialized.ttl, locker.ttl);
     }
 }

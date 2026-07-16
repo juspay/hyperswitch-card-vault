@@ -132,7 +132,7 @@ impl super::LockerInterface for Storage {
         #[cfg(feature = "kv")]
         {
             let pk = super::kv::impls::locker::LockerPrimaryKeyType {
-                locker_id: locker_id.clone().into(),
+                locker_id: locker_id.clone(),
                 merchant_id: merchant_id.to_string(),
                 customer_id: customer_id.to_string(),
             };
