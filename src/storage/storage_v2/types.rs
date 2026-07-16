@@ -1,4 +1,4 @@
-use diesel::{Identifiable, Insertable, Queryable};
+use diesel::{AsChangeset, Identifiable, Insertable, Queryable};
 use hyperswitch_masking::Secret;
 
 use crate::{
@@ -44,6 +44,25 @@ impl VaultNew {
     }
 }
 
+#[derive(Debug, Clone, AsChangeset)]
+#[diesel(table_name = schema::vault)]
+#[diesel(treat_none_as_null = true)]
+pub struct VaultUpdate {
+    pub encrypted_data: Encrypted,
+    pub expires_at: Option<time::PrimitiveDateTime>,
+    pub updated_by: StorageScheme,
+}
+
+impl From<VaultNew> for VaultUpdate {
+    fn from(value: VaultNew) -> Self {
+        Self {
+            encrypted_data: value.encrypted_data,
+            expires_at: value.expires_at,
+            updated_by: value.updated_by,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::vault)]
 pub(crate) struct VaultInner {
@@ -57,16 +76,22 @@ pub(crate) struct VaultInner {
 }
 
 impl VaultInner {
+    /// apply the updated fields from VaultUpdate on Vault
     #[cfg(feature = "kv")]
-    pub(crate) fn from_update(new: VaultNew, current: Vault) -> Self {
+    pub(crate) fn from_update(new: VaultUpdate, current: Self) -> Self {
+        let VaultUpdate {
+            encrypted_data,
+            expires_at,
+            updated_by,
+        } = new;
         Self {
             id: 0,
             entity_id: current.entity_id,
             vault_id: current.vault_id,
-            encrypted_data: new.encrypted_data,
+            encrypted_data,
             created_at: current.created_at,
-            expires_at: new.expires_at,
-            updated_by: new.updated_by,
+            expires_at,
+            updated_by,
         }
     }
 }

@@ -71,12 +71,12 @@ pub(crate) trait KvResource:
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
-    ) -> Result<Self, ContainerError<Self::Error>>;
+    ) -> Result<Self::DieselEntity, ContainerError<Self::Error>>;
 
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
-    ) -> Result<Self, ContainerError<Self::Error>>;
+    ) -> Result<Self::DieselEntity, ContainerError<Self::Error>>;
 }
 
 pub(crate) trait KvDeleteResource: KvResource {
@@ -91,16 +91,20 @@ pub(crate) trait KvDeleteResource: KvResource {
 }
 
 pub(crate) trait KvUpdateResource: KvResource {
+    type DieselUpdate;
+
+    fn set_update_storage_scheme(diesel_update: &mut Self::DieselUpdate, scheme: StorageScheme);
+
     fn generate_update_drainer_query(
-        new_object: &Self::DieselNew,
+        update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
-    fn apply_update(new_object: Self::DieselNew, current: Self) -> Self::DieselEntity;
+    fn apply_update(update: Self::DieselUpdate, current: Self::DieselEntity) -> Self::DieselEntity;
 
     async fn storage_update(
         store: &Storage,
-        new_object: Self::DieselNew,
+        update: Self::DieselUpdate,
         pk: Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<Self::Error>>;
 }
@@ -206,7 +210,7 @@ where
     M::set_storage_scheme(&mut diesel_new, scheme);
 
     match scheme {
-        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
+        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await.map(Into::into),
         StorageScheme::RedisKv => {
             let drainer_query = M::generate_insert_drainer_query(&diesel_new)
                 .map_err(kv_backend_error::<M::Error>)?;
@@ -293,10 +297,10 @@ where
 /// Find by plain key. Redis hit → return model. `NotFound` → Postgres fallback.
 /// Other Redis errors are surfaced (not masked) to avoid duplicate inserts.
 #[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
-pub(crate) async fn find_resource_by_id<M>(
+pub(crate) async fn find_resource_by_id_inner<M>(
     store: &Storage,
     primary_key: M::PrimaryKeyType,
-) -> Result<M, ContainerError<M::Error>>
+) -> Result<M::DieselEntity, ContainerError<M::Error>>
 where
     M: KvResource,
 {
@@ -315,7 +319,7 @@ where
             .await;
 
             match result {
-                Ok(KvResult::HGet(v)) => Ok(v.into()),
+                Ok(KvResult::HGet(v)) => Ok(v),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
@@ -341,6 +345,21 @@ where
             }
         }
     }
+}
+
+/// Find by plain key. Redis hit → return model. `NotFound` → Postgres fallback.
+/// Other Redis errors are surfaced (not masked) to avoid duplicate inserts.
+#[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn find_resource_by_id<M>(
+    store: &Storage,
+    primary_key: M::PrimaryKeyType,
+) -> Result<M, ContainerError<M::Error>>
+where
+    M: KvResource,
+{
+    find_resource_by_id_inner::<M>(store, primary_key)
+        .await
+        .map(Into::into)
 }
 
 /// Find by reverse lookup id. Reverse-lookup miss and Redis miss both fall back to Postgres.
@@ -429,10 +448,10 @@ where
     }
 }
 
-#[instrument(skip(store, diesel_new, primary_key), fields(resource = M::ENTITY_TYPE))]
+#[instrument(skip(store, update, primary_key), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn update_resource_by_id<M>(
     store: &Storage,
-    mut diesel_new: M::DieselNew,
+    mut update: M::DieselUpdate,
     primary_key: M::PrimaryKeyType,
 ) -> Result<M, ContainerError<M::Error>>
 where
@@ -444,19 +463,19 @@ where
         let key = primary_key.get_partition_key();
         decide_storage_scheme_for_mutation::<M>(store, key, Op::Update).await?
     };
-    M::set_storage_scheme(&mut diesel_new, scheme);
+    M::set_update_storage_scheme(&mut update, scheme);
 
     match scheme {
-        StorageScheme::PostgresOnly => M::storage_update(store, diesel_new, primary_key).await,
+        StorageScheme::PostgresOnly => M::storage_update(store, update, primary_key).await,
         StorageScheme::RedisKv => {
             let key = primary_key.get_partition_key();
             let current = match cached {
-                Some(resource) => resource.into(),
-                None => find_resource_by_id::<M>(store, primary_key.clone()).await?,
+                Some(resource) => resource,
+                None => find_resource_by_id_inner::<M>(store, primary_key.clone()).await?,
             };
-            let update_query = M::generate_update_drainer_query(&diesel_new, &primary_key)
+            let update_query = M::generate_update_drainer_query(&update, &primary_key)
                 .map_err(kv_backend_error::<M::Error>)?;
-            let updated_model = M::apply_update(diesel_new, current);
+            let updated_model = M::apply_update(update, current);
             let updated_resource = updated_model.clone().into();
 
             let key_str = key.to_string();

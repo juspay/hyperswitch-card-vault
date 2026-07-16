@@ -15,7 +15,7 @@ use crate::{
                 generate_update_query,
             },
         },
-        storage_v2::types::{Vault, VaultInner, VaultNew},
+        storage_v2::types::{Vault, VaultInner, VaultNew, VaultUpdate},
     },
 };
 
@@ -68,19 +68,19 @@ impl KvResource for Vault {
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
-    ) -> Result<Self, ContainerError<VaultDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
         let mut conn = store.get_conn().await?;
         let output: VaultInner = diesel::insert_into(crate::storage::schema::vault::table)
             .values(new_object)
             .get_result(&mut conn)
             .await?;
-        Ok(output.into())
+        Ok(output)
     }
 
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
-    ) -> Result<Self, ContainerError<VaultDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
         let mut conn = store.route_conn().await?;
         let output: VaultInner = crate::storage::schema::vault::table
             .filter(
@@ -91,7 +91,7 @@ impl KvResource for Vault {
             .get_result::<VaultInner>(&mut conn)
             .await?;
 
-        Ok(output.into())
+        Ok(output)
     }
 }
 
@@ -127,8 +127,14 @@ impl KvDeleteResource for Vault {
 }
 
 impl KvUpdateResource for Vault {
+    type DieselUpdate = VaultUpdate;
+
+    fn set_update_storage_scheme(update: &mut Self::DieselUpdate, scheme: StorageScheme) {
+        update.updated_by = scheme;
+    }
+
     fn generate_update_drainer_query(
-        new_object: &Self::DieselNew,
+        update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
         let query = diesel::update(crate::storage::schema::vault::table)
@@ -137,22 +143,18 @@ impl KvUpdateResource for Vault {
                     .eq(pk.vault_id.clone())
                     .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.clone())),
             )
-            .set((
-                crate::storage::schema::vault::encrypted_data.eq(new_object.encrypted_data.clone()),
-                crate::storage::schema::vault::expires_at.eq(new_object.expires_at),
-                crate::storage::schema::vault::updated_by.eq(new_object.updated_by),
-            ));
+            .set(update.clone());
 
         generate_update_query::<_, Self>(query)
     }
 
-    fn apply_update(new_object: Self::DieselNew, current: Self) -> Self::DieselEntity {
-        VaultInner::from_update(new_object, current)
+    fn apply_update(update: Self::DieselUpdate, current: Self::DieselEntity) -> Self::DieselEntity {
+        VaultInner::from_update(update, current)
     }
 
     async fn storage_update(
         store: &Storage,
-        new_object: Self::DieselNew,
+        update: Self::DieselUpdate,
         pk: Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<VaultDBError>> {
         let mut conn = store.get_conn().await?;
@@ -162,11 +164,7 @@ impl KvUpdateResource for Vault {
                     .eq(pk.vault_id)
                     .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id)),
             )
-            .set((
-                crate::storage::schema::vault::encrypted_data.eq(new_object.encrypted_data),
-                crate::storage::schema::vault::expires_at.eq(new_object.expires_at),
-                crate::storage::schema::vault::updated_by.eq(new_object.updated_by),
-            ))
+            .set(update)
             .get_result(&mut conn)
             .await?;
 

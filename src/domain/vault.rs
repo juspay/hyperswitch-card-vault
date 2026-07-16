@@ -3,7 +3,7 @@ use crate::{
     error::{self, ContainerError, StorageErrorExt},
     storage::storage_v2::{
         VaultInterface,
-        types::{Vault, VaultNew},
+        types::{Vault, VaultNew, VaultUpdate},
     },
 };
 
@@ -32,11 +32,18 @@ pub async fn upsert(
     state: &TenantAppState,
     new: VaultNew,
 ) -> Result<Vault, ContainerError<error::VaultDBError>> {
-    let cloned_new = new.clone();
+    let vault_id = new.vault_id.clone();
+    let entity_id = new.entity_id.clone();
+    let update = VaultUpdate::from(new.clone());
 
     match state.db.insert_vault(new).await {
         Ok(vault) => Ok(vault),
-        Err(err) if err.get_inner().is_duplicate() => state.db.update_vault_data(cloned_new).await,
+        Err(err) if err.get_inner().is_duplicate() => {
+            state
+                .db
+                .update_vault_data(vault_id, entity_id, update)
+                .await
+        }
         Err(err) => Err(err),
     }
 }

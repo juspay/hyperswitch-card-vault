@@ -129,19 +129,19 @@ impl KvResource for Locker {
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
-    ) -> Result<Self, ContainerError<VaultDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
         let mut conn = store.get_conn().await?;
         let output: LockerInner = diesel::insert_into(crate::storage::schema::locker::table)
             .values(new_object)
             .get_result(&mut conn)
             .await?;
-        Ok(output.into())
+        Ok(output)
     }
 
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
-    ) -> Result<Self, ContainerError<VaultDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
         let mut conn = store.route_conn().await?;
 
         let output = crate::storage::schema::locker::table
@@ -154,7 +154,7 @@ impl KvResource for Locker {
             .get_result::<LockerInner>(&mut conn)
             .await?;
 
-        Ok(output.into())
+        Ok(output)
     }
 }
 

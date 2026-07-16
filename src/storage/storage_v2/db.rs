@@ -91,16 +91,17 @@ impl VaultInterface for Storage {
 
     async fn update_vault_data(
         &self,
-        new: types::VaultNew,
+        vault_id: Secret<String>,
+        entity_id: String,
+        update: types::VaultUpdate,
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let vault_id = new.vault_id.peek().clone();
-            let entity_id = new.entity_id.clone();
+            let vault_id = vault_id.peek().clone();
 
             return crate::storage::kv::update_resource_by_id::<types::Vault>(
                 self,
-                new,
+                update,
                 crate::storage::kv::impls::vault::VaultPrimaryKey {
                     entity_id,
                     vault_id,
@@ -118,13 +119,10 @@ impl VaultInterface for Storage {
             let output: types::VaultInner = diesel::update(types::VaultInner::table())
                 .filter(
                     schema::vault::vault_id
-                        .eq(new.vault_id.expose())
-                        .and(schema::vault::entity_id.eq(&new.entity_id)),
+                        .eq(vault_id.expose())
+                        .and(schema::vault::entity_id.eq(entity_id)),
                 )
-                .set((
-                    schema::vault::encrypted_data.eq(new.encrypted_data),
-                    schema::vault::expires_at.eq(new.expires_at),
-                ))
+                .set(update)
                 .get_result(&mut conn)
                 .await?;
 

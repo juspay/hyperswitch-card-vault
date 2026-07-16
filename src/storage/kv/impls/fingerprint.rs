@@ -64,7 +64,7 @@ impl KvResource for Fingerprint {
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
-    ) -> Result<Self, ContainerError<FingerprintDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<FingerprintDBError>> {
         // Writes always go to the primary pool, never a read replica.
         let mut conn = store.get_conn().await?;
         Ok(diesel::insert_into(Self::table())
@@ -76,7 +76,7 @@ impl KvResource for Fingerprint {
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
-    ) -> Result<Self, ContainerError<FingerprintDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<FingerprintDBError>> {
         // Read path: route to the read replica when runtime config enables it.
         let mut conn = store.route_conn().await?;
         Ok(Self::table()
