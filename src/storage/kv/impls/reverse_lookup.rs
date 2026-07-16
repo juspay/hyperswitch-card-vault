@@ -26,13 +26,29 @@ impl EntityType for ReverseLookup {
 
 impl KvStorePartition for ReverseLookup {}
 
+pub(crate) struct ReverseLookupPrimaryKey {
+    pub lookup_id: String,
+}
+
+impl crate::storage::kv::resource::GetPartitionKey for ReverseLookupPrimaryKey {
+    fn get_partition_key(&self) -> PartitionKey<'_> {
+        PartitionKey::ReverseLookup {
+            lookup_id: &self.lookup_id,
+        }
+    }
+}
+
 impl KvResource for ReverseLookup {
     type Error = ReverseLookupDBError;
 
     type DieselNew = ReverseLookupNew;
 
+    type DieselEntity = Self;
+
+    type PrimaryKeyType = ReverseLookupPrimaryKey;
+
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
-        new_object.update_by = scheme.to_string();
+        new_object.updated_by = scheme.to_string();
     }
 
     fn generate_insert_drainer_query(
@@ -58,15 +74,11 @@ impl KvResource for ReverseLookup {
 
     async fn storage_find(
         store: &Storage,
-        pk: &PartitionKey<'_>,
+        pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
-        let PartitionKey::ReverseLookup { lookup_id } = pk else {
-            return Err(ContainerError::from(ReverseLookupDBError::DBFilterError));
-        };
-
         let mut conn = store.route_conn().await?;
         let output: Result<Self, diesel::result::Error> = Self::table()
-            .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(*lookup_id))
+            .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id.as_str()))
             .get_result::<Self>(&mut conn)
             .await;
 
