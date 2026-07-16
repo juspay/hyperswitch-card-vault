@@ -12,7 +12,9 @@ pub(crate) enum PartitionKey<'a> {
         customer_id: &'a str,
         locker_id: &'a str,
     },
-    ReverseLookup { lookup_id: &'a str },
+    ReverseLookup {
+        lookup_id: &'a str,
+    },
 }
 
 impl std::fmt::Display for PartitionKey<'_> {
