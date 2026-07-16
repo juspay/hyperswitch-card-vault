@@ -1,4 +1,4 @@
-use hyperswitch_masking::{ExposeInterface, Secret};
+use hyperswitch_masking::Secret;
 
 use crate::{
     error::ContainerError,
@@ -8,7 +8,7 @@ use crate::{
 impl<T> storage::HashInterface for super::Caching<T>
 where
     T: storage::HashInterface
-        + storage::Cacheable<types::HashTable, Key = Vec<u8>, Value = types::HashTable>
+        + storage::Cacheable<types::HashTable, Key = Secret<Vec<u8>>, Value = types::HashTable>
         + storage::Cacheable<types::Merchant>
         + storage::Cacheable<types::Fingerprint>
         + super::CacheableWithEntity<T>
@@ -21,14 +21,17 @@ where
         &self,
         data_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        let key = data_hash.clone().expose();
-        match self.lookup::<types::HashTable>(key.clone()).await {
+        match self.lookup::<types::HashTable>(data_hash.clone()).await {
             value @ Some(_) => Ok(value),
             None => Ok(
-                match self.inner.find_optional_by_data_hash(data_hash).await? {
+                match self
+                    .inner
+                    .find_optional_by_data_hash(data_hash.clone())
+                    .await?
+                {
                     None => None,
                     Some(value) => {
-                        self.cache_data::<types::HashTable>(key, value.clone())
+                        self.cache_data::<types::HashTable>(data_hash, value.clone())
                             .await;
                         Some(value)
                     }
@@ -41,9 +44,8 @@ where
         &self,
         data_hash: Secret<Vec<u8>>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
-        let key = data_hash.clone().expose();
-        let output = self.inner.insert_hash(data_hash).await?;
-        self.cache_data::<types::HashTable>(key, output.clone())
+        let output = self.inner.insert_hash(data_hash.clone()).await?;
+        self.cache_data::<types::HashTable>(data_hash, output.clone())
             .await;
         Ok(output)
     }
