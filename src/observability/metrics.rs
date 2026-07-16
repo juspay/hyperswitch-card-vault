@@ -321,9 +321,9 @@ counter_metric!(
 );
 #[cfg(feature = "caching")]
 counter_metric!(
-    pub(crate) CACHE_EVICTION_COUNT, CARD_VAULT_METER,
-    name: "cache.eviction.count",
-    description: "Number of cache eviction events",
+    pub(crate) CACHE_REMOVAL_COUNT, CARD_VAULT_METER,
+    name: "cache.removal.count",
+    description: "Number of cache removal events",
     unit: "1",
 );
 #[cfg(feature = "caching")]

@@ -77,7 +77,7 @@ fn cache_eviction_listener(
         RemovalCause::Size => "size",
     };
 
-    crate::observability::metrics::CACHE_EVICTION_COUNT.add(
+    crate::observability::metrics::CACHE_REMOVAL_COUNT.add(
         1,
         crate::metric_attributes!(
             ("cache", cache_name),
