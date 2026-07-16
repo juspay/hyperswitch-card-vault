@@ -480,8 +480,12 @@ impl super::ReverseLookupInterface for Storage {
                 lookup_id: &lookup_id,
             };
 
-            return super::kv::insert_resource::<types::ReverseLookup>(self, new, partition_key)
-                .await;
+            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(
+                self,
+                new,
+                partition_key,
+            ))
+            .await;
         }
 
         #[cfg(not(feature = "kv"))]
