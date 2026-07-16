@@ -9,7 +9,7 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::KvResource,
+            resource::{GetPartitionKey, KvResource},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
         types::{HashTable, HashTableNew},
@@ -26,10 +26,26 @@ impl EntityType for HashTable {
 
 impl KvStorePartition for HashTable {}
 
+pub(crate) struct HashTablePrimaryKey {
+    pub data_hash: Vec<u8>,
+}
+
+impl GetPartitionKey for HashTablePrimaryKey {
+    fn get_partition_key(&self) -> PartitionKey<'_> {
+        PartitionKey::HashTable {
+            data_hash: &self.data_hash,
+        }
+    }
+}
+
 impl KvResource for HashTable {
     type Error = HashDBError;
 
     type DieselNew = HashTableNew;
+
+    type DieselEntity = Self;
+
+    type PrimaryKeyType = HashTablePrimaryKey;
 
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
         new_object.updated_by = scheme;
@@ -54,15 +70,11 @@ impl KvResource for HashTable {
 
     async fn storage_find(
         store: &Storage,
-        pk: &PartitionKey<'_>,
+        pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<HashDBError>> {
-        let PartitionKey::HashTable { data_hash } = pk else {
-            return Err(ContainerError::from(HashDBError::UnknownError));
-        };
-
         let mut conn = store.route_conn().await?;
         Ok(Self::table()
-            .filter(crate::storage::schema::hash_table::data_hash.eq(*data_hash))
+            .filter(crate::storage::schema::hash_table::data_hash.eq(&pk.data_hash))
             .get_result::<Self>(&mut conn)
             .await?)
     }
