@@ -1,3 +1,5 @@
+use hyperswitch_masking::{ExposeInterface, Secret};
+
 use crate::{
     error::ContainerError,
     storage::{self, types},
@@ -17,15 +19,16 @@ where
 
     async fn find_optional_by_data_hash(
         &self,
-        data_hash: &[u8],
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        match self.lookup::<types::HashTable>(data_hash.to_vec()).await {
+        let key = data_hash.clone().expose();
+        match self.lookup::<types::HashTable>(key.clone()).await {
             value @ Some(_) => Ok(value),
             None => Ok(
                 match self.inner.find_optional_by_data_hash(data_hash).await? {
                     None => None,
                     Some(value) => {
-                        self.cache_data::<types::HashTable>(data_hash.to_vec(), value.clone())
+                        self.cache_data::<types::HashTable>(key, value.clone())
                             .await;
                         Some(value)
                     }
@@ -36,10 +39,11 @@ where
 
     async fn insert_hash(
         &self,
-        data_hash: Vec<u8>,
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
-        let output = self.inner.insert_hash(data_hash.clone()).await?;
-        self.cache_data::<types::HashTable>(data_hash, output.clone())
+        let key = data_hash.clone().expose();
+        let output = self.inner.insert_hash(data_hash).await?;
+        self.cache_data::<types::HashTable>(key, output.clone())
             .await;
         Ok(output)
     }

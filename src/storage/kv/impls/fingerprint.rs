@@ -37,7 +37,7 @@ pub(crate) struct FingerprintPrimaryKey {
 impl GetPartitionKey for FingerprintPrimaryKey {
     fn get_partition_key(&self) -> PartitionKey<'_> {
         PartitionKey::Fingerprint {
-            fingerprint_hash: self.fingerprint_hash.peek().as_slice(),
+            fingerprint_hash: &self.fingerprint_hash,
         }
     }
 }

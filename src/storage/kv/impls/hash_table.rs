@@ -1,5 +1,6 @@
 use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
+use hyperswitch_masking::Secret;
 
 use crate::{
     error::{ContainerError, HashDBError, kv::KvError},
@@ -27,7 +28,7 @@ impl EntityType for HashTable {
 impl KvStorePartition for HashTable {}
 
 pub(crate) struct HashTablePrimaryKey {
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
 }
 
 impl GetPartitionKey for HashTablePrimaryKey {

@@ -435,11 +435,11 @@ pub(crate) trait HashInterface {
     /// Read by `data_hash` (secondary lookup); `None` if absent.
     async fn find_optional_by_data_hash(
         &self,
-        data_hash: &[u8],
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>>;
     async fn insert_hash(
         &self,
-        data_hash: Vec<u8>,
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>>;
 }
 

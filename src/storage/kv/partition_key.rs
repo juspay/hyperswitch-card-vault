@@ -1,3 +1,5 @@
+use hyperswitch_masking::{PeekInterface, Secret};
+
 /// Partition key for Redis hash-slot routing and drainer stream derivation.
 #[derive(Clone, Debug)]
 pub(crate) enum PartitionKey<'a> {
@@ -5,10 +7,10 @@ pub(crate) enum PartitionKey<'a> {
         combination: &'a str,
     },
     Fingerprint {
-        fingerprint_hash: &'a [u8],
+        fingerprint_hash: &'a Secret<Vec<u8>>,
     },
     HashTable {
-        data_hash: &'a [u8],
+        data_hash: &'a Secret<Vec<u8>>,
     },
     Locker {
         merchant_id: &'a str,
@@ -22,10 +24,10 @@ impl std::fmt::Display for PartitionKey<'_> {
         match self {
             Self::CombinationKey { combination } => f.write_str(combination),
             Self::Fingerprint { fingerprint_hash } => {
-                write!(f, "fingerprint_{}", hex::encode(fingerprint_hash))
+                write!(f, "fingerprint_{}", hex::encode(fingerprint_hash.peek()))
             }
             Self::HashTable { data_hash } => {
-                write!(f, "hash_table_{}", hex::encode(data_hash))
+                write!(f, "hash_table_{}", hex::encode(data_hash.peek()))
             }
             Self::Locker {
                 merchant_id,

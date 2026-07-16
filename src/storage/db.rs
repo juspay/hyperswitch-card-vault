@@ -307,13 +307,11 @@ impl super::HashInterface for Storage {
 
     async fn find_optional_by_data_hash(
         &self,
-        data_hash: &[u8],
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let pk = super::kv::impls::hash_table::HashTablePrimaryKey {
-                data_hash: data_hash.to_vec(),
-            };
+            let pk = super::kv::impls::hash_table::HashTablePrimaryKey { data_hash };
 
             return super::kv::find_optional_resource_by_id::<types::HashTable>(self, pk).await;
         }
@@ -322,8 +320,8 @@ impl super::HashInterface for Storage {
         {
             let mut conn = self.get_conn().await?;
 
-            let query =
-                types::HashTable::table().filter(schema::hash_table::data_hash.eq(data_hash));
+            let query = types::HashTable::table()
+                .filter(schema::hash_table::data_hash.eq(data_hash.expose()));
 
             let pool = conn.pool();
             let operation = DbOperation::FindOne;
@@ -350,7 +348,7 @@ impl super::HashInterface for Storage {
 
     async fn insert_hash(
         &self,
-        data_hash: Vec<u8>,
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
@@ -424,7 +422,7 @@ impl super::TestInterface for Storage {
                     diesel::insert_into(types::HashTable::table())
                         .values(types::HashTableNew {
                             hash_id: "test".to_string(),
-                            data_hash: b"0".to_vec(),
+                            data_hash: Secret::new(b"0".to_vec()),
                             created_at: crate::utils::date_time::now(),
                             // Test-only — always PostgresOnly.
                             updated_by: Some(StorageScheme::PostgresOnly),
@@ -484,7 +482,7 @@ impl super::FingerprintInterface for Storage {
             let mut conn = self.get_conn().await?;
 
             let query = types::Fingerprint::table()
-                .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash));
+                .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash.expose()));
 
             let pool = conn.pool();
             let operation = DbOperation::FindOne;
@@ -529,7 +527,7 @@ impl super::FingerprintInterface for Storage {
                 updated_by: Some(StorageScheme::PostgresOnly),
             };
             let partition_key = super::kv::PartitionKey::Fingerprint {
-                fingerprint_hash: fingerprint_hash.peek().as_slice(),
+                fingerprint_hash: &fingerprint_hash,
             };
 
             return super::kv::insert_resource::<types::Fingerprint>(

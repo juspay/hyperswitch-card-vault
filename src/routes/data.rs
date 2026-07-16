@@ -7,6 +7,7 @@ use std::sync::Arc;
 use axum::{Json, routing::post};
 #[cfg(feature = "limit")]
 use axum::{error_handling::HandleErrorLayer, extract::MatchedPath, response::IntoResponse};
+use hyperswitch_masking::Secret;
 
 use self::types::Validation;
 use crate::{
@@ -92,12 +93,14 @@ pub async fn add_card(
 ) -> Result<Json<types::StoreCardResponse>, ContainerError<error::ApiError>> {
     request.validate()?;
 
-    let hash_data = transformers::get_hash(&request.data, Sha512)
-        .change_error(error::ApiError::EncodingError)?;
+    let hash_data = Secret::new(
+        transformers::get_hash(&request.data, Sha512)
+            .change_error(error::ApiError::EncodingError)?,
+    );
 
     let optional_hash_table = tenant_app_state
         .db
-        .find_optional_by_data_hash(&hash_data)
+        .find_optional_by_data_hash(hash_data.clone())
         .await?;
 
     let crypto_manager = keymanager::get_dek_manager(&tenant_app_state.config.external_key_manager)

@@ -235,7 +235,7 @@ impl From<ReverseLookupNew> for ReverseLookup {
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
     pub updated_by: Option<StorageScheme>,
 }
@@ -330,7 +330,7 @@ pub(super) struct EntityTableNew {
 #[diesel(table_name = schema::hash_table)]
 pub(crate) struct HashTableNew {
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
     pub updated_by: Option<StorageScheme>,
 }
