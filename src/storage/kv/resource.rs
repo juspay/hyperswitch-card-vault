@@ -185,44 +185,13 @@ where
 #[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn insert_resource<M>(
     store: &Storage,
-    mut diesel_new: M::DieselNew,
+    diesel_new: M::DieselNew,
     partition_key: PartitionKey<'_>,
 ) -> Result<M, ContainerError<M::Error>>
 where
     M: KvResource,
 {
-    let scheme = decide(store, Op::Insert).await;
-    M::set_storage_scheme(&mut diesel_new, scheme);
-
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
-        StorageScheme::RedisKv => {
-            let drainer_query = M::generate_insert_drainer_query(&diesel_new)
-                .map_err(kv_backend_error::<M::Error>)?;
-
-            let partition_key_str = partition_key.to_string();
-            let diesel_entity = diesel_new.into();
-            let reply = kv_wrapper::<(), M::DieselEntity>(
-                store,
-                KvOperation::HSetNx(&partition_key_str, &diesel_entity, drainer_query),
-                partition_key,
-            )
-            .await
-            .map_err(|e| {
-                kv_backend_error::<M::Error>(e.to_redis_failed_response(&partition_key_str))
-            })?;
-
-            match reply.try_into_hsetnx() {
-                Ok(HsetnxReply::KeySet) => Ok(diesel_entity.into()),
-                Ok(HsetnxReply::KeyNotSet) => {
-                    Err(kv_duplicate_error::<M::Error>(&partition_key_str))
-                }
-                Err(e) => Err(kv_backend_error::<M::Error>(
-                    Report::new(e).change_context(KvError::Backend),
-                )),
-            }
-        }
-    }
+    insert_resource_inner::<M, _>(store, diesel_new, partition_key, |_, _| None).await
 }
 
 #[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
