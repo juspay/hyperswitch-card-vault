@@ -320,7 +320,7 @@ pub(super) struct HashTableNew {
 ///
 /// Type representing data stored in ecrypted state in the database
 ///
-#[derive(Debug, Clone, AsExpression, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, AsExpression)]
 #[diesel(sql_type = diesel::sql_types::Binary)]
 #[repr(transparent)]
 pub struct Encrypted {

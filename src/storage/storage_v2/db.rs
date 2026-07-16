@@ -59,14 +59,14 @@ impl VaultInterface for Storage {
         #[cfg(feature = "kv")]
         {
             let vault_id = vault_id.peek().clone();
-            let partition_key = crate::storage::kv::PartitionKey::Vault {
-                entity_id,
-                vault_id: &vault_id,
+            let pk = crate::storage::kv::impls::vault::VaultPrimaryKey {
+                entity_id: entity_id.to_string(),
+                vault_id,
             };
 
             return crate::storage::kv::find_optional_resource_by_id::<types::Vault>(
                 self,
-                crate::storage::kv::FindResourceBy::Id(partition_key),
+                pk,
             )
             .await?
             .ok_or_else(|| ContainerError::from(error::VaultDBError::NotFoundError));

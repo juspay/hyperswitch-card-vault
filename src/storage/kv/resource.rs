@@ -96,7 +96,7 @@ pub(crate) trait KvUpdateResource: KvResource {
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
-    fn apply_update(new_object: Self::DieselNew, current: Self) -> Self;
+    fn apply_update(new_object: Self::DieselNew, current: Self) -> Self::DieselEntity;
 
     async fn storage_update(
         store: &Storage,
@@ -408,9 +408,9 @@ where
             })?;
 
             let key_str = key.to_string();
-            kv_wrapper::<(), M>(
+            kv_wrapper::<(), M::DieselEntity>(
                 store,
-                KvOperation::<M>::Hset((&key_str, redis_value), update_query),
+                KvOperation::<M::DieselEntity>::Hset((&key_str, redis_value), update_query),
                 key.clone(),
             )
             .await
@@ -420,7 +420,7 @@ where
                 kv_backend_error::<M::Error>(Report::new(e).change_context(KvError::Backend))
             })?;
 
-            Ok(updated_model)
+            Ok(updated_model.into())
         }
     }
 }
@@ -443,9 +443,9 @@ where
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = key.to_string();
-            let reply = kv_wrapper::<(), M>(
+            let reply = kv_wrapper::<(), M::DieselEntity>(
                 store,
-                KvOperation::<M>::HDel(&key_str, delete_query),
+                KvOperation::<M::DieselEntity>::HDel(&key_str, delete_query),
                 key.clone(),
             )
             .await

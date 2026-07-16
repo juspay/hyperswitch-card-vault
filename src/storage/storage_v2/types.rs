@@ -44,7 +44,7 @@ impl VaultNew {
     }
 }
 
-#[derive(Debug, Identifiable, Queryable)]
+#[derive(Debug, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::vault)]
 pub(crate) struct VaultInner {
     id: i32,
@@ -54,6 +54,34 @@ pub(crate) struct VaultInner {
     created_at: time::PrimitiveDateTime,
     expires_at: Option<time::PrimitiveDateTime>,
     pub updated_by: StorageScheme,
+}
+
+impl VaultInner {
+    pub(crate) fn from_update(new: VaultNew, current: Vault) -> Self {
+        Self {
+            id: 0,
+            entity_id: current.entity_id,
+            vault_id: current.vault_id,
+            encrypted_data: new.encrypted_data,
+            created_at: current.created_at,
+            expires_at: new.expires_at,
+            updated_by: new.updated_by,
+        }
+    }
+}
+
+impl From<VaultNew> for VaultInner {
+    fn from(value: VaultNew) -> Self {
+        Self {
+            id: 0,
+            entity_id: value.entity_id,
+            vault_id: value.vault_id,
+            encrypted_data: value.encrypted_data,
+            created_at: value.created_at,
+            expires_at: value.expires_at,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 impl From<VaultInner> for Vault {

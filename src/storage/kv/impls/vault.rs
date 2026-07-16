@@ -29,6 +29,8 @@ impl EntityType for Vault {
 
 impl KvStorePartition for Vault {}
 
+impl KvStorePartition for VaultInner {}
+
 #[derive(Clone)]
 pub(crate) struct VaultPrimaryKey {
     pub entity_id: String,
@@ -48,6 +50,10 @@ impl KvResource for Vault {
     type Error = VaultDBError;
 
     type DieselNew = VaultNew;
+
+    type DieselEntity = VaultInner;
+
+    type PrimaryKeyType = VaultPrimaryKey;
 
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
         new_object.updated_by = scheme;
@@ -73,22 +79,14 @@ impl KvResource for Vault {
 
     async fn storage_find(
         store: &Storage,
-        pk: &PartitionKey<'_>,
+        pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<VaultDBError>> {
-        let PartitionKey::Vault {
-            entity_id,
-            vault_id,
-        } = pk
-        else {
-            return Err(ContainerError::from(VaultDBError::UnknownError));
-        };
-
         let mut conn = store.route_conn().await?;
         let output: VaultInner = crate::storage::schema::vault::table
             .filter(
                 crate::storage::schema::vault::vault_id
-                    .eq(*vault_id)
-                    .and(crate::storage::schema::vault::entity_id.eq(*entity_id)),
+                    .eq(pk.vault_id.as_str())
+                    .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.as_str())),
             )
             .get_result::<VaultInner>(&mut conn)
             .await?;
@@ -148,15 +146,8 @@ impl KvUpdateResource for Vault {
         generate_update_query(query, Self::ENTITY_TYPE.to_owned())
     }
 
-    fn apply_update(new_object: Self::DieselNew, current: Self) -> Self {
-        Self {
-            vault_id: current.vault_id,
-            entity_id: current.entity_id,
-            data: new_object.encrypted_data.into(),
-            created_at: current.created_at,
-            expires_at: new_object.expires_at,
-            updated_by: new_object.updated_by,
-        }
+    fn apply_update(new_object: Self::DieselNew, current: Self) -> Self::DieselEntity {
+        VaultInner::from_update(new_object, current)
     }
 
     async fn storage_update(
