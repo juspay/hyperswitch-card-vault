@@ -89,16 +89,38 @@ impl super::LockerInterface for Storage {
 
     async fn insert_locker(
         &self,
-        new: types::LockerNew<'_>,
+        new: types::LockerNew,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let locker_id = new.locker_id.peek().clone();
+            let merchant_id = new.merchant_id.clone();
+            let customer_id = new.customer_id.clone();
+            let partition_key = super::kv::PartitionKey::Locker {
+                merchant_id: &merchant_id,
+                customer_id: &customer_id,
+                locker_id: &locker_id,
+            };
 
-        let output: types::LockerInner = diesel::insert_into(types::LockerInner::table())
-            .values(new)
-            .get_result(&mut conn)
-            .await?;
+            return super::kv::insert_resource_with_reverse_lookup::<types::Locker>(
+                self,
+                new,
+                partition_key,
+            )
+            .await;
+        }
 
-        Ok(output.into())
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::LockerInner = diesel::insert_into(types::LockerInner::table())
+                .values(new)
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn find_by_locker_id_merchant_id_customer_id(
@@ -107,20 +129,33 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let pk = super::kv::impls::locker::LockerPrimaryKeyType {
+                locker_id: locker_id.clone(),
+                merchant_id: merchant_id.to_string(),
+                customer_id: customer_id.to_string(),
+            };
+            return super::kv::find_resource_by_id::<types::Locker>(self, pk).await;
+        }
 
-        // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
-        let output: types::LockerInner = types::LockerInner::table()
-            .filter(
-                schema::locker::locker_id
-                    .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
-            )
-            .get_result(&mut conn)
-            .await?;
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
 
-        Ok(output.into())
+            // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
+            let output: types::LockerInner = types::LockerInner::table()
+                .filter(
+                    schema::locker::locker_id
+                        .eq(locker_id.expose())
+                        .and(schema::locker::merchant_id.eq(merchant_id))
+                        .and(schema::locker::customer_id.eq(customer_id)),
+                )
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
     async fn find_optional_by_hash_id_merchant_id_customer_id(
@@ -129,20 +164,37 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<Option<types::Locker>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let lookup_key = super::kv::impls::locker::LockerHashLookupKey {
+                hash_id: hash_id.to_string(),
+                merchant_id: merchant_id.to_string(),
+                customer_id: customer_id.to_string(),
+            };
 
-        let output = types::LockerInner::table()
-            .filter(
-                schema::locker::hash_id
-                    .eq(hash_id)
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
+            return super::kv::find_optional_resource_by_lookup_id::<types::Locker>(
+                self, lookup_key,
             )
-            .get_result::<types::LockerInner>(&mut conn)
-            .await
-            .optional()?;
+            .await;
+        }
 
-        Ok(output.map(From::from))
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output = types::LockerInner::table()
+                .filter(
+                    schema::locker::hash_id
+                        .eq(hash_id)
+                        .and(schema::locker::merchant_id.eq(merchant_id))
+                        .and(schema::locker::customer_id.eq(customer_id)),
+                )
+                .get_result::<types::LockerInner>(&mut conn)
+                .await
+                .optional()?;
+
+            Ok(output.map(From::from))
+        }
     }
 
     async fn delete_locker(
@@ -270,15 +322,10 @@ impl super::FingerprintInterface for Storage {
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let fp_bytes = fingerprint_hash.peek().clone();
-            let partition_key = super::kv::PartitionKey::Fingerprint {
-                fingerprint_hash: &fp_bytes,
-            };
-
             // Return the Queryable model, not the New struct.
             return super::kv::find_optional_resource_by_id::<types::Fingerprint>(
                 self,
-                super::kv::FindResourceBy::Id(partition_key),
+                super::kv::impls::fingerprint::FingerprintPrimaryKey { fingerprint_hash },
             )
             .await;
         }
