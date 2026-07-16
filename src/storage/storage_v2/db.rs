@@ -64,12 +64,9 @@ impl VaultInterface for Storage {
                 vault_id,
             };
 
-            return crate::storage::kv::find_optional_resource_by_id::<types::Vault>(
-                self,
-                pk,
-            )
-            .await?
-            .ok_or_else(|| ContainerError::from(error::VaultDBError::NotFoundError));
+            return crate::storage::kv::find_optional_resource_by_id::<types::Vault>(self, pk)
+                .await?
+                .ok_or_else(|| ContainerError::from(error::VaultDBError::NotFoundError));
         }
 
         #[cfg(not(feature = "kv"))]
