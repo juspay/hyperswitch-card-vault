@@ -213,24 +213,26 @@ where
         .attach_printable("Failed to generate insert query")
 }
 
-pub(crate) fn generate_delete_query<Q>(
+pub(crate) fn generate_delete_query<Q, N>(
     query: Q,
-    entity_type: String,
 ) -> error_stack::Result<SerializableQuery, KvError>
 where
+    N: EntityType,
     Q: QueryFragment<Pg> + Send + 'static,
 {
+    let entity_type = N::ENTITY_TYPE.to_owned();
     SerializableQuery::from_query(query, entity_type, DatabaseOperation::Delete)
         .attach_printable("Failed to generate delete query")
 }
 
-pub(crate) fn generate_update_query<Q>(
+pub(crate) fn generate_update_query<Q, N>(
     query: Q,
-    entity_type: String,
 ) -> error_stack::Result<SerializableQuery, KvError>
 where
+    N: EntityType,
     Q: QueryFragment<Pg> + Send + 'static,
 {
+    let entity_type = N::ENTITY_TYPE.to_owned();
     SerializableQuery::from_query(query, entity_type, DatabaseOperation::Update)
         .attach_printable("Failed to generate update query")
 }

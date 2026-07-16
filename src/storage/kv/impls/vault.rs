@@ -105,7 +105,7 @@ impl KvDeleteResource for Vault {
                 .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.clone())),
         );
 
-        generate_delete_query(query, Self::ENTITY_TYPE.to_owned())
+        generate_delete_query::<_, Self>(query)
     }
 
     async fn storage_delete(
@@ -143,7 +143,7 @@ impl KvUpdateResource for Vault {
                 crate::storage::schema::vault::updated_by.eq(new_object.updated_by),
             ));
 
-        generate_update_query(query, Self::ENTITY_TYPE.to_owned())
+        generate_update_query::<_, Self>(query)
     }
 
     fn apply_update(new_object: Self::DieselNew, current: Self) -> Self::DieselEntity {

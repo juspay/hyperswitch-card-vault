@@ -169,7 +169,7 @@ impl KvDeleteResource for Locker {
                 .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.clone())),
         );
 
-        generate_delete_query(query, Self::ENTITY_TYPE.to_owned())
+        generate_delete_query::<_, Self>(query)
     }
 
     async fn storage_delete(
