@@ -518,7 +518,7 @@ mod tests {
             created_at,
             hash_id: "hash_id".to_string(),
             ttl: Some(ttl),
-            updated_by: StorageScheme::RedisKv,
+            updated_by: Some(StorageScheme::RedisKv),
         };
 
         let serialized = serde_json::to_value(&locker);
@@ -586,7 +586,7 @@ mod tests {
             created_at,
             hash_id: "hash_id".to_string(),
             ttl: Some(ttl),
-            updated_by: StorageScheme::RedisKv,
+            updated_by: Some(StorageScheme::RedisKv),
         };
 
         let serialized = serde_json::to_string(&locker);
