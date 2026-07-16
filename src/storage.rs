@@ -304,7 +304,7 @@ pub(crate) trait LockerInterface {
     /// Insert a locker row. A duplicate primary key surfaces as `Error::is_duplicate()`.
     async fn insert_locker(
         &self,
-        new: types::LockerNew<'_>,
+        new: types::LockerNew,
     ) -> Result<types::Locker, ContainerError<Self::Error>>;
 
     /// Point read by primary key; a missing row surfaces as `Error::is_not_found()`.
@@ -379,7 +379,7 @@ pub(crate) trait FingerprintInterface {
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>>;
 }
 
-#[expect(dead_code)]
+#[cfg_attr(not(feature = "kv"), expect(dead_code))]
 ///
 /// ReverseLookupInterface:
 ///

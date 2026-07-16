@@ -13,7 +13,7 @@ use crate::{
 /// `insert_or_get_from_locker`: `db.insert` → on duplicate → `db.get`.
 pub async fn get_or_insert(
     state: &TenantAppState,
-    new: LockerNew<'_>,
+    new: LockerNew,
 ) -> Result<Locker, ContainerError<error::VaultDBError>> {
     let locker_id = new.locker_id.clone();
     let merchant_id = new.merchant_id.clone();

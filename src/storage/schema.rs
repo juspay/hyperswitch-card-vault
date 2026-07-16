@@ -69,7 +69,8 @@ diesel::table! {
         secondary_key -> Varchar,
         partition_key -> Varchar,
         source -> Varchar,
-        update_by -> Varchar,
+        #[max_length = 32]
+        updated_by -> Varchar,
     }
 }
 
