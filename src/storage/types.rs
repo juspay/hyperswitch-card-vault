@@ -105,7 +105,7 @@ pub struct Locker {
     pub updated_by: StorageScheme,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub enum Encryptable {
     Encrypted(Secret<Vec<u8>>),
     Decrypted(StrongSecret<Vec<u8>>),

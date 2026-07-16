@@ -92,7 +92,7 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
 
 /// Operation to perform on Redis.
 pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
-    Hset((&'a str, String), SerializableQuery),
+    Hset((&'a str, S), SerializableQuery),
     HSetNx(&'a str, &'a S, SerializableQuery),
     HGet(&'a str),
     HDel(&'a str, SerializableQuery),
@@ -165,8 +165,11 @@ where
     let result = async {
         match op {
             KvOperation::Hset(value, query) => {
+                let serialized = serde_json::to_string(&value.1)
+                    .change_context(RedisError::JsonSerializationFailed)?;
+
                 redis_conn
-                    .set_hash_fields(&key.into(), vec![value], Some(ttl.into()))
+                    .set_hash_fields(&key.into(), vec![(value.0, serialized)], Some(ttl.into()))
                     .await
                     .bridge()?;
 

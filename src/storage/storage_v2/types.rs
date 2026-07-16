@@ -10,7 +10,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct Vault {
     pub vault_id: Secret<String>,
     pub entity_id: String,
@@ -44,7 +44,7 @@ impl VaultNew {
     }
 }
 
-#[derive(Debug, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::vault)]
 pub(crate) struct VaultInner {
     id: i32,
@@ -57,6 +57,7 @@ pub(crate) struct VaultInner {
 }
 
 impl VaultInner {
+    #[cfg(feature = "kv")]
     pub(crate) fn from_update(new: VaultNew, current: Vault) -> Self {
         Self {
             id: 0,

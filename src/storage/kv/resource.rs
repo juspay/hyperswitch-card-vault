@@ -10,7 +10,7 @@ use super::{
     StorageScheme,
     entity::EntityType,
     partition_key::{KvStorePartition, PartitionKey},
-    scheme::{Op, decide_storage_scheme},
+    scheme::{KvState, Op, decide_storage_scheme},
     serializable_query::SerializableQuery,
     wrapper::{KvOperation, KvResult, kv_wrapper},
 };
@@ -140,6 +140,56 @@ where
 async fn decide(store: &Storage, op: Op) -> StorageScheme {
     let state = store.kv_settings().await;
     decide_storage_scheme(state, op)
+}
+
+async fn decide_storage_scheme_for_mutation<M>(
+    store: &Storage,
+    key: PartitionKey<'_>,
+    op: Op,
+) -> Result<(StorageScheme, Option<M::DieselEntity>), ContainerError<M::Error>>
+where
+    M: KvResource,
+{
+    let state = store.kv_settings().await;
+    let scheme = decide_storage_scheme(state, op);
+
+    match (state, scheme) {
+        (_, StorageScheme::PostgresOnly) => Ok((StorageScheme::PostgresOnly, None)),
+        (KvState::SoftKill, StorageScheme::RedisKv) => {
+            let key_str = key.to_string();
+            let result = kv_wrapper::<M::DieselEntity, M::DieselEntity>(
+                store,
+                KvOperation::<M::DieselEntity>::HGet(&key_str),
+                key.clone(),
+            )
+            .await;
+
+            match result {
+                Ok(KvResult::HGet(v)) => Ok((StorageScheme::RedisKv, Some(v))),
+                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                    super::metrics::KV_MISS
+                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    Ok((StorageScheme::PostgresOnly, None))
+                }
+                Err(e) => Err(kv_backend_error::<M::Error>(
+                    e.to_redis_failed_response(&key_str),
+                )),
+                Ok(KvResult::HSetNx(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected HSetNx result for an HGet operation"),
+                )),
+                Ok(KvResult::Hset(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected Hset result for an HGet operation"),
+                )),
+                Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable("unexpected HDel result for an HGet operation"),
+                )),
+            }
+        }
+        (_, StorageScheme::RedisKv) => Ok((StorageScheme::RedisKv, None)),
+    }
 }
 
 async fn insert_resource_inner<M, F>(
@@ -388,29 +438,31 @@ pub(crate) async fn update_resource_by_id<M>(
 where
     M: KvUpdateResource,
     M::PrimaryKeyType: Clone,
+    M::DieselEntity: Clone,
 {
-    let scheme = decide(store, Op::Update).await;
+    let (scheme, cached) = {
+        let key = primary_key.get_partition_key();
+        decide_storage_scheme_for_mutation::<M>(store, key, Op::Update).await?
+    };
     M::set_storage_scheme(&mut diesel_new, scheme);
 
     match scheme {
         StorageScheme::PostgresOnly => M::storage_update(store, diesel_new, primary_key).await,
         StorageScheme::RedisKv => {
             let key = primary_key.get_partition_key();
-            let current = find_resource_by_id::<M>(store, primary_key.clone()).await?;
+            let current = match cached {
+                Some(resource) => resource.into(),
+                None => find_resource_by_id::<M>(store, primary_key.clone()).await?,
+            };
             let update_query = M::generate_update_drainer_query(&diesel_new, &primary_key)
                 .map_err(kv_backend_error::<M::Error>)?;
             let updated_model = M::apply_update(diesel_new, current);
-            let redis_value = serde_json::to_string(&updated_model).map_err(|err| {
-                kv_backend_error::<M::Error>(
-                    Report::new(KvError::SerializationFailed)
-                        .attach_printable(format!("failed to serialize updated resource: {err}")),
-                )
-            })?;
+            let updated_resource = updated_model.clone().into();
 
             let key_str = key.to_string();
             kv_wrapper::<(), M::DieselEntity>(
                 store,
-                KvOperation::<M::DieselEntity>::Hset((&key_str, redis_value), update_query),
+                KvOperation::<M::DieselEntity>::Hset((&key_str, updated_model), update_query),
                 key.clone(),
             )
             .await
@@ -420,7 +472,7 @@ where
                 kv_backend_error::<M::Error>(Report::new(e).change_context(KvError::Backend))
             })?;
 
-            Ok(updated_model.into())
+            Ok(updated_resource)
         }
     }
 }
@@ -433,12 +485,15 @@ pub(crate) async fn delete_resource_by_id<M>(
 where
     M: KvDeleteResource,
 {
-    let key = primary_key.get_partition_key();
-    let scheme = decide(store, Op::Delete).await;
+    let (scheme, _) = {
+        let key = primary_key.get_partition_key();
+        decide_storage_scheme_for_mutation::<M>(store, key, Op::Delete).await?
+    };
 
     match scheme {
         StorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
         StorageScheme::RedisKv => {
+            let key = primary_key.get_partition_key();
             let delete_query = M::generate_delete_drainer_query(&primary_key)
                 .map_err(kv_backend_error::<M::Error>)?;
 

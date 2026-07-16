@@ -31,17 +31,17 @@ pub(crate) enum Op {
 
 /// Effective storage scheme for an operation.
 ///
-/// `SoftKill` + `Find` → `RedisKv`: check Redis first; on `NotFound` fall back to Postgres
-/// (handled by `find_optional_resource_by_id`). `SoftKill` + `Insert` → `PostgresOnly`:
-/// writes bypass Redis, so no new drainer entries are produced during rollout.
+/// `SoftKill` + `Find`/`Update`/`Delete` → `RedisKv`: check Redis first; on `NotFound`
+/// fall back to Postgres. `SoftKill` + `Insert` → `PostgresOnly`: writes bypass Redis,
+/// so no new drainer entries are produced during rollout.
 pub(crate) fn decide_storage_scheme(state: KvState, operation: Op) -> StorageScheme {
     match state {
         KvState::Disabled => StorageScheme::PostgresOnly,
         KvState::Enabled => StorageScheme::RedisKv,
         KvState::SoftKill => {
             let scheme = match operation {
-                Op::Insert | Op::Update | Op::Delete => StorageScheme::PostgresOnly,
-                Op::Find => StorageScheme::RedisKv,
+                Op::Insert => StorageScheme::PostgresOnly,
+                Op::Find | Op::Update | Op::Delete => StorageScheme::RedisKv,
             };
             debug!(%scheme, %operation, "soft-kill routing");
             scheme
