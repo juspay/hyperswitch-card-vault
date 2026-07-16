@@ -143,7 +143,7 @@ where
                         secondary_key: reverse_lookup_key.lookup_id,
                         partition_key: partition_key_str.clone(),
                         source: M::ENTITY_TYPE.to_string(),
-                        update_by: scheme.to_string(),
+                        updated_by: scheme.to_string(),
                     })
                     .await
                     .map_err(|err| {

@@ -5,5 +5,5 @@ CREATE TABLE IF NOT EXISTS reverse_lookup (
     secondary_key VARCHAR NOT NULL,
     partition_key VARCHAR NOT NULL,
     source VARCHAR NOT NULL,
-    update_by VARCHAR NOT NULL
+    updated_by VARCHAR(32) NOT NULL
 );
