@@ -365,6 +365,45 @@ histogram_metric_f64!(
     buckets: f64_histogram_buckets(),
 );
 
+// KV
+#[cfg(feature = "kv")]
+counter_metric!(
+    pub(crate) KV_OPERATION_COUNT, CARD_VAULT_METER,
+    name: "kv.operation.count",
+    description: "Number of KV operation attempts",
+    unit: "1",
+);
+#[cfg(feature = "kv")]
+histogram_metric_f64!(
+    pub(crate) KV_OPERATION_DURATION, CARD_VAULT_METER,
+    name: "kv.operation.duration",
+    description: "Duration of completed KV operations",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
+#[cfg(feature = "kv")]
+counter_metric!(
+    pub(crate) KV_DRAINER_PUSH_COUNT, CARD_VAULT_METER,
+    name: "kv.drainer.push.count",
+    description: "Number of drainer stream push attempts",
+    unit: "1",
+);
+#[cfg(feature = "kv")]
+histogram_metric_f64!(
+    pub(crate) KV_DRAINER_PUSH_DURATION, CARD_VAULT_METER,
+    name: "kv.drainer.push.duration",
+    description: "Duration of completed drainer stream push attempts",
+    unit: "s",
+    buckets: f64_histogram_buckets(),
+);
+#[cfg(feature = "kv")]
+counter_metric!(
+    pub(crate) KV_CACHE_MISS_COUNT, CARD_VAULT_METER,
+    name: "kv.cache_miss.count",
+    description: "Redis cache misses that fell back to Postgres",
+    unit: "1",
+);
+
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum Resource {

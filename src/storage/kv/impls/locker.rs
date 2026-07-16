@@ -28,6 +28,10 @@ impl EntityType for Locker {
     const ENTITY_TYPE: &'static str = "locker";
 }
 
+impl EntityType for LockerInner {
+    const ENTITY_TYPE: &'static str = "locker";
+}
+
 impl KvStorePartition for Locker {}
 
 impl KvStorePartition for LockerInner {}
