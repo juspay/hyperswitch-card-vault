@@ -129,7 +129,7 @@ pub(crate) trait KvResource:
 /// The primary-key insert and find behavior is inherited from `KvResource`.
 /// Implementors add the delete-specific Postgres operation and the drainer query
 /// needed when deletes are routed through Redis.
-pub(crate) trait KvDeleteResource: KvResource {
+pub(crate) trait KvDeletableResource: KvResource {
     /// Build the DELETE statement consumed by the drainer when Redis is the
     /// delete path.
     fn generate_delete_drainer_query(
@@ -151,7 +151,7 @@ pub(crate) trait KvDeleteResource: KvResource {
 /// Implementors add the update representation, the Postgres update operation,
 /// the Redis-side in-memory merge, and the drainer query needed when updates are
 /// routed through Redis.
-pub(crate) trait KvUpdateResource: KvResource {
+pub(crate) trait KvUpdatableResource: KvResource {
     /// Diesel changeset/update type for this resource.
     type DieselUpdate;
 
@@ -181,13 +181,13 @@ pub(crate) trait KvUpdateResource: KvResource {
 
 /// Extension of `KvResource` for resources that support secondary-key lookups.
 ///
-/// `KvReverseLookupResource` is for resources whose Redis value is still stored
-/// by the primary partition key, but which also need a secondary key lookup path.
-/// Inserts create a reverse lookup record that maps the secondary lookup id to
-/// the primary partition key. Finds by secondary key first resolve that mapping,
-/// then read the resource by the primary key from Redis, with Postgres fallback
-/// on lookup or Redis misses.
-pub(crate) trait KvReverseLookupResource:
+/// `KvSecondaryLookupResource` is for resources whose Redis value is still
+/// stored by the primary partition key, but which also need a secondary key
+/// lookup path. Inserts create a reverse lookup record that maps the secondary
+/// lookup id to the primary partition key. Finds by secondary key first resolve
+/// that mapping, then read the resource by the primary key from Redis, with
+/// Postgres fallback on lookup or Redis misses.
+pub(crate) trait KvSecondaryLookupResource:
     KvResource<InsertStrategy = ReverseLookupInsert>
 {
     /// Secondary-key representation used to build and query reverse lookup ids.
@@ -372,7 +372,7 @@ pub(crate) async fn insert_resource_with_reverse_lookup<M>(
     partition_key: PartitionKey<'_>,
 ) -> Result<M, ContainerError<M::Error>>
 where
-    M: KvReverseLookupResource,
+    M: KvSecondaryLookupResource,
 {
     insert_resource_inner::<M, _>(
         store,
@@ -461,7 +461,7 @@ pub(crate) async fn find_resource_by_lookup_id<M>(
     lookup_key: M::LookupKeyType,
 ) -> Result<M, ContainerError<M::Error>>
 where
-    M: KvReverseLookupResource,
+    M: KvSecondaryLookupResource,
 {
     let scheme = decide(store, Op::Find).await;
     let lookup_id = lookup_key.get_lookup_key();
@@ -547,7 +547,7 @@ pub(crate) async fn update_resource_by_id<M>(
     primary_key: M::PrimaryKeyType,
 ) -> Result<M, ContainerError<M::Error>>
 where
-    M: KvUpdateResource,
+    M: KvUpdatableResource,
     M::PrimaryKeyType: Clone,
     M::DieselEntity: Clone,
 {
@@ -594,7 +594,7 @@ pub(crate) async fn delete_resource_by_id<M>(
     primary_key: M::PrimaryKeyType,
 ) -> Result<usize, ContainerError<M::Error>>
 where
-    M: KvDeleteResource,
+    M: KvDeletableResource,
 {
     let (scheme, _) = {
         let key = primary_key.get_partition_key();
@@ -630,7 +630,7 @@ pub(crate) async fn find_optional_resource_by_lookup_id<M>(
     lookup_key: M::LookupKeyType,
 ) -> Result<Option<M>, ContainerError<M::Error>>
 where
-    M: KvReverseLookupResource,
+    M: KvSecondaryLookupResource,
 {
     match find_resource_by_lookup_id(store, lookup_key).await {
         Ok(resource) => Ok(Some(resource)),

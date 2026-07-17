@@ -11,8 +11,8 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                GetLookupKey, GetPartitionKey, KvDeleteResource, KvResource,
-                KvReverseLookupResource, ReverseLookupInsert, ReverseLookupKey,
+                GetLookupKey, GetPartitionKey, KvDeletableResource, KvResource,
+                KvSecondaryLookupResource, ReverseLookupInsert, ReverseLookupKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
@@ -67,7 +67,7 @@ impl GetLookupKey for LockerHashLookupKey {
     }
 }
 
-impl KvReverseLookupResource for Locker {
+impl KvSecondaryLookupResource for Locker {
     type LookupKeyType = LockerHashLookupKey;
 
     fn get_reverse_lookup_key(
@@ -160,7 +160,7 @@ impl KvResource for Locker {
     }
 }
 
-impl KvDeleteResource for Locker {
+impl KvDeletableResource for Locker {
     fn generate_delete_drainer_query(
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {

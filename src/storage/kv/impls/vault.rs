@@ -10,7 +10,7 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                DirectInsert, GetPartitionKey, KvDeleteResource, KvResource, KvUpdateResource,
+                DirectInsert, GetPartitionKey, KvDeletableResource, KvResource, KvUpdatableResource,
             },
             serializable_query::{
                 SerializableQuery, generate_delete_query, generate_insert_query,
@@ -99,7 +99,7 @@ impl KvResource for Vault {
     }
 }
 
-impl KvDeleteResource for Vault {
+impl KvDeletableResource for Vault {
     fn generate_delete_drainer_query(
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
@@ -130,7 +130,7 @@ impl KvDeleteResource for Vault {
     }
 }
 
-impl KvUpdateResource for Vault {
+impl KvUpdatableResource for Vault {
     type DieselUpdate = VaultUpdate;
 
     fn set_update_storage_scheme(update: &mut Self::DieselUpdate, scheme: StorageScheme) {
