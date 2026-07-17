@@ -12,7 +12,7 @@ use crate::{
             PartitionKey, StorageScheme,
             entity::EntityType,
             partition_key::KvStorePartition,
-            resource::{GetPartitionKey, KvResource},
+            resource::{DirectInsert, GetPartitionKey, KvResource},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
         types::{Fingerprint, FingerprintTableNew},
@@ -44,6 +44,8 @@ impl GetPartitionKey for FingerprintPrimaryKey {
 
 impl KvResource for Fingerprint {
     type Error = FingerprintDBError;
+
+    type InsertStrategy = DirectInsert;
 
     type DieselNew = FingerprintTableNew;
 

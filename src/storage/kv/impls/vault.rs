@@ -9,7 +9,9 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::{GetPartitionKey, KvDeleteResource, KvResource, KvUpdateResource},
+            resource::{
+                DirectInsert, GetPartitionKey, KvDeleteResource, KvResource, KvUpdateResource,
+            },
             serializable_query::{
                 SerializableQuery, generate_delete_query, generate_insert_query,
                 generate_update_query,
@@ -48,6 +50,8 @@ impl GetPartitionKey for VaultPrimaryKey {
 
 impl KvResource for Vault {
     type Error = VaultDBError;
+
+    type InsertStrategy = DirectInsert;
 
     type DieselNew = VaultNew;
 

@@ -35,6 +35,16 @@ pub(crate) trait GetLookupKey {
     fn get_lookup_key(&self) -> ReverseLookupKey;
 }
 
+pub(crate) trait KvInsertStrategy {}
+
+pub(crate) struct DirectInsert;
+
+impl KvInsertStrategy for DirectInsert {}
+
+pub(crate) struct ReverseLookupInsert;
+
+impl KvInsertStrategy for ReverseLookupInsert {}
+
 /// A KV-routed table's resource model. Its `DieselEntity` is stored in Redis and
 /// converted back to the resource returned to callers.
 pub(crate) trait KvResource:
@@ -46,6 +56,8 @@ pub(crate) trait KvResource:
         + 'static
         + StorageErrorExt
         + for<'a> From<&'a KvError>;
+
+    type InsertStrategy: KvInsertStrategy;
 
     type DieselNew: Into<Self::DieselEntity>;
 
@@ -110,7 +122,9 @@ pub(crate) trait KvUpdateResource: KvResource {
 }
 
 /// KV reverse lookup trait
-pub(crate) trait KvReverseLookupResource: KvResource {
+pub(crate) trait KvReverseLookupResource:
+    KvResource<InsertStrategy = ReverseLookupInsert>
+{
     type LookupKeyType: GetLookupKey;
 
     fn get_reverse_lookup_key(
@@ -269,7 +283,7 @@ pub(crate) async fn insert_resource<M>(
     partition_key: PartitionKey<'_>,
 ) -> Result<M, ContainerError<M::Error>>
 where
-    M: KvResource,
+    M: KvResource<InsertStrategy = DirectInsert>,
 {
     insert_resource_inner::<M, _>(store, diesel_new, partition_key, |_, _| None)
         .await

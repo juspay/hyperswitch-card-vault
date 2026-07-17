@@ -12,7 +12,7 @@ use crate::{
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
                 GetLookupKey, GetPartitionKey, KvDeleteResource, KvResource,
-                KvReverseLookupResource, ReverseLookupKey,
+                KvReverseLookupResource, ReverseLookupInsert, ReverseLookupKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
@@ -109,6 +109,8 @@ impl KvReverseLookupResource for Locker {
 
 impl KvResource for Locker {
     type Error = VaultDBError;
+
+    type InsertStrategy = ReverseLookupInsert;
 
     type DieselNew = LockerNew;
 
