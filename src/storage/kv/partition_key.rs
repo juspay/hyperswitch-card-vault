@@ -7,6 +7,9 @@ pub(crate) enum PartitionKey<'a> {
     Fingerprint {
         fingerprint_hash: &'a [u8],
     },
+    HashTable {
+        data_hash: &'a [u8],
+    },
     Locker {
         merchant_id: &'a str,
         customer_id: &'a str,
@@ -20,6 +23,9 @@ impl std::fmt::Display for PartitionKey<'_> {
             Self::CombinationKey { combination } => f.write_str(combination),
             Self::Fingerprint { fingerprint_hash } => {
                 write!(f, "fingerprint_{}", hex::encode(fingerprint_hash))
+            }
+            Self::HashTable { data_hash } => {
+                write!(f, "hash_table_{}", hex::encode(data_hash))
             }
             Self::Locker {
                 merchant_id,
