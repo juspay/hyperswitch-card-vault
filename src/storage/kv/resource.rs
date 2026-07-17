@@ -253,8 +253,8 @@ where
                 Op::Insert => Ok((StorageScheme::PostgresOnly, None)),
                 // All finds will go to redis and fallback to postgres if needed.
                 Op::Find => Ok((StorageScheme::RedisKv, None)),
-                // All mutations to enitity present in redis should go to Redis.
-                // If not present in redis(TTL expired), then Postgress directly
+                // All mutations to entity present in redis should go to Redis.
+                // If not present in redis(TTL expired), then Postgres directly
                 Op::Update | Op::Delete => {
                     // With this implementation, Hot keys may never recover out of KV.
                     let partition_key_str = partition_key.to_string();
