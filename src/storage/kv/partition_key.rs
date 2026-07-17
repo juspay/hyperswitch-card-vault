@@ -7,6 +7,9 @@ pub(crate) enum PartitionKey<'a> {
     Fingerprint {
         fingerprint_hash: &'a [u8],
     },
+    HashTable {
+        data_hash: &'a [u8],
+    },
     Locker {
         merchant_id: &'a str,
         customer_id: &'a str,
@@ -29,6 +32,9 @@ impl std::fmt::Display for PartitionKey<'_> {
                 entity_id,
                 vault_id,
             } => write!(f, "vault_{entity_id}_{vault_id}"),
+            Self::HashTable { data_hash } => {
+                write!(f, "hash_table_{}", hex::encode(data_hash))
+            }
             Self::Locker {
                 merchant_id,
                 customer_id,

@@ -1,6 +1,6 @@
 #[cfg(not(feature = "kv"))]
-use diesel::BoolExpressionMethods;
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable};
+use diesel::OptionalExtension;
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 #[cfg(not(feature = "kv"))]
 use hyperswitch_masking::ExposeInterface;
@@ -242,34 +242,71 @@ impl super::HashInterface for Storage {
         &self,
         data_hash: &[u8],
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let pk = super::kv::impls::hash_table::HashTablePrimaryKey {
+                data_hash: data_hash.to_vec(),
+            };
 
-        let output = types::HashTable::table()
-            .filter(schema::hash_table::data_hash.eq(data_hash))
-            .get_result::<types::HashTable>(&mut conn)
-            .await
-            .optional()?;
+            return super::kv::find_optional_resource_by_id::<types::HashTable>(self, pk).await;
+        }
 
-        Ok(output)
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output = types::HashTable::table()
+                .filter(schema::hash_table::data_hash.eq(data_hash))
+                .get_result::<types::HashTable>(&mut conn)
+                .await
+                .optional()?;
+
+            Ok(output)
+        }
     }
 
     async fn insert_hash(
         &self,
         data_hash: Vec<u8>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
-
-        let output: types::HashTable = diesel::insert_into(types::HashTable::table())
-            .values(types::HashTableNew {
+        #[cfg(feature = "kv")]
+        {
+            let hash_table_new = types::HashTableNew {
                 hash_id: utils::generate_uuid(),
                 data_hash,
-                // Placeholder — overwritten by `set_storage_scheme` when hash_table joins KV.
+                created_at: crate::utils::date_time::now(),
                 updated_by: StorageScheme::PostgresOnly,
-            })
-            .get_result(&mut conn)
-            .await?;
+            };
+            let data_hash = hash_table_new.data_hash.clone();
+            let partition_key = super::kv::PartitionKey::HashTable {
+                data_hash: &data_hash,
+            };
 
-        Ok(output)
+            return super::kv::insert_resource::<types::HashTable>(
+                self,
+                hash_table_new,
+                partition_key,
+            )
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+
+            let output: types::HashTable = diesel::insert_into(types::HashTable::table())
+                .values(types::HashTableNew {
+                    hash_id: utils::generate_uuid(),
+                    data_hash,
+                    created_at: crate::utils::date_time::now(),
+                    // Placeholder — overwritten by `set_storage_scheme` when hash_table joins KV.
+                    updated_by: StorageScheme::PostgresOnly,
+                })
+                .get_result(&mut conn)
+                .await?;
+
+            Ok(output)
+        }
     }
 }
 
@@ -293,6 +330,7 @@ impl super::TestInterface for Storage {
                         .values(types::HashTableNew {
                             hash_id: "test".to_string(),
                             data_hash: b"0".to_vec(),
+                            created_at: crate::utils::date_time::now(),
                             // Test-only — always PostgresOnly.
                             updated_by: StorageScheme::PostgresOnly,
                         })
