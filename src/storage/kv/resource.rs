@@ -45,11 +45,22 @@ pub(crate) struct ReverseLookupInsert;
 
 impl KvInsertStrategy for ReverseLookupInsert {}
 
-/// A KV-routed table's resource model. Its `DieselEntity` is stored in Redis and
-/// converted back to the resource returned to callers.
+/// Base contract for a table that can be routed through the KV storage layer.
+///
+/// `KvResource` covers the operations every KV-backed resource must support:
+/// inserting a new row and finding an existing row by its primary key. The
+/// generic helpers in this module use this trait to decide whether an operation
+/// should go to Postgres directly or be served through Redis with a serialized
+/// drainer query for eventual Postgres replay.
+///
+/// Implementors describe both the API-facing resource type (`Self`) and the
+/// Diesel table-mapped entity (`DieselEntity`) that is actually serialized into
+/// Redis. `PrimaryKeyType` must be able to produce the Redis partition key used
+/// for primary-key based lookups.
 pub(crate) trait KvResource:
     std::fmt::Debug + KvStorePartition + EntityType + Sync + Send + Sized
 {
+    /// Storage-layer error type returned by the resource implementation.
     type Error: error_stack::Context
         + Send
         + Sync
@@ -57,10 +68,20 @@ pub(crate) trait KvResource:
         + StorageErrorExt
         + for<'a> From<&'a KvError>;
 
+    /// Insert routing strategy for this resource.
+    ///
+    /// Use `DirectInsert` when the primary key alone is sufficient for all KV
+    /// lookups. Use `ReverseLookupInsert` when inserts must also create a
+    /// secondary-key to primary-key mapping.
     type InsertStrategy: KvInsertStrategy;
 
+    /// Diesel insertable/new-record type used for both Postgres inserts and
+    /// drainer query generation.
     type DieselNew: Into<Self::DieselEntity>;
 
+    /// Diesel queryable table entity stored as the Redis value.
+    ///
+    /// This type is converted back into `Self` before returning to callers.
     type DieselEntity: serde::Serialize
         + serde::de::DeserializeOwned
         + std::fmt::Debug
@@ -68,52 +89,89 @@ pub(crate) trait KvResource:
         + Sync
         + Into<Self>;
 
-    /// A type that represent the primary key of this table
-    /// could be composite key as well.
+    /// Primary key representation for this table.
+    ///
+    /// This may be a composite key. It must produce the partition key used by
+    /// Redis for primary-key based insert, find, update, and delete operations.
     type PrimaryKeyType: GetPartitionKey;
 
+    /// Mark a new record with the storage scheme selected for the insert.
     fn set_storage_scheme(diesel_new: &mut Self::DieselNew, scheme: StorageScheme);
 
-    /// Drainer INSERT — built from the `Insertable` `New` projection (the model is not
-    /// `Insertable`). Implementations rebuild the `New` struct from the model's fields.
+    /// Build the INSERT statement consumed by the drainer when Redis is the
+    /// write path.
     fn generate_insert_drainer_query(
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
+    /// Insert the new record through the backing storage implementation.
+    ///
+    /// This is used directly when the selected storage scheme is
+    /// `PostgresOnly`, and as the fallback implementation for resources that do
+    /// not write through Redis for the current operation.
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
     ) -> Result<Self::DieselEntity, ContainerError<Self::Error>>;
 
+    /// Find a record by primary key through the backing storage implementation.
+    ///
+    /// This is used for `PostgresOnly` reads and as the fallback when Redis does
+    /// not contain the requested primary key.
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self::DieselEntity, ContainerError<Self::Error>>;
 }
 
+/// Extension of `KvResource` for resources that support deletion by primary key.
+///
+/// The primary-key insert and find behavior is inherited from `KvResource`.
+/// Implementors add the delete-specific Postgres operation and the drainer query
+/// needed when deletes are routed through Redis.
 pub(crate) trait KvDeleteResource: KvResource {
+    /// Build the DELETE statement consumed by the drainer when Redis is the
+    /// delete path.
     fn generate_delete_drainer_query(
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
+    /// Delete a record by primary key through the backing storage implementation.
+    ///
+    /// Returns the number of rows deleted from storage.
     async fn storage_delete(
         store: &Storage,
         pk: Self::PrimaryKeyType,
     ) -> Result<usize, ContainerError<Self::Error>>;
 }
 
+/// Extension of `KvResource` for resources that support updates by primary key.
+///
+/// The primary-key insert and find behavior is inherited from `KvResource`.
+/// Implementors add the update representation, the Postgres update operation,
+/// the Redis-side in-memory merge, and the drainer query needed when updates are
+/// routed through Redis.
 pub(crate) trait KvUpdateResource: KvResource {
+    /// Diesel changeset/update type for this resource.
     type DieselUpdate;
 
+    /// Mark an update with the storage scheme selected for the operation.
     fn set_update_storage_scheme(diesel_update: &mut Self::DieselUpdate, scheme: StorageScheme);
 
+    /// Build the UPDATE statement consumed by the drainer when Redis is the
+    /// update path.
     fn generate_update_drainer_query(
         update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
+    /// Apply an update to the current Diesel entity stored in Redis.
+    ///
+    /// The returned entity is written back to Redis and converted to `Self` for
+    /// the caller.
     fn apply_update(update: Self::DieselUpdate, current: Self::DieselEntity) -> Self::DieselEntity;
 
+    /// Update a record by primary key through the backing storage implementation.
     async fn storage_update(
         store: &Storage,
         update: Self::DieselUpdate,
@@ -121,17 +179,34 @@ pub(crate) trait KvUpdateResource: KvResource {
     ) -> Result<Self, ContainerError<Self::Error>>;
 }
 
-/// KV reverse lookup trait
+/// Extension of `KvResource` for resources that support secondary-key lookups.
+///
+/// `KvReverseLookupResource` is for resources whose Redis value is still stored
+/// by the primary partition key, but which also need a secondary key lookup path.
+/// Inserts create a reverse lookup record that maps the secondary lookup id to
+/// the primary partition key. Finds by secondary key first resolve that mapping,
+/// then read the resource by the primary key from Redis, with Postgres fallback
+/// on lookup or Redis misses.
 pub(crate) trait KvReverseLookupResource:
     KvResource<InsertStrategy = ReverseLookupInsert>
 {
+    /// Secondary-key representation used to build and query reverse lookup ids.
     type LookupKeyType: GetLookupKey;
 
+    /// Derive the secondary lookup key for a newly inserted record.
+    ///
+    /// The returned key is persisted as a reverse lookup record during Redis KV
+    /// inserts, allowing later reads by secondary key to resolve the primary
+    /// partition key.
     fn get_reverse_lookup_key(
         new_object: &Self::DieselNew,
         partition_key: &PartitionKey<'_>,
     ) -> Self::LookupKeyType;
 
+    /// Find a record by secondary key through the backing storage implementation.
+    ///
+    /// This is used for `PostgresOnly` reads and as the fallback when the
+    /// reverse lookup record or Redis value is missing.
     async fn storage_find_by_lookup(
         store: &Storage,
         lookup_key: &Self::LookupKeyType,
