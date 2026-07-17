@@ -201,7 +201,7 @@ async fn insert_resource_inner<M, F>(
     mut diesel_new: M::DieselNew,
     partition_key: PartitionKey<'_>,
     get_reverse_lookup_key: F,
-) -> Result<M, ContainerError<M::Error>>
+) -> Result<M::DieselEntity, ContainerError<M::Error>>
 where
     M: KvResource,
     F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
@@ -210,7 +210,7 @@ where
     M::set_storage_scheme(&mut diesel_new, scheme);
 
     match scheme {
-        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await.map(Into::into),
+        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
         StorageScheme::RedisKv => {
             let drainer_query = M::generate_insert_drainer_query(&diesel_new)
                 .map_err(kv_backend_error::<M::Error>)?;
@@ -247,7 +247,7 @@ where
             })?;
 
             match reply.try_into_hsetnx() {
-                Ok(HsetnxReply::KeySet) => Ok(diesel_entity.into()),
+                Ok(HsetnxReply::KeySet) => Ok(diesel_entity),
                 Ok(HsetnxReply::KeyNotSet) => {
                     Err(kv_duplicate_error::<M::Error>(&partition_key_str))
                 }
@@ -271,7 +271,9 @@ pub(crate) async fn insert_resource<M>(
 where
     M: KvResource,
 {
-    insert_resource_inner::<M, _>(store, diesel_new, partition_key, |_, _| None).await
+    insert_resource_inner::<M, _>(store, diesel_new, partition_key, |_, _| None)
+        .await
+        .map(Into::into)
 }
 
 #[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
@@ -292,6 +294,7 @@ where
         },
     )
     .await
+    .map(Into::into)
 }
 
 /// Find by plain key. Redis hit → return model. `NotFound` → Postgres fallback.
