@@ -35,15 +35,9 @@ pub(crate) trait GetLookupKey {
     fn get_lookup_key(&self) -> ReverseLookupKey;
 }
 
-pub(crate) trait KvInsertStrategy {}
-
 pub(crate) struct DirectInsert;
 
-impl KvInsertStrategy for DirectInsert {}
-
 pub(crate) struct ReverseLookupInsert;
-
-impl KvInsertStrategy for ReverseLookupInsert {}
 
 /// Base contract for a table that can be routed through the KV storage layer.
 ///
@@ -73,7 +67,7 @@ pub(crate) trait KvResource:
     /// Use `DirectInsert` when the primary key alone is sufficient for all KV
     /// lookups. Use `ReverseLookupInsert` when inserts must also create a
     /// secondary-key to primary-key mapping.
-    type InsertStrategy: KvInsertStrategy;
+    type InsertStrategy;
 
     /// Diesel insertable/new-record type used for both Postgres inserts and
     /// drainer query generation.
