@@ -1,7 +1,3 @@
-use tracing::debug;
-
-use crate::storage::scheme::StorageScheme;
-
 /// Tri-state KV master switch.
 ///
 /// `ttl_for_kv` must exceed max drainer replay lag — otherwise a KV-only
@@ -27,24 +23,4 @@ pub(crate) enum Op {
     Find,
     Update,
     Delete,
-}
-
-/// Effective storage scheme for an operation.
-///
-/// `SoftKill` + `Find`/`Update`/`Delete` → `RedisKv`: check Redis first; on `NotFound`
-/// fall back to Postgres. `SoftKill` + `Insert` → `PostgresOnly`: writes bypass Redis,
-/// so no new drainer entries are produced during rollout.
-pub(crate) fn decide_storage_scheme(state: KvState, operation: Op) -> StorageScheme {
-    match state {
-        KvState::Disabled => StorageScheme::PostgresOnly,
-        KvState::Enabled => StorageScheme::RedisKv,
-        KvState::SoftKill => {
-            let scheme = match operation {
-                Op::Insert => StorageScheme::PostgresOnly,
-                Op::Find | Op::Update | Op::Delete => StorageScheme::RedisKv,
-            };
-            debug!(%scheme, %operation, "soft-kill routing");
-            scheme
-        }
-    }
 }
