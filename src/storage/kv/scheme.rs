@@ -13,14 +13,3 @@ pub(crate) enum KvState {
     /// Insert to Postgres only; reads prefer Redis.
     SoftKill,
 }
-
-/// Operation type used by `decide_storage_scheme`.
-///
-#[derive(Debug, Clone, Copy, strum::Display)]
-#[strum(serialize_all = "snake_case")]
-pub(crate) enum Op {
-    Insert,
-    Find,
-    Update,
-    Delete,
-}
