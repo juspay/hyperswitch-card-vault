@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::{Json, extract::State, routing::post};
 use error_stack::ResultExt;
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use crate::{
     app::TenantAppState,
@@ -163,7 +164,8 @@ async fn aes_decrypt_custodian_key(
         hex::decode(custodian_key)
             .change_error(error::ApiError::DecryptingKeysFailed("Hex dcoding failed"))?,
     )
-    .decrypt(tenant_config.tenant_secrets.master_key.clone())
+    .decrypt(tenant_config.tenant_secrets.master_key.clone().expose())
+    .map(Secret::new)
     .change_error(error::ApiError::DecryptingKeysFailed(
         "AES decryption failed",
     ))?;
