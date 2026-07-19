@@ -154,6 +154,7 @@ async fn shutdown_signal() {
 ///
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
+    metrics_handle: observability::MetricsHandle,
 ) -> Result<(), error::ConfigurationError> {
     // Warm + periodically refresh the runtime-config cache. No-op when disabled.
     let _prefetch_handle = global_app_state
@@ -227,7 +228,6 @@ pub async fn server_builder(
 
     router = router.nest("/health", routes::health::serve());
 
-    let metrics_handle = observability::init_metrics(&global_app_state.global_config.metrics);
     if metrics_handle.provider().is_some() {
         router = router.layer(observability::HttpRequestMetricsLayer);
     }
