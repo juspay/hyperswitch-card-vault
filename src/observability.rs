@@ -1,6 +1,8 @@
 mod macros;
 pub(crate) mod metrics;
 
+use std::num::NonZeroU64;
+
 pub use self::metrics::{
     HttpRequestMetricsLayer, init_metrics, spawn_bg_metrics_collector,
     start_prometheus_metrics_server,
@@ -19,7 +21,7 @@ pub enum MetricsConfig {
         #[serde(default = "default_export_interval")]
         metrics_export_interval_secs: u64,
         #[serde(default = "default_bg_metrics_interval")]
-        background_metrics_collection_interval_secs: u64,
+        background_metrics_collection_interval_secs: NonZeroU64,
     },
 
     Prometheus {
@@ -28,7 +30,7 @@ pub enum MetricsConfig {
         #[serde(default = "default_prometheus_port")]
         port: u16,
         #[serde(default = "default_bg_metrics_interval")]
-        background_metrics_collection_interval_secs: u64,
+        background_metrics_collection_interval_secs: NonZeroU64,
     },
 }
 
@@ -48,8 +50,9 @@ const fn default_prometheus_port() -> u16 {
     9090
 }
 
-const fn default_bg_metrics_interval() -> u64 {
-    15
+fn default_bg_metrics_interval() -> NonZeroU64 {
+    #[expect(clippy::expect_used)]
+    NonZeroU64::new(15).expect("15 is non-zero")
 }
 
 impl MetricsConfig {
@@ -92,7 +95,7 @@ impl MetricsConfig {
         match self {
             // We shouldn't be reaching this arm preferably,
             // we shouldn't be launching the metrics collection task if metrics are disabled.
-            Self::Disabled => default_bg_metrics_interval(),
+            Self::Disabled => default_bg_metrics_interval().get(),
             Self::Otlp {
                 background_metrics_collection_interval_secs,
                 ..
@@ -100,7 +103,7 @@ impl MetricsConfig {
             | Self::Prometheus {
                 background_metrics_collection_interval_secs,
                 ..
-            } => *background_metrics_collection_interval_secs,
+            } => background_metrics_collection_interval_secs.get(),
         }
     }
 }
