@@ -673,23 +673,14 @@ impl super::ReverseLookupInterface for Storage {
                 &query, operation, pool,
             );
 
-            let output: Result<types::ReverseLookup, diesel::result::Error> =
+            let output: types::ReverseLookup =
                 super::record_db_query::<<types::ReverseLookup as HasTable>::Table, _, _, _>(
                     query.get_result(conn.get_mut()),
                     operation,
                     pool,
                 )
-                .await;
-
-            match output {
-                Err(err) => match err {
-                    diesel::result::Error::NotFound => {
-                        Err(err).change_error(error::StorageError::NotFoundError)
-                    }
-                    _ => Err(err).change_error(error::StorageError::FindError),
-                },
-                Ok(reverse_lookup) => Ok(reverse_lookup),
-            }
+                .await?;
+            Ok(output)
         }
     }
 
@@ -724,14 +715,14 @@ impl super::ReverseLookupInterface for Storage {
                 &query, operation, pool,
             );
 
-            super::record_db_query::<<types::ReverseLookup as HasTable>::Table, _, _, _>(
-                query.get_result(conn.get_mut()),
-                operation,
-                pool,
-            )
-            .await
-            .change_error(error::StorageError::InsertError)
-            .map_err(ContainerError::from)
+            let reverse_lookup = super::record_db_query::<
+                <types::ReverseLookup as HasTable>::Table,
+                _,
+                _,
+                _,
+            >(query.get_result(conn.get_mut()), operation, pool)
+            .await?;
+            Ok(reverse_lookup)
         }
     }
 }

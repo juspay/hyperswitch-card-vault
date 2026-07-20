@@ -1,21 +1,20 @@
-use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::RunQueryDsl;
-
 use crate::{
-    error::{self, ContainerError, ResultContainerExt, ReverseLookupDBError, kv::KvError},
+    error::{ContainerError, ReverseLookupDBError, kv::KvError},
     storage::{
-        Storage,
+        self, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::KvResource,
+            resource::{self as kv_resouce, KvResource},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
+        schema,
         types::{ReverseLookup, ReverseLookupNew},
     },
 };
-
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
+use diesel_async::RunQueryDsl;
 impl EntityType for ReverseLookupNew {
     const ENTITY_TYPE: &'static str = "reverse_lookup";
 }
@@ -41,6 +40,8 @@ impl crate::storage::kv::resource::GetPartitionKey for ReverseLookupPrimaryKey {
 impl KvResource for ReverseLookup {
     type Error = ReverseLookupDBError;
 
+    type InsertStrategy = kv_resouce::DirectInsert;
+
     type DieselNew = ReverseLookupNew;
 
     type DieselEntity = Self;
@@ -64,33 +65,42 @@ impl KvResource for ReverseLookup {
         store: &Storage,
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
         let mut conn = store.get_conn().await?;
-        diesel::insert_into(Self::table())
-            .values(new_object)
-            .get_result(&mut conn)
-            .await
-            .change_error(error::StorageError::InsertError)
-            .map_err(From::from)
+
+        let query = diesel::insert_into(ReverseLookup::table()).values(new_object);
+
+        let pool = conn.pool();
+        let operation = storage::DbOperation::Insert;
+        storage::log_db_query::<<ReverseLookup as HasTable>::Table, _>(&query, operation, pool);
+
+        let reverse_lookup =
+            storage::record_db_query::<<ReverseLookup as HasTable>::Table, _, _, _>(
+                query.get_result(conn.get_mut()),
+                operation,
+                pool,
+            )
+            .await?;
+        Ok(reverse_lookup)
     }
 
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
-        let mut conn = store.route_conn().await?;
-        let output: Result<Self, diesel::result::Error> = Self::table()
-            .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id.as_str()))
-            .get_result::<Self>(&mut conn)
-            .await;
+        let mut conn = store.get_conn().await?;
+        let query = ReverseLookup::table()
+            .filter(schema::reverse_lookup::lookup_id.eq(pk.lookup_id.as_str()));
 
-        match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
-                }
-                _ => Err(err).change_error(error::StorageError::FindError),
-            },
-            Ok(reverse_lookup) => Ok(reverse_lookup),
-        }
-        .map_err(From::from)
+        let pool = conn.pool();
+        let operation = storage::DbOperation::FindOne;
+        storage::log_db_query::<<ReverseLookup as HasTable>::Table, _>(&query, operation, pool);
+
+        let output: ReverseLookup = storage::record_db_query::<
+            <ReverseLookup as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result(conn.get_mut()), operation, pool)
+        .await?;
+        Ok(output)
     }
 }

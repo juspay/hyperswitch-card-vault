@@ -13,6 +13,7 @@ impl From<&KvError> for ReverseLookupDBError {
         match e {
             KvError::DuplicateValue { .. } => Self::Duplicate,
             KvError::ValueNotFound(_) => Self::NotFoundError,
+            KvError::Backend | KvError::SerializationFailed => Self::UnknownError,
         }
     }
 }
