@@ -165,7 +165,13 @@ pub fn spawn_bg_metrics_collector(
         loop {
             interval.tick().await;
 
-            let tenants = global_app_state.tenants_app_state.read().await;
+            let tenants: Vec<_> = {
+                let guard = global_app_state.tenants_app_state.read().await;
+                guard
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect::<Vec<_>>()
+            };
             for (tenant_id, tenant_state) in tenants.iter() {
                 tenant_state.db.collect_db_pool_state(tenant_id);
 
