@@ -81,7 +81,7 @@ argh = "0.1.12"
 nanoid = "0.4.0"
 
 crc32fast = { version = "1.4", optional = true }
-strum = { version = "0.26", features = ["derive"] }
+strum = { version = "0.28.0", features = ["derive"] }
 error-stack-04 = { package = "error-stack", version = "0.4.1", optional = true }
 
 build_info = { git = "https://github.com/juspay/framework-libs-rs", rev = "9bcf79420c0782dee01674cd1ac296696cd4f1af", features = ["cargo-workspace", "framework-libs-members-env"] }

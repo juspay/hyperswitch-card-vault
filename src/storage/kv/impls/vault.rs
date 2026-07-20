@@ -25,6 +25,10 @@ impl EntityType for VaultNewInner {
     const ENTITY_TYPE: &'static str = "vault";
 }
 
+impl EntityType for VaultInner {
+    const ENTITY_TYPE: &'static str = "vault";
+}
+
 impl EntityType for Vault {
     const ENTITY_TYPE: &'static str = "vault";
 }
@@ -76,7 +80,7 @@ impl KvResource for Vault {
         let mut conn = store.get_conn().await?;
         let output: VaultInner = diesel::insert_into(crate::storage::schema::vault::table)
             .values(new_object)
-            .get_result(&mut conn)
+            .get_result(conn.get_mut())
             .await?;
         Ok(output)
     }
@@ -92,7 +96,7 @@ impl KvResource for Vault {
                     .eq(pk.vault_id.as_str())
                     .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.as_str())),
             )
-            .get_result::<VaultInner>(&mut conn)
+            .get_result::<VaultInner>(conn.get_mut())
             .await?;
 
         Ok(output)
@@ -109,7 +113,7 @@ impl KvDeletableResource for Vault {
                 .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.clone())),
         );
 
-        generate_delete_query::<_, Self>(query)
+        generate_delete_query::<_, Self::DieselEntity>(query)
     }
 
     async fn storage_delete(
@@ -123,7 +127,7 @@ impl KvDeletableResource for Vault {
                     .eq(pk.vault_id)
                     .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id)),
             )
-            .execute(&mut conn)
+            .execute(conn.get_mut())
             .await?;
 
         Ok(output)
@@ -149,7 +153,7 @@ impl KvUpdatableResource for Vault {
             )
             .set(update.clone());
 
-        generate_update_query::<_, Self>(query)
+        generate_update_query::<_, Self::DieselEntity>(query)
     }
 
     fn apply_update(update: Self::DieselUpdate, current: Self::DieselEntity) -> Self::DieselEntity {
@@ -169,7 +173,7 @@ impl KvUpdatableResource for Vault {
                     .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id)),
             )
             .set(update)
-            .get_result(&mut conn)
+            .get_result(conn.get_mut())
             .await?;
 
         Ok(output.into())

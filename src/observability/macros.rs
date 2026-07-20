@@ -68,6 +68,112 @@ macro_rules! counter_metric {
     };
 }
 
+/// Create an [`UpDownCounter<i64>`][::opentelemetry::metrics::UpDownCounter] with the given name.
+#[macro_export]
+macro_rules! up_down_counter_metric {
+    // Entry without `name:` override
+    ($vis:vis $name:ident, $meter:ident $($rest:tt)*) => {
+        $crate::up_down_counter_metric! { @build $vis $name, $meter [$($rest)*]
+            $meter.i64_up_down_counter(::std::stringify!($name)) }
+    };
+
+    // Entry with `name:` override
+    (@build $vis:vis $name:ident, $meter:ident
+        [name: $metric_name:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::up_down_counter_metric! { @build $vis $name, $meter [$($rest)*]
+            $meter.i64_up_down_counter($metric_name) }
+    };
+
+    // `description:` keyword
+    (@build $vis:vis $name:ident, $meter:ident
+        [description: $v:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::up_down_counter_metric! { @build $vis $name, $meter [$($rest)*]
+            $($expr)* .with_description($v) }
+    };
+
+    // `unit:` keyword
+    (@build $vis:vis $name:ident, $meter:ident
+        [unit: $v:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::up_down_counter_metric! { @build $vis $name, $meter [$($rest)*]
+            $($expr)* .with_unit($v) }
+    };
+
+    // Comma skimmer
+    (@build $vis:vis $name:ident, $meter:ident
+        [, $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::up_down_counter_metric! { @build $vis $name, $meter [$($rest)*]
+            $($expr)* }
+    };
+
+    // Base case: no more tokens, emit up-down counter
+    (@build $vis:vis $name:ident, $meter:ident [] $($expr:tt)*) => {
+        $vis static $name: ::std::sync::LazyLock<
+            ::opentelemetry::metrics::UpDownCounter<i64>
+        > = ::std::sync::LazyLock::new(|| { $($expr)* .build() });
+    };
+}
+
+/// Create a [`Gauge<u64>`][::opentelemetry::metrics::Gauge] with the given name.
+#[macro_export]
+macro_rules! gauge_metric {
+    // Entry without `name:` override
+    ($vis:vis $name:ident, $meter:ident $($rest:tt)*) => {
+        $crate::gauge_metric! { @build $vis $name, $meter [$($rest)*]
+            $meter.u64_gauge(::std::stringify!($name)) }
+    };
+
+    // Entry with `name:` override
+    (@build $vis:vis $name:ident, $meter:ident
+        [name: $metric_name:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::gauge_metric! { @build $vis $name, $meter [$($rest)*]
+            $meter.u64_gauge($metric_name) }
+    };
+
+    // `description:` keyword
+    (@build $vis:vis $name:ident, $meter:ident
+        [description: $v:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::gauge_metric! { @build $vis $name, $meter [$($rest)*]
+            $($expr)* .with_description($v) }
+    };
+
+    // `unit:` keyword
+    (@build $vis:vis $name:ident, $meter:ident
+        [unit: $v:literal $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::gauge_metric! { @build $vis $name, $meter [$($rest)*]
+            $($expr)* .with_unit($v) }
+    };
+
+    // Comma skimmer
+    (@build $vis:vis $name:ident, $meter:ident
+        [, $($rest:tt)*]
+        $($expr:tt)*
+    ) => {
+        $crate::gauge_metric! { @build $vis $name, $meter [$($rest)*]
+            $($expr)* }
+    };
+
+    // Base case: no more tokens, emit gauge
+    (@build $vis:vis $name:ident, $meter:ident [] $($expr:tt)*) => {
+        $vis static $name: ::std::sync::LazyLock<
+            ::opentelemetry::metrics::Gauge<u64>
+        > = ::std::sync::LazyLock::new(|| { $($expr)* .build() });
+    };
+}
+
 /// Create a [`Histogram<f64>`][::opentelemetry::metrics::Histogram] with the given name.
 #[macro_export]
 macro_rules! histogram_metric_f64 {
@@ -143,5 +249,18 @@ macro_rules! histogram_metric_f64 {
 macro_rules! metric_attributes {
     ($(($key:expr, $value:expr $(,)?)),+ $(,)?) => {
         &[$(::opentelemetry::KeyValue::new($key, $value)),+]
+    };
+}
+
+#[macro_export]
+macro_rules! impl_metric_value_from {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl From<$ty> for opentelemetry::Value {
+                fn from(v: $ty) -> Self {
+                    Self::from(<&'static str>::from(v))
+                }
+            }
+        )+
     };
 }

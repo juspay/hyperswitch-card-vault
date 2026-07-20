@@ -1,18 +1,21 @@
+pub mod types;
+
 use axum::{Json, extract::Query};
 use error_stack::ResultExt;
 use hyperswitch_masking::PeekInterface;
-pub mod types;
 
 use crate::{
     crypto::keymanager,
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     logger,
+    observability::metrics,
     routes::data::{crypto_operation, types::Validation},
     storage::storage_v2::VaultInterface,
     utils,
 };
 
+#[tracing::instrument(skip_all)]
 pub async fn delete_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::DeleteDataRequest>,
@@ -39,6 +42,7 @@ pub async fn delete_data(
     Ok(response)
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn retrieve_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::RetrieveDataRequest>,
@@ -59,11 +63,22 @@ pub async fn retrieve_data(
         .expires_at
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
+                crate::routes::record_expired_data_encountered(metrics::Resource::Vault);
+
                 tokio::spawn(async move {
-                    tenant_app_state
+                    let result = tenant_app_state
                         .db
                         .delete_from_vault(request.vault_id.into(), &request.entity_id)
-                        .await
+                        .await;
+
+                    crate::routes::record_ttl_deletion_result(
+                        metrics::Resource::Vault,
+                        if result.is_ok() {
+                            metrics::TtlDeletionOutcome::Deleted
+                        } else {
+                            metrics::TtlDeletionOutcome::Failed
+                        },
+                    );
                 });
 
                 Err(error::ApiError::NotFoundError)
@@ -85,6 +100,7 @@ pub async fn retrieve_data(
     Ok(Json(types::RetrieveDataResponse { data: data_value }))
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn add_data(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Query(params): Query<types::StoreDataRequestQueryParams>,

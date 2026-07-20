@@ -192,10 +192,8 @@ impl RuntimeConfigManager {
 
         crate::logger::debug!(url = %url, "Fetching runtime config");
 
-        let response = client
-            .get(&url)
-            .header(API_KEY_HEADER_NAME, api_key.peek())
-            .send()
+        let request = client.get(&url).header(API_KEY_HEADER_NAME, api_key.peek());
+        let response = record_runtime_config_fetch_duration(request)
             .await
             .change_context(error::ConfigurationError::InvalidConfigurationValueError(
                 "Failed to send runtime config request".into(),
@@ -224,4 +222,38 @@ impl RuntimeConfigManager {
 
         Ok(value)
     }
+}
+
+async fn record_runtime_config_fetch_duration(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let start = std::time::Instant::now();
+    let result = request.send().await;
+    let duration = start.elapsed();
+
+    let (outcome, status_code) = match result.as_ref() {
+        Ok(resp) => {
+            let status = resp.status();
+            let outcome = match status.as_u16() {
+                200..=299 => "success",
+                300..=399 => "redirect",
+                400..=499 => "client_error",
+                500..=599 => "server_error",
+                _ => "unknown",
+            };
+            (outcome, Some(status.as_u16()))
+        }
+        Err(_) => ("transport_error", None),
+    };
+
+    let status_code = status_code
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "UNKNOWN".to_string());
+
+    crate::observability::metrics::RUNTIME_CONFIG_FETCH_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(("outcome", outcome), ("status_code", status_code)),
+    );
+
+    result
 }

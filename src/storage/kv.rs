@@ -3,7 +3,6 @@
 pub(crate) mod entity;
 #[cfg(feature = "kv")]
 pub(crate) mod impls;
-pub(crate) mod metrics;
 #[cfg(feature = "kv")]
 pub(crate) mod partition_key;
 #[cfg(feature = "kv")]

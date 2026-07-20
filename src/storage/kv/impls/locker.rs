@@ -1,11 +1,11 @@
-use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
-use hyperswitch_masking::{ExposeInterface, PeekInterface};
+use hyperswitch_masking::PeekInterface;
 
 use crate::{
     error::{ContainerError, VaultDBError},
     storage::{
-        Storage,
+        DbOperation, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -25,6 +25,10 @@ impl EntityType for LockerNew {
 }
 
 impl EntityType for Locker {
+    const ENTITY_TYPE: &'static str = "locker";
+}
+
+impl EntityType for LockerInner {
     const ENTITY_TYPE: &'static str = "locker";
 }
 
@@ -87,21 +91,30 @@ impl KvSecondaryLookupResource for Locker {
     ) -> Result<Self, ContainerError<VaultDBError>> {
         let mut conn = store.route_conn().await?;
 
-        let output = crate::storage::schema::locker::table
-            .filter(
-                crate::storage::schema::locker::hash_id
-                    .eq(lookup_key.hash_id.as_str())
-                    .and(
-                        crate::storage::schema::locker::merchant_id
-                            .eq(lookup_key.merchant_id.as_str()),
-                    )
-                    .and(
-                        crate::storage::schema::locker::customer_id
-                            .eq(lookup_key.customer_id.as_str()),
-                    ),
-            )
-            .get_result::<LockerInner>(&mut conn)
-            .await?;
+        let query = crate::storage::schema::locker::table.filter(
+            crate::storage::schema::locker::hash_id
+                .eq(lookup_key.hash_id.as_str())
+                .and(
+                    crate::storage::schema::locker::merchant_id.eq(lookup_key.merchant_id.as_str()),
+                )
+                .and(
+                    crate::storage::schema::locker::customer_id.eq(lookup_key.customer_id.as_str()),
+                ),
+        );
+
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        crate::storage::log_db_query::<<LockerInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output: LockerInner = crate::storage::record_db_query::<
+            <LockerInner as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result(conn.get_mut()), operation, pool)
+        .await?;
 
         Ok(output.into())
     }
@@ -133,11 +146,24 @@ impl KvResource for Locker {
         store: &Storage,
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
         let mut conn = store.get_conn().await?;
-        let output: LockerInner = diesel::insert_into(crate::storage::schema::locker::table)
-            .values(new_object)
-            .get_result(&mut conn)
-            .await?;
-        Ok(output)
+
+        let query = diesel::insert_into(crate::storage::schema::locker::table).values(new_object);
+
+        let pool = conn.pool();
+        let operation = DbOperation::Insert;
+        crate::storage::log_db_query::<<LockerInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output: LockerInner = crate::storage::record_db_query::<
+            <LockerInner as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result(conn.get_mut()), operation, pool)
+        .await?;
+
+        Ok(output.into())
     }
 
     async fn storage_find(
@@ -146,15 +172,26 @@ impl KvResource for Locker {
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
         let mut conn = store.route_conn().await?;
 
-        let output = crate::storage::schema::locker::table
-            .filter(
-                crate::storage::schema::locker::locker_id
-                    .eq(pk.locker_id.peek().as_str())
-                    .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id.as_str()))
-                    .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.as_str())),
-            )
-            .get_result::<LockerInner>(&mut conn)
-            .await?;
+        let query = crate::storage::schema::locker::table.filter(
+            crate::storage::schema::locker::locker_id
+                .eq(pk.locker_id.peek().as_str())
+                .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id.as_str()))
+                .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.as_str())),
+        );
+
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        crate::storage::log_db_query::<<LockerInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output: LockerInner = crate::storage::record_db_query::<
+            <LockerInner as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result(conn.get_mut()), operation, pool)
+        .await?;
 
         Ok(output)
     }
@@ -180,15 +217,25 @@ impl KvDeletableResource for Locker {
     ) -> Result<usize, ContainerError<VaultDBError>> {
         let mut conn = store.get_conn().await?;
 
-        let output = diesel::delete(crate::storage::schema::locker::table)
-            .filter(
-                crate::storage::schema::locker::locker_id
-                    .eq(pk.locker_id.expose())
-                    .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id))
-                    .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id)),
-            )
-            .execute(&mut conn)
-            .await?;
+        let query = diesel::delete(LockerInner::table()).filter(
+            crate::storage::schema::locker::locker_id
+                .eq(pk.locker_id.peek().as_str())
+                .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id.as_str()))
+                .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.as_str())),
+        );
+
+        let pool = conn.pool();
+        let operation = DbOperation::Delete;
+        crate::storage::log_db_query::<<LockerInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output = crate::storage::record_db_query::<<LockerInner as HasTable>::Table, _, _, _>(
+            query.execute(conn.get_mut()),
+            operation,
+            pool,
+        )
+        .await?;
 
         Ok(output)
     }
