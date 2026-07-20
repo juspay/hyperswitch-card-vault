@@ -3719,6 +3719,7 @@ dependencies = [
  "digest",
  "error-stack 0.4.1",
  "error-stack 0.5.0",
+ "fred",
  "futures",
  "futures-util",
  "gethostname 0.5.0",

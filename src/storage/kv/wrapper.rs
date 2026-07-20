@@ -1,11 +1,11 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, future::Future, sync::Arc};
 
 use error_stack::ResultExt;
-use hyperswitch_redis_interface::{
-    RedisConnectionPool,
-    errors::RedisError,
-    types::{HsetnxReply, RedisEntryId},
+use fred::{
+    interfaces::{HashesInterface, KeysInterface, TransactionInterface},
+    types::RedisValue as FredRedisValue,
 };
+use hyperswitch_redis_interface::{RedisConnectionPool, errors::RedisError, types::RedisEntryId};
 use serde::de;
 
 use super::{
@@ -17,6 +17,34 @@ use crate::{logger, observability::metrics};
 
 /// Drainer-entry `request_id`: log-only, empty (not threaded), kept for wire-format parity.
 const REQUEST_ID: &str = "VAULT_CONSTANT_REQUEST_ID";
+const KV_TRANSACTION_MAX_RETRIES: usize = 3;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+enum KvStoredValue<T> {
+    Tombstone(KvTombstone),
+    Value(T),
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct KvTombstone {
+    #[serde(rename = "__hyperswitch_card_vault_kv_tombstone")]
+    marker: KvTombstoneMarker,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+enum KvTombstoneMarker {
+    #[serde(rename = "v1")]
+    V1,
+}
+
+impl KvTombstone {
+    fn new() -> Self {
+        Self {
+            marker: KvTombstoneMarker::V1,
+        }
+    }
+}
 
 /// Provides access to the Redis connection pool.
 pub(crate) trait RedisConnInterface {
@@ -89,133 +117,296 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
     }
 }
 
-/// Operation to perform on Redis.
-pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
-    Hset((&'a str, S), SerializableQuery),
-    HSetNx(&'a str, &'a S, SerializableQuery),
-    HGet(&'a str),
-    HDel(&'a str, SerializableQuery),
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum KvInsertResult {
+    Inserted,
+    AlreadyExists,
 }
 
-/// The result of a KV operation.
-#[derive(Debug)]
-pub(crate) enum KvResult<T: de::DeserializeOwned> {
-    HGet(T),
-    Hset(()),
-    HSetNx(HsetnxReply),
-    HDel(usize),
+#[derive(Clone, Copy)]
+enum KvOperationKind {
+    Insert,
+    Find,
+    Update,
+    Delete,
 }
 
-impl<T: de::DeserializeOwned> KvResult<T> {
-    pub(crate) fn try_into_hset(self) -> Result<(), RedisError> {
-        match self {
-            Self::Hset(v) => Ok(v),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-
-    pub(crate) fn try_into_hsetnx(self) -> Result<HsetnxReply, RedisError> {
-        match self {
-            Self::HSetNx(v) => Ok(v),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-
-    pub(crate) fn try_into_hdel(self) -> Result<usize, RedisError> {
-        match self {
-            Self::HDel(v) => Ok(v),
-            _ => Err(RedisError::UnknownResult),
-        }
-    }
-}
-
-impl<T> std::fmt::Display for KvOperation<'_, T>
-where
-    T: serde::Serialize + Debug,
-{
+impl std::fmt::Display for KvOperationKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Hset(_, _) => f.write_str("Hset"),
-            Self::HSetNx(_, _, _) => f.write_str("HSetNx"),
-            Self::HGet(_) => f.write_str("HGet"),
-            Self::HDel(_, _) => f.write_str("HDel"),
+            Self::Insert => f.write_str("insert"),
+            Self::Find => f.write_str("find"),
+            Self::Update => f.write_str("update"),
+            Self::Delete => f.write_str("delete"),
         }
     }
 }
 
-pub(crate) async fn kv_wrapper<'a, T, S>(
-    store: &impl KvStoreContext,
-    op: KvOperation<'a, S>,
-    partition_key: PartitionKey<'a>,
-) -> error_stack::Result<KvResult<T>, RedisError>
+pub(crate) trait KvBehaviour {
+    type Error: error_stack::Context;
+
+    async fn insert<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        value: &V,
+        query: SerializableQuery,
+    ) -> error_stack::Result<KvInsertResult, Self::Error>
+    where
+        V: serde::Serialize + Debug + KvStorePartition + Sync;
+
+    async fn find<V>(&self, partition_key: PartitionKey<'_>) -> error_stack::Result<V, Self::Error>
+    where
+        V: de::DeserializeOwned;
+
+    async fn update<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        value: &V,
+        query: SerializableQuery,
+    ) -> error_stack::Result<(), Self::Error>
+    where
+        V: serde::Serialize + Debug + KvStorePartition + Sync;
+
+    async fn delete<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        query: SerializableQuery,
+    ) -> error_stack::Result<usize, Self::Error>
+    where
+        V: KvStorePartition;
+}
+
+pub(crate) struct RedisBackend<'a, C>
 where
-    T: de::DeserializeOwned,
-    S: serde::Serialize + Debug + KvStorePartition + Sync + entity::EntityType,
+    C: KvStoreContext,
 {
-    let redis_conn = store.get_redis_conn()?;
+    store: &'a C,
+}
 
-    let key = partition_key.to_string();
+impl<'a, C> RedisBackend<'a, C>
+where
+    C: KvStoreContext,
+{
+    pub(crate) fn new(store: &'a C) -> Self {
+        Self { store }
+    }
+}
 
-    let type_name = std::any::type_name::<T>();
-    let operation = op.to_string();
+impl<C> KvBehaviour for RedisBackend<'_, C>
+where
+    C: KvStoreContext + Sync,
+{
+    type Error = RedisError;
 
-    let ttl = store.ttl_for_kv();
+    async fn insert<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        value: &V,
+        query: SerializableQuery,
+    ) -> error_stack::Result<KvInsertResult, Self::Error>
+    where
+        V: serde::Serialize + Debug + KvStorePartition + Sync,
+    {
+        with_kv_metrics(KvOperationKind::Insert, async move {
+            let redis_conn = self.store.get_redis_conn()?;
+            let key = partition_key.to_string();
+            let serialized =
+                serde_json::to_string(value).change_context(RedisError::JsonSerializationFailed)?;
 
-    let start = std::time::Instant::now();
+            let result = insert_if_absent_or_tombstone(
+                redis_conn.as_ref(),
+                &key,
+                serialized,
+                self.store.ttl_for_kv(),
+            )
+            .await?;
 
-    let result = async {
-        match op {
-            KvOperation::Hset(value, query) => {
-                let serialized = serde_json::to_string(&value.1)
-                    .change_context(RedisError::JsonSerializationFailed)?;
-
-                redis_conn
-                    .set_hash_fields(&key.into(), vec![(value.0, serialized)], Some(ttl.into()))
-                    .await
-                    .bridge()?;
-
-                push_to_drainer_stream::<S>(store, query, partition_key).await?;
-                Ok(KvResult::Hset(()))
-            }
-
-            KvOperation::HSetNx(field, value, query) => {
-                let result = redis_conn
-                    .serialize_and_set_hash_field_if_not_exist(&key.into(), field, value, Some(ttl))
-                    .await
-                    .bridge()?;
-
-                if matches!(result, HsetnxReply::KeySet) {
+            match result {
+                KvInsertResult::Inserted => {
                     // On drainer-push failure the Redis key remains (TTL-bounded) with no
                     // drainer entry — accepted per eventual-consistency model; alert on
                     // KV_FAILED_TO_PUSH_TO_DRAINER.
-                    push_to_drainer_stream::<S>(store, query, partition_key).await?;
-                    Ok(KvResult::HSetNx(result))
-                } else {
-                    Ok(KvResult::HSetNx(HsetnxReply::KeyNotSet))
+                    push_to_drainer_stream::<V>(self.store, query, partition_key).await?;
+                    Ok(KvInsertResult::Inserted)
                 }
+                KvInsertResult::AlreadyExists => Ok(KvInsertResult::AlreadyExists),
             }
+        })
+        .await
+    }
 
-            KvOperation::HGet(field) => {
-                let result = redis_conn
-                    .get_hash_field_and_deserialize(&key.into(), field, type_name)
-                    .await
-                    .bridge()?;
-                Ok(KvResult::HGet(result))
+    async fn find<V>(&self, partition_key: PartitionKey<'_>) -> error_stack::Result<V, Self::Error>
+    where
+        V: de::DeserializeOwned,
+    {
+        with_kv_metrics(KvOperationKind::Find, async move {
+            let redis_conn = self.store.get_redis_conn()?;
+            let key = partition_key.to_string();
+            let redis_key = key.clone().into();
+
+            let stored_value = redis_conn
+                .get_hash_field_and_deserialize::<KvStoredValue<V>>(
+                    &redis_key,
+                    &key,
+                    std::any::type_name::<KvStoredValue<V>>(),
+                )
+                .await
+                .bridge()?;
+
+            match stored_value {
+                KvStoredValue::Tombstone(_) => Err(RedisError::NotFound.into()),
+                KvStoredValue::Value(value) => Ok(value),
             }
+        })
+        .await
+    }
 
-            KvOperation::HDel(field, query) => {
-                let result = redis_conn
-                    .delete_hash_fields(&key.into(), field)
-                    .await
-                    .bridge()?;
+    async fn update<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        value: &V,
+        query: SerializableQuery,
+    ) -> error_stack::Result<(), Self::Error>
+    where
+        V: serde::Serialize + Debug + KvStorePartition + Sync,
+    {
+        with_kv_metrics(KvOperationKind::Update, async move {
+            let redis_conn = self.store.get_redis_conn()?;
+            let key = partition_key.to_string();
+            let redis_key = key.clone().into();
+            let serialized =
+                serde_json::to_string(value).change_context(RedisError::JsonSerializationFailed)?;
 
-                push_to_drainer_stream::<S>(store, query, partition_key).await?;
-                Ok(KvResult::HDel(result))
-            }
+            redis_conn
+                .set_hash_fields(
+                    &redis_key,
+                    vec![(key.as_str(), serialized)],
+                    Some(self.store.ttl_for_kv().into()),
+                )
+                .await
+                .bridge()?;
+
+            push_to_drainer_stream::<V>(self.store, query, partition_key).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn delete<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        query: SerializableQuery,
+    ) -> error_stack::Result<usize, Self::Error>
+    where
+        V: KvStorePartition,
+    {
+        with_kv_metrics(KvOperationKind::Delete, async move {
+            let redis_conn = self.store.get_redis_conn()?;
+            let key = partition_key.to_string();
+            let redis_key = key.clone().into();
+            let tombstone = serialized_tombstone()?;
+
+            redis_conn
+                .set_hash_fields(
+                    &redis_key,
+                    vec![(key.as_str(), tombstone)],
+                    Some(self.store.ttl_for_kv().into()),
+                )
+                .await
+                .bridge()?;
+
+            push_to_drainer_stream::<V>(self.store, query, partition_key).await?;
+            Ok(1)
+        })
+        .await
+    }
+}
+
+async fn insert_if_absent_or_tombstone(
+    redis_conn: &RedisConnectionPool,
+    key: &str,
+    serialized: String,
+    ttl: u32,
+) -> error_stack::Result<KvInsertResult, RedisError> {
+    for _ in 0..KV_TRANSACTION_MAX_RETRIES {
+        let redis_key = redis_conn.add_prefix(key);
+        let client = redis_conn.pool.next();
+
+        // The conditional insert needs WATCH before the pre-read and MULTI on the same
+        // client. `RedisConnectionPool::get_transaction()` chooses a transaction client
+        // directly, but does not expose a watched pre-read on that same client.
+        client
+            .watch(vec![redis_key.clone()])
+            .await
+            .change_context(RedisError::SetHashFieldFailed)?;
+
+        let current = client
+            .hget::<Option<Vec<u8>>, _, _>(redis_key.clone(), key.to_string())
+            .await
+            .change_context(RedisError::GetHashFieldFailed)?;
+
+        if current.as_deref().is_some_and(|value| !is_tombstone(value)) {
+            client
+                .unwatch()
+                .await
+                .change_context(RedisError::SetHashFieldFailed)?;
+            return Ok(KvInsertResult::AlreadyExists);
         }
-    };
 
-    result
+        let transaction = client.multi();
+        transaction
+            .hset::<(), _, _>(
+                redis_key.clone(),
+                vec![(key.to_string(), serialized.clone())],
+            )
+            .await
+            .change_context(RedisError::SetHashFieldFailed)?;
+        transaction
+            .expire::<(), _>(redis_key, i64::from(ttl))
+            .await
+            .change_context(RedisError::SetExpiryFailed)?;
+
+        if transaction_committed(
+            transaction
+                .exec::<FredRedisValue>(true)
+                .await
+                .change_context(RedisError::SetHashFieldFailed)?,
+        ) {
+            return Ok(KvInsertResult::Inserted);
+        }
+    }
+
+    Err(RedisError::SetHashFieldFailed.into())
+}
+
+fn transaction_committed(result: FredRedisValue) -> bool {
+    !matches!(result, FredRedisValue::Null)
+}
+
+fn serialized_tombstone() -> error_stack::Result<String, RedisError> {
+    serde_json::to_string(&KvStoredValue::<serde_json::Value>::Tombstone(
+        KvTombstone::new(),
+    ))
+    .change_context(RedisError::JsonSerializationFailed)
+}
+
+fn is_tombstone(value: &[u8]) -> bool {
+    matches!(
+        serde_json::from_slice::<KvStoredValue<de::IgnoredAny>>(value),
+        Ok(KvStoredValue::Tombstone(_))
+    )
+}
+
+async fn with_kv_metrics<T, F>(
+    operation: KvOperationKind,
+    future: F,
+) -> error_stack::Result<T, RedisError>
+where
+    F: Future<Output = error_stack::Result<T, RedisError>>,
+{
+    let operation = operation.to_string();
+
+    future
         .await
         .inspect(|_| {
             let duration = start.elapsed();
