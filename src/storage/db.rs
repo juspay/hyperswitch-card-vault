@@ -1,7 +1,5 @@
 #[cfg(not(feature = "kv"))]
-use diesel::BoolExpressionMethods;
-#[cfg(not(feature = "kv"))]
-use diesel::OptionalExtension;
+use diesel::{BoolExpressionMethods, OptionalExtension};
 use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 #[cfg(not(feature = "kv"))]
