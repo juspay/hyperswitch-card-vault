@@ -59,7 +59,7 @@ pub(crate) struct LockerInner {
     hash_id: String,
     #[serde(with = "crate::utils::primitive_datetime_serde::iso8601::option")]
     ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl From<LockerNew> for LockerInner {
@@ -102,7 +102,7 @@ pub struct Locker {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[derive(Debug)]
@@ -147,7 +147,7 @@ pub struct LockerNew {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl LockerNew {
@@ -164,7 +164,7 @@ impl LockerNew {
             hash_id: hash_id.to_string(),
             ttl: *request.ttl,
             // Placeholder — overwritten by `set_storage_scheme` when locker joins KV.
-            updated_by: StorageScheme::PostgresOnly,
+            updated_by: Some(StorageScheme::PostgresOnly),
         }
     }
 }
@@ -233,7 +233,7 @@ pub struct HashTable {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
@@ -242,7 +242,7 @@ pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl From<FingerprintTableNew> for Fingerprint {
@@ -298,7 +298,7 @@ impl std::ops::Deref for CardNumber {
 pub(crate) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -315,7 +315,7 @@ pub(crate) struct HashTableNew {
     pub hash_id: String,
     pub data_hash: Vec<u8>,
     pub created_at: time::PrimitiveDateTime,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl From<HashTableNew> for HashTable {
@@ -531,7 +531,7 @@ mod tests {
             created_at,
             hash_id: "hash_id".to_string(),
             ttl: Some(ttl),
-            updated_by: StorageScheme::RedisKv,
+            updated_by: Some(StorageScheme::RedisKv),
         };
 
         let serialized = serde_json::to_value(&locker);
@@ -599,7 +599,7 @@ mod tests {
             created_at,
             hash_id: "hash_id".to_string(),
             ttl: Some(ttl),
-            updated_by: StorageScheme::RedisKv,
+            updated_by: Some(StorageScheme::RedisKv),
         };
 
         let serialized = serde_json::to_string(&locker);

@@ -17,7 +17,7 @@ pub struct Vault {
     pub data: Encryptable,
     pub created_at: time::PrimitiveDateTime,
     pub expires_at: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[derive(Debug, Clone, Insertable)]
@@ -28,7 +28,7 @@ pub struct VaultNew {
     pub encrypted_data: Encrypted,
     pub created_at: time::PrimitiveDateTime,
     pub expires_at: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl VaultNew {
@@ -39,7 +39,7 @@ impl VaultNew {
             encrypted_data,
             created_at: crate::utils::date_time::now(),
             expires_at: *request.ttl,
-            updated_by: StorageScheme::PostgresOnly,
+            updated_by: Some(StorageScheme::PostgresOnly),
         }
     }
 }
@@ -72,7 +72,7 @@ pub(crate) struct VaultInner {
     encrypted_data: Encrypted,
     created_at: time::PrimitiveDateTime,
     expires_at: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl VaultInner {
@@ -144,5 +144,5 @@ pub struct VaultNewInner {
     encrypted_data: Encrypted,
     created_at: time::PrimitiveDateTime,
     expires_at: Option<time::PrimitiveDateTime>,
-    updated_by: StorageScheme,
+    updated_by: Option<StorageScheme>,
 }
