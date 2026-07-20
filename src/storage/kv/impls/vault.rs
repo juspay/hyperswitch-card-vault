@@ -4,7 +4,7 @@ use diesel_async::RunQueryDsl;
 use crate::{
     error::{ContainerError, VaultDBError},
     storage::{
-        DbOperation, Storage, schema,
+        DbOperation, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -17,6 +17,7 @@ use crate::{
                 generate_update_query,
             },
         },
+        schema,
         storage_v2::types::{Vault, VaultInner, VaultNewInner, VaultUpdate},
     },
 };
@@ -82,9 +83,7 @@ impl KvResource for Vault {
 
         let pool = conn.pool();
         let operation = DbOperation::Insert;
-        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(
-            &query, operation, pool,
-        );
+        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(&query, operation, pool);
 
         let output: VaultInner = crate::storage::record_db_query::<
             <VaultInner as HasTable>::Table,
@@ -110,9 +109,7 @@ impl KvResource for Vault {
 
         let pool = conn.pool();
         let operation = DbOperation::FindOne;
-        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(
-            &query, operation, pool,
-        );
+        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(&query, operation, pool);
 
         let output: VaultInner = crate::storage::record_db_query::<
             <VaultInner as HasTable>::Table,
@@ -151,15 +148,13 @@ impl KvDeletableResource for Vault {
 
         let pool = conn.pool();
         let operation = DbOperation::Delete;
-        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(
-            &query, operation, pool,
-        );
+        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(&query, operation, pool);
 
-        let output = crate::storage::record_db_query_rows::<
-            <VaultInner as HasTable>::Table,
-            _,
-            _,
-        >(query.execute(conn.get_mut()), operation, pool)
+        let output = crate::storage::record_db_query_rows::<<VaultInner as HasTable>::Table, _, _>(
+            query.execute(conn.get_mut()),
+            operation,
+            pool,
+        )
         .await?;
 
         Ok(output)
@@ -212,9 +207,7 @@ impl KvUpdatableResource for Vault {
 
         let pool = conn.pool();
         let operation = DbOperation::Update;
-        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(
-            &query, operation, pool,
-        );
+        crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(&query, operation, pool);
 
         let output: VaultInner = crate::storage::record_db_query::<
             <VaultInner as HasTable>::Table,
