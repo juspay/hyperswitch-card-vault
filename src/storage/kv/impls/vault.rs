@@ -200,10 +200,7 @@ impl KvUpdatableResource for Vault {
                     .eq(pk.vault_id.as_str())
                     .and(schema::vault::entity_id.eq(pk.entity_id.as_str())),
             )
-            .set((
-                schema::vault::encrypted_data.eq(update.encrypted_data),
-                schema::vault::expires_at.eq(update.expires_at),
-            ));
+            .set(update);
 
         let pool = conn.pool();
         let operation = DbOperation::Update;
