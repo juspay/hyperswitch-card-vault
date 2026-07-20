@@ -230,13 +230,13 @@ impl KvDeletableResource for Locker {
             &query, operation, pool,
         );
 
-        let output = crate::storage::record_db_query::<<LockerInner as HasTable>::Table, _, _, _>(
-            query.execute(conn.get_mut()),
-            operation,
-            pool,
-        )
-        .await?;
-
+        let output =
+            crate::storage::record_db_query_rows::<<LockerInner as HasTable>::Table, _, _>(
+                query.execute(conn.get_mut()),
+                operation,
+                pool,
+            )
+            .await?;
         Ok(output)
     }
 }

@@ -46,7 +46,7 @@ impl VaultInterface for Storage {
         #[cfg(not(feature = "kv"))]
         {
             let mut conn = self.get_conn().await?;
-
+            logger::info!("performing insert operation on vault data");
             let query = diesel::insert_into(types::VaultInner::table()).values(new);
 
             let pool = conn.pool();
@@ -62,6 +62,7 @@ impl VaultInterface for Storage {
                     pool,
                 )
                 .await?;
+            Ok(output.into())
         }
     }
 
@@ -86,6 +87,7 @@ impl VaultInterface for Storage {
         #[cfg(not(feature = "kv"))]
         {
             let mut conn = self.get_conn().await?;
+            logger::info!("performing retrieve operation on vault data");
             // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
             let query = types::VaultInner::table().filter(
                 schema::vault::vault_id
@@ -106,19 +108,6 @@ impl VaultInterface for Storage {
                     pool,
                 )
                 .await?;
-
-            logger::info!("performing retrieve operation on vault data");
-
-            // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
-            let output: types::VaultInner = types::VaultInner::table()
-                .filter(
-                    schema::vault::vault_id
-                        .eq(vault_id.expose())
-                        .and(schema::vault::entity_id.eq(entity_id)),
-                )
-                .get_result(&mut conn)
-                .await?;
-
             Ok(output.into())
         }
     }
@@ -152,12 +141,12 @@ impl VaultInterface for Storage {
             let query = diesel::update(types::VaultInner::table())
                 .filter(
                     schema::vault::vault_id
-                        .eq(new.vault_id.expose())
-                        .and(schema::vault::entity_id.eq(&new.entity_id)),
+                        .eq(vault_id.expose())
+                        .and(schema::vault::entity_id.eq(entity_id)),
                 )
                 .set((
-                    schema::vault::encrypted_data.eq(new.encrypted_data),
-                    schema::vault::expires_at.eq(new.expires_at),
+                    schema::vault::encrypted_data.eq(update.encrypted_data),
+                    schema::vault::expires_at.eq(update.expires_at),
                 ));
 
             let pool = conn.pool();
@@ -173,6 +162,7 @@ impl VaultInterface for Storage {
                     pool,
                 )
                 .await?;
+            Ok(output.into())
         }
     }
 
@@ -194,12 +184,13 @@ impl VaultInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
+            let mut conn = self.get_conn().await?;
+            logger::info!("performing delete operation on vault data");
             let query = diesel::delete(types::VaultInner::table()).filter(
                 schema::vault::vault_id
                     .eq(vault_id.expose())
                     .and(schema::vault::entity_id.eq(entity_id)),
             );
-            let mut conn = self.get_conn().await?;
 
             let pool = conn.pool();
             let operation = DbOperation::Delete;

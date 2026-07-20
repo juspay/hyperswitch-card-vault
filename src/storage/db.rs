@@ -315,6 +315,7 @@ impl super::LockerInterface for Storage {
                     pool,
                 )
                 .await?;
+            Ok(output)
         }
     }
 }
