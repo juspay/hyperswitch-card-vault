@@ -295,6 +295,7 @@ impl super::LockerInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
+            let mut conn = self.get_conn().await?;
             let query = diesel::delete(types::LockerInner::table()).filter(
                 schema::locker::locker_id
                     .eq(locker_id.expose())

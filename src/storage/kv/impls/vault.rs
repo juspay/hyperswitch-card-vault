@@ -77,11 +77,23 @@ impl KvResource for Vault {
         new_object: Self::DieselNew,
         store: &Storage,
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
-        let output: VaultInner = diesel::insert_into(crate::storage::schema::vault::table)
-            .values(new_object)
-            .get_result(conn.get_mut())
-            .await?;
+        let mut conn = self.get_conn().await?;
+        logger::info!("performing insert operation on vault data");
+        let query = diesel::insert_into(types::VaultInner::table()).values(new);
+
+        let pool = conn.pool();
+        let operation = DbOperation::Insert;
+        crate::storage::log_db_query::<<types::VaultInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output: types::VaultInner = crate::storage::record_db_query::<
+            <types::VaultInner as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result(conn.get_mut()), operation, pool)
+        .await?;
         Ok(output)
     }
 
@@ -89,16 +101,28 @@ impl KvResource for Vault {
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
-        let mut conn = store.route_conn().await?;
-        let output: VaultInner = crate::storage::schema::vault::table
-            .filter(
-                crate::storage::schema::vault::vault_id
-                    .eq(pk.vault_id.as_str())
-                    .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.as_str())),
-            )
-            .get_result::<VaultInner>(conn.get_mut())
-            .await?;
+        let mut conn = self.get_conn().await?;
+        logger::info!("performing retrieve operation on vault data");
+        // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
+        let query = types::VaultInner::table().filter(
+            schema::vault::vault_id
+                .eq(vault_id.expose())
+                .and(schema::vault::entity_id.eq(entity_id)),
+        );
 
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        crate::storage::log_db_query::<<types::VaultInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output: types::VaultInner = crate::storage::record_db_query::<
+            <types::VaultInner as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result(conn.get_mut()), operation, pool)
+        .await?;
         Ok(output)
     }
 }
@@ -120,15 +144,26 @@ impl KvDeletableResource for Vault {
         store: &Storage,
         pk: Self::PrimaryKeyType,
     ) -> Result<usize, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
-        let output = diesel::delete(crate::storage::schema::vault::table)
-            .filter(
-                crate::storage::schema::vault::vault_id
-                    .eq(pk.vault_id)
-                    .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id)),
-            )
-            .execute(conn.get_mut())
-            .await?;
+        let mut conn = self.get_conn().await?;
+        logger::info!("performing delete operation on vault data");
+        let query = diesel::delete(types::VaultInner::table()).filter(
+            schema::vault::vault_id
+                .eq(vault_id.expose())
+                .and(schema::vault::entity_id.eq(entity_id)),
+        );
+
+        let pool = conn.pool();
+        let operation = DbOperation::Delete;
+        crate::storage::log_db_query::<<types::VaultInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output = crate::storage::record_db_query_rows::<
+            <types::VaultInner as HasTable>::Table,
+            _,
+            _,
+        >(query.execute(conn.get_mut()), operation, pool)
+        .await?;
 
         Ok(output)
     }
@@ -165,17 +200,33 @@ impl KvUpdatableResource for Vault {
         update: Self::DieselUpdate,
         pk: Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
-        let output: VaultInner = diesel::update(crate::storage::schema::vault::table)
-            .filter(
-                crate::storage::schema::vault::vault_id
-                    .eq(pk.vault_id)
-                    .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id)),
-            )
-            .set(update)
-            .get_result(conn.get_mut())
-            .await?;
+        let mut conn = self.get_conn().await?;
+        logger::info!("performing update operation on vault data");
 
-        Ok(output.into())
+        let query = diesel::update(types::VaultInner::table())
+            .filter(
+                schema::vault::vault_id
+                    .eq(vault_id.expose())
+                    .and(schema::vault::entity_id.eq(&entity_id)),
+            )
+            .set((
+                schema::vault::encrypted_data.eq(update.encrypted_data),
+                schema::vault::expires_at.eq(update.expires_at),
+            ));
+
+        let pool = conn.pool();
+        let operation = DbOperation::Update;
+        crate::storage::log_db_query::<<types::VaultInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let output: types::VaultInner = crate::storage::record_db_query::<
+            <types::VaultInner as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result(conn.get_mut()), operation, pool)
+        .await?;
+        Ok(output)
     }
 }

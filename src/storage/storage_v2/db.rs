@@ -142,7 +142,7 @@ impl VaultInterface for Storage {
                 .filter(
                     schema::vault::vault_id
                         .eq(vault_id.expose())
-                        .and(schema::vault::entity_id.eq(entity_id)),
+                        .and(schema::vault::entity_id.eq(&entity_id)),
                 )
                 .set((
                     schema::vault::encrypted_data.eq(update.encrypted_data),
