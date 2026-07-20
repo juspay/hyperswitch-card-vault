@@ -1,3 +1,6 @@
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
+use diesel_async::RunQueryDsl;
+
 use crate::{
     error::{ContainerError, ReverseLookupDBError, kv::KvError},
     storage::{
@@ -13,8 +16,6 @@ use crate::{
         types::{ReverseLookup, ReverseLookupNew},
     },
 };
-use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::RunQueryDsl;
 impl EntityType for ReverseLookupNew {
     const ENTITY_TYPE: &'static str = "reverse_lookup";
 }
