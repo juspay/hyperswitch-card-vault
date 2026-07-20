@@ -163,7 +163,7 @@ impl KvResource for Locker {
         >(query.get_result(conn.get_mut()), operation, pool)
         .await?;
 
-        Ok(output.into())
+        Ok(output)
     }
 
     async fn storage_find(
