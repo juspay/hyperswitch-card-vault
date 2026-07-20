@@ -120,6 +120,8 @@ pub(crate) struct SerializableQuery {
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum DatabaseOperation {
     Insert,
+    Update,
+    Delete,
 }
 
 impl SerializableQuery {
@@ -209,4 +211,28 @@ where
     let query = diesel::insert_into(<T as HasTable>::table()).values(new);
     SerializableQuery::from_query(query, entity_type, DatabaseOperation::Insert)
         .attach_printable("Failed to generate insert query")
+}
+
+pub(crate) fn generate_delete_query<Q, N>(
+    query: Q,
+) -> error_stack::Result<SerializableQuery, KvError>
+where
+    N: EntityType,
+    Q: QueryFragment<Pg> + Send + 'static,
+{
+    let entity_type = N::ENTITY_TYPE.to_owned();
+    SerializableQuery::from_query(query, entity_type, DatabaseOperation::Delete)
+        .attach_printable("Failed to generate delete query")
+}
+
+pub(crate) fn generate_update_query<Q, N>(
+    query: Q,
+) -> error_stack::Result<SerializableQuery, KvError>
+where
+    N: EntityType,
+    Q: QueryFragment<Pg> + Send + 'static,
+{
+    let entity_type = N::ENTITY_TYPE.to_owned();
+    SerializableQuery::from_query(query, entity_type, DatabaseOperation::Update)
+        .attach_printable("Failed to generate update query")
 }

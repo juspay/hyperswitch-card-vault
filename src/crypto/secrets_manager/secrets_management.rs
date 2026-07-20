@@ -16,6 +16,32 @@ use crate::{
     error::ConfigurationError,
 };
 
+#[cfg(any(feature = "kms-aws", feature = "kms-hashicorp-vault"))]
+async fn record_secret_manager_duration<Fut, T, E>(
+    future: Fut,
+    backend: &'static str,
+    operation: &'static str,
+) -> Result<T, E>
+where
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = if result.is_ok() { "success" } else { "error" };
+
+    crate::observability::metrics::SECRET_MANAGER_CALL_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(
+            ("backend", backend),
+            ("operation", operation),
+            ("outcome", outcome),
+        ),
+    );
+
+    result
+}
+
 /// Enum representing configuration options for secrets management.
 #[derive(Debug, Clone, Default, serde::Deserialize, Eq, PartialEq)]
 #[serde(tag = "secrets_manager")]
@@ -56,9 +82,14 @@ impl SecretManager for SecretsManagerClient {
     ) -> error_stack::Result<Secret<String>, SecretsManagementError> {
         match self {
             #[cfg(feature = "kms-aws")]
-            Self::AwsKms(config) => config.get_secret(input).await,
+            Self::AwsKms(config) => {
+                record_secret_manager_duration(config.get_secret(input), "aws_kms", "decrypt").await
+            }
             #[cfg(feature = "kms-hashicorp-vault")]
-            Self::HashiCorp(config) => config.get_secret(input).await,
+            Self::HashiCorp(config) => {
+                record_secret_manager_duration(config.get_secret(input), "hashicorp_vault", "read")
+                    .await
+            }
             Self::NoEncryption(config) => config.get_secret(input).await,
         }
     }

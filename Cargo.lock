@@ -1329,7 +1329,7 @@ dependencies = [
 [[package]]
 name = "common_enums"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.25.0#d1688907d19bb3e73156db5d10b1e9d182eb743e"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "diesel",
  "hyperswitch_masking",
@@ -1346,7 +1346,7 @@ dependencies = [
 [[package]]
 name = "common_utils"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.25.0#d1688907d19bb3e73156db5d10b1e9d182eb743e"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "ammonia",
  "async-trait",
@@ -3745,7 +3745,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
- "strum 0.26.3",
+ "strum 0.28.0",
  "thiserror 1.0.69",
  "time",
  "tokio",
@@ -5599,7 +5599,7 @@ dependencies = [
 [[package]]
 name = "redis_interface"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.25.0#d1688907d19bb3e73156db5d10b1e9d182eb743e"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "common_utils",
  "error-stack 0.4.1",
@@ -5896,7 +5896,7 @@ dependencies = [
 [[package]]
 name = "router_derive"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.25.0#d1688907d19bb3e73156db5d10b1e9d182eb743e"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "indexmap 2.13.0",
  "proc-macro2",
@@ -5909,7 +5909,7 @@ dependencies = [
 [[package]]
 name = "router_env"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.25.0#d1688907d19bb3e73156db5d10b1e9d182eb743e"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "actix-web",
  "cargo_metadata 0.18.1",
@@ -6484,7 +6484,7 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 [[package]]
 name = "smithy"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.25.0#d1688907d19bb3e73156db5d10b1e9d182eb743e"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6495,7 +6495,7 @@ dependencies = [
 [[package]]
 name = "smithy-core"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.25.0#d1688907d19bb3e73156db5d10b1e9d182eb743e"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "proc-macro2",
  "serde",
@@ -6621,6 +6621,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros 0.28.0",
+]
+
+[[package]]
 name = "strum_macros"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6638,6 +6647,18 @@ name = "strum_macros"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck",
  "proc-macro2",

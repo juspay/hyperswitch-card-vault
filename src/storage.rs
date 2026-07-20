@@ -1,23 +1,3 @@
-use std::sync::Arc;
-
-use diesel_async::{
-    AsyncPgConnection,
-    pooled_connection::{
-        self,
-        deadpool::{Object, Pool},
-    },
-};
-use error_stack::ResultExt;
-use hyperswitch_masking::{PeekInterface, Secret};
-
-#[cfg(feature = "kv")]
-use crate::storage::redis as redis_store;
-use crate::{
-    config::Database,
-    crypto::encryption_manager::encryption_interface::Encryption,
-    error::{self, ContainerError},
-};
-
 #[cfg(feature = "caching")]
 pub mod caching;
 pub mod consts;
@@ -32,9 +12,26 @@ pub mod storage_v2;
 pub mod types;
 pub mod utils;
 
-pub use scheme::StorageScheme;
+use std::sync::Arc;
 
-pub trait State {}
+use diesel_async::{
+    AsyncPgConnection,
+    pooled_connection::{
+        self,
+        deadpool::{Object, Pool},
+    },
+};
+use error_stack::ResultExt;
+use hyperswitch_masking::{PeekInterface, Secret};
+
+pub use self::scheme::StorageScheme;
+#[cfg(feature = "kv")]
+use crate::storage::redis as redis_store;
+use crate::{
+    config::Database,
+    crypto::encryption_manager::encryption_interface::Encryption,
+    error::{self, ContainerError},
+};
 
 /// All runtime configs, deserialized directly from the config endpoint's JSON body. Field names
 /// match the keys the endpoint returns; each `#[serde(default)]` field fails closed when absent.
@@ -60,6 +57,44 @@ pub struct Storage {
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
+
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+enum DbPool {
+    Primary,
+    Replica,
+}
+
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+enum DbOperation {
+    Insert,
+    Update,
+    Delete,
+    FindOne,
+    Filter,
+}
+
+crate::impl_metric_value_from!(DbPool, DbOperation);
+
+pub struct DbConnection {
+    conn: DeadPoolConnType,
+    pool: DbPool,
+}
+
+impl DbConnection {
+    fn new(conn: DeadPoolConnType, pool: DbPool) -> Self {
+        Self { conn, pool }
+    }
+
+    fn pool(&self) -> DbPool {
+        self.pool
+    }
+
+    fn get_mut(&mut self) -> &mut DeadPoolConnType {
+        &mut self.conn
+    }
+}
 
 impl Storage {
     fn create_database_connection_pool(
@@ -123,28 +158,33 @@ impl Storage {
     }
 
     /// Get connection from database pool for accessing data
-    pub async fn get_conn(&self) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
-        Ok(self
-            .primary_pg_pool
-            .get()
+    pub async fn get_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
+        let pool = DbPool::Primary;
+        let conn = record_db_connection_acquire_duration(self.primary_pg_pool.get(), pool)
             .await
-            .change_context(error::StorageError::PoolClientFailure)?)
+            .change_context(error::StorageError::PoolClientFailure)?;
+
+        Ok(DbConnection::new(conn, pool))
     }
 
     /// Get a connection from the read replica pool, if configured.
     /// Returns `ReplicaPoolNotConfigured` error if no replica pool was initialized.
     pub async fn get_replica_conn(
         &self,
-    ) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
-        Ok(self
-            .replica_pg_pool
-            .as_ref()
-            .ok_or(ContainerError::from(
+    ) -> Result<DbConnection, ContainerError<error::StorageError>> {
+        match self.replica_pg_pool.as_ref() {
+            Some(pg_pool) => {
+                let pool = DbPool::Replica;
+                let conn = record_db_connection_acquire_duration(pg_pool.get(), pool)
+                    .await
+                    .change_context(error::StorageError::PoolClientFailure)?;
+
+                Ok(DbConnection::new(conn, pool))
+            }
+            None => Err(ContainerError::from(
                 error::StorageError::ReplicaPoolNotConfigured,
-            ))?
-            .get()
-            .await
-            .change_context(error::StorageError::PoolClientFailure)?)
+            )),
+        }
     }
 
     /// Returns `true` if a read replica pool was configured and initialized.
@@ -167,9 +207,7 @@ impl Storage {
 
     /// Returns a connection from the replica pool when the runtime config enables it,
     /// otherwise returns a primary pool connection.
-    pub async fn route_conn(
-        &self,
-    ) -> Result<DeadPoolConnType, ContainerError<error::StorageError>> {
+    pub async fn route_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
         if self.should_use_replica().await {
             crate::logger::debug!("Routing to read replica");
             self.get_replica_conn().await
@@ -187,6 +225,59 @@ impl Storage {
             .await
             .map(|runtime_config_values| runtime_config_values.enable_kv)
             .unwrap_or(kv::KvState::Disabled)
+    }
+
+    pub fn collect_db_pool_state(&self, tenant_id: &str) {
+        use crate::observability::metrics::{
+            DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE, DATABASE_POOL_WAITING,
+        };
+
+        fn to_u64(value: usize, field: &'static str, pool: DbPool, tenant_id: &str) -> Option<u64> {
+            match u64::try_from(value) {
+                Ok(v) => Some(v),
+                Err(_) => {
+                    tracing::warn!(
+                        field,
+                        pool = %<&'static str>::from(pool),
+                        tenant_id,
+                        value,
+                        "Database pool metric value overflows u64, skipping"
+                    );
+                    None
+                }
+            }
+        }
+
+        let primary = self.primary_pg_pool.status();
+        let pool = DbPool::Primary;
+        let attrs = crate::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
+
+        if let Some(size) = to_u64(primary.size, "size", pool, tenant_id) {
+            DATABASE_POOL_SIZE.record(size, attrs);
+        }
+        if let Some(available) = to_u64(primary.available, "available", pool, tenant_id) {
+            DATABASE_POOL_AVAILABLE.record(available, attrs);
+        }
+        if let Some(waiting) = to_u64(primary.waiting, "waiting", pool, tenant_id) {
+            DATABASE_POOL_WAITING.record(waiting, attrs);
+        }
+
+        if let Some(replica) = &self.replica_pg_pool {
+            let replica = replica.status();
+            let pool = DbPool::Replica;
+            let attrs =
+                crate::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
+
+            if let Some(size) = to_u64(replica.size, "size", pool, tenant_id) {
+                DATABASE_POOL_SIZE.record(size, attrs);
+            }
+            if let Some(available) = to_u64(replica.available, "available", pool, tenant_id) {
+                DATABASE_POOL_AVAILABLE.record(available, attrs);
+            }
+            if let Some(waiting) = to_u64(replica.waiting, "waiting", pool, tenant_id) {
+                DATABASE_POOL_WAITING.record(waiting, attrs);
+            }
+        }
     }
 }
 
@@ -238,13 +329,13 @@ impl Cacheable<types::Merchant> for Storage {
 
 #[cfg(feature = "caching")]
 impl Cacheable<types::HashTable> for Storage {
-    type Key = Vec<u8>;
+    type Key = Secret<Vec<u8>>;
     type Value = types::HashTable;
 }
 
 #[cfg(feature = "caching")]
 impl Cacheable<types::Fingerprint> for Storage {
-    type Key = Vec<u8>;
+    type Key = Secret<Vec<u8>>;
     type Value = types::Fingerprint;
 }
 
@@ -344,11 +435,11 @@ pub(crate) trait HashInterface {
     /// Read by `data_hash` (secondary lookup); `None` if absent.
     async fn find_optional_by_data_hash(
         &self,
-        data_hash: &[u8],
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>>;
     async fn insert_hash(
         &self,
-        data_hash: Vec<u8>,
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>>;
 }
 
@@ -422,4 +513,173 @@ pub(crate) trait EntityInterface {
         entity_id: &str,
         identifier: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>>;
+}
+
+async fn record_db_connection_acquire_duration<Fut, T, E>(future: Fut, pool: DbPool) -> Result<T, E>
+where
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = if result.is_ok() { "success" } else { "error" };
+
+    crate::observability::metrics::DATABASE_CONNECTION_ACQUIRE_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(("pool", pool), ("outcome", outcome)),
+    );
+
+    result
+}
+
+#[track_caller]
+fn log_db_query<T, Q>(query: &Q, operation: DbOperation, pool: DbPool)
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Q: diesel::query_builder::QueryFragment<diesel::pg::Pg>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::logger::debug!(
+        query = %diesel::debug_query(query),
+        table = %table_name,
+        operation = %<&'static str>::from(operation),
+        pool = %<&'static str>::from(pool),
+        "Executing database query",
+    );
+}
+
+async fn record_db_query<T, Fut, R, E>(
+    future: Fut,
+    operation: DbOperation,
+    pool: DbPool,
+) -> Result<R, E>
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Fut: Future<Output = Result<R, E>>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::observability::metrics::DATABASE_QUERY_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation),
+            ("pool", pool)
+        ),
+    );
+
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = if result.is_ok() { "success" } else { "error" };
+
+    crate::observability::metrics::DATABASE_QUERY_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation),
+            ("pool", pool),
+            ("outcome", outcome),
+        ),
+    );
+
+    result
+}
+
+#[cfg_attr(feature = "kv", expect(dead_code))]
+async fn record_db_query_optional<T, Fut, R, E>(
+    future: Fut,
+    operation: DbOperation,
+    pool: DbPool,
+) -> Result<Option<R>, E>
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Fut: Future<Output = Result<Option<R>, E>>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::observability::metrics::DATABASE_QUERY_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation),
+            ("pool", pool)
+        ),
+    );
+
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = match &result {
+        Ok(Some(_)) => "success",
+        Ok(None) => "not_found",
+        Err(_) => "error",
+    };
+
+    crate::observability::metrics::DATABASE_QUERY_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation),
+            ("pool", pool),
+            ("outcome", outcome),
+        ),
+    );
+
+    result
+}
+
+async fn record_db_query_rows<T, Fut, E>(
+    future: Fut,
+    operation: DbOperation,
+    pool: DbPool,
+) -> Result<usize, E>
+where
+    T: diesel::associations::HasTable<Table = T>,
+    Fut: Future<Output = Result<usize, E>>,
+{
+    let table_name = std::any::type_name::<T>()
+        .rsplit("::")
+        .nth(1)
+        .unwrap_or("UNKNOWN");
+
+    crate::observability::metrics::DATABASE_QUERY_COUNT.add(
+        1,
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation),
+            ("pool", pool)
+        ),
+    );
+
+    let start = std::time::Instant::now();
+    let result = future.await;
+    let duration = start.elapsed();
+    let outcome = match &result {
+        Ok(rows) if *rows == 0 => "zero_rows",
+        Ok(_) => "success",
+        Err(_) => "error",
+    };
+
+    crate::observability::metrics::DATABASE_QUERY_DURATION.record(
+        duration.as_secs_f64(),
+        crate::metric_attributes!(
+            ("table", table_name),
+            ("operation", operation),
+            ("pool", pool),
+            ("outcome", outcome),
+        ),
+    );
+
+    result
 }

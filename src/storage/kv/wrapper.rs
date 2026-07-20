@@ -7,14 +7,13 @@ use hyperswitch_redis_interface::{
     types::{HsetnxReply, RedisEntryId},
 };
 use serde::de;
-use tracing::debug;
 
 use super::{
-    metrics,
+    entity,
     partition_key::{KvStorePartition, PartitionKey},
     serializable_query::SerializableQuery,
 };
-use crate::logger;
+use crate::{logger, observability::metrics};
 
 /// Drainer-entry `request_id`: log-only, empty (not threaded), kept for wire-format parity.
 const REQUEST_ID: &str = "VAULT_CONSTANT_REQUEST_ID";
@@ -59,6 +58,7 @@ fn redis_error_from_ref(err: &RedisError) -> RedisError {
         | RedisError::JsonDeserializationFailed
         | RedisError::SetHashFailed
         | RedisError::SetHashFieldFailed
+        | RedisError::DeleteHashFieldFailed
         | RedisError::GetHashFieldFailed
         | RedisError::InvalidRedisEntryId
         | RedisError::RedisConnectionError
@@ -91,21 +91,39 @@ impl<T> BridgeRedis<T> for Result<T, error_stack_04::Report<RedisError>> {
 
 /// Operation to perform on Redis.
 pub(crate) enum KvOperation<'a, S: serde::Serialize + Debug> {
+    Hset((&'a str, S), SerializableQuery),
     HSetNx(&'a str, &'a S, SerializableQuery),
     HGet(&'a str),
+    HDel(&'a str, SerializableQuery),
 }
 
 /// The result of a KV operation.
 #[derive(Debug)]
 pub(crate) enum KvResult<T: de::DeserializeOwned> {
     HGet(T),
+    Hset(()),
     HSetNx(HsetnxReply),
+    HDel(usize),
 }
 
 impl<T: de::DeserializeOwned> KvResult<T> {
+    pub(crate) fn try_into_hset(self) -> Result<(), RedisError> {
+        match self {
+            Self::Hset(v) => Ok(v),
+            _ => Err(RedisError::UnknownResult),
+        }
+    }
+
     pub(crate) fn try_into_hsetnx(self) -> Result<HsetnxReply, RedisError> {
         match self {
             Self::HSetNx(v) => Ok(v),
+            _ => Err(RedisError::UnknownResult),
+        }
+    }
+
+    pub(crate) fn try_into_hdel(self) -> Result<usize, RedisError> {
+        match self {
+            Self::HDel(v) => Ok(v),
             _ => Err(RedisError::UnknownResult),
         }
     }
@@ -117,8 +135,10 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Hset(_, _) => f.write_str("Hset"),
             Self::HSetNx(_, _, _) => f.write_str("HSetNx"),
             Self::HGet(_) => f.write_str("HGet"),
+            Self::HDel(_, _) => f.write_str("HDel"),
         }
     }
 }
@@ -130,7 +150,7 @@ pub(crate) async fn kv_wrapper<'a, T, S>(
 ) -> error_stack::Result<KvResult<T>, RedisError>
 where
     T: de::DeserializeOwned,
-    S: serde::Serialize + Debug + KvStorePartition + Sync,
+    S: serde::Serialize + Debug + KvStorePartition + Sync + entity::EntityType,
 {
     let redis_conn = store.get_redis_conn()?;
 
@@ -141,8 +161,23 @@ where
 
     let ttl = store.ttl_for_kv();
 
+    let start = std::time::Instant::now();
+
     let result = async {
         match op {
+            KvOperation::Hset(value, query) => {
+                let serialized = serde_json::to_string(&value.1)
+                    .change_context(RedisError::JsonSerializationFailed)?;
+
+                redis_conn
+                    .set_hash_fields(&key.into(), vec![(value.0, serialized)], Some(ttl.into()))
+                    .await
+                    .bridge()?;
+
+                push_to_drainer_stream::<S>(store, query, partition_key).await?;
+                Ok(KvResult::Hset(()))
+            }
+
             KvOperation::HSetNx(field, value, query) => {
                 let result = redis_conn
                     .serialize_and_set_hash_field_if_not_exist(&key.into(), field, value, Some(ttl))
@@ -167,32 +202,49 @@ where
                     .bridge()?;
                 Ok(KvResult::HGet(result))
             }
+
+            KvOperation::HDel(field, query) => {
+                let result = redis_conn
+                    .delete_hash_fields(&key.into(), field)
+                    .await
+                    .bridge()?;
+
+                push_to_drainer_stream::<S>(store, query, partition_key).await?;
+                Ok(KvResult::HDel(result))
+            }
         }
     };
 
     result
         .await
         .inspect(|_| {
-            debug!(kv_operation = %operation, status = "success");
-            metrics::KV_OPERATION_SUCCESSFUL.add(
-                1,
-                crate::metric_attributes!(("operation", operation.clone())),
+            let duration = start.elapsed();
+            let attrs = crate::metric_attributes!(
+                ("operation", operation.clone()),
+                ("outcome", "success"),
             );
+            logger::debug!(kv_operation = %operation, status = "success");
+            metrics::KV_OPERATION_COUNT.add(1, attrs);
+            metrics::KV_OPERATION_DURATION.record(duration.as_secs_f64(), attrs);
         })
-        .inspect_err(
-            |err: &error_stack::Report<RedisError>| match err.current_context() {
+        .inspect_err(|err: &error_stack::Report<RedisError>| {
+            let outcome = match err.current_context() {
                 RedisError::NotFound => {
-                    debug!(kv_operation = %operation, status = "not_found");
+                    logger::debug!(kv_operation = %operation, status = "not_found");
+                    "not_found"
                 }
                 other => {
                     logger::error!(kv_operation = %operation, status = "error", error = ?other);
-                    metrics::KV_OPERATION_FAILED.add(
-                        1,
-                        crate::metric_attributes!(("operation", operation.clone())),
-                    );
+                    "error"
                 }
-            },
-        )
+            };
+            let duration = start.elapsed();
+            let attrs =
+                crate::metric_attributes!(("operation", operation.clone()), ("outcome", outcome));
+
+            metrics::KV_OPERATION_COUNT.add(1, attrs);
+            metrics::KV_OPERATION_DURATION.record(duration.as_secs_f64(), attrs);
+        })
 }
 
 async fn push_to_drainer_stream<R>(
@@ -213,6 +265,8 @@ where
 
     let redis_conn = store.get_redis_conn()?;
 
+    let start = std::time::Instant::now();
+
     redis_conn
         .stream_append_entry(
             &stream_name.into(),
@@ -224,22 +278,24 @@ where
         .await
         .bridge()
         .map(|_| {
-            metrics::KV_PUSHED_TO_DRAINER.add(
-                1,
-                crate::metric_attributes!(
-                    ("operation", operation_str.clone()),
-                    ("entity_type", entity_type_str.clone()),
-                ),
+            let duration = start.elapsed();
+            let attrs = crate::metric_attributes!(
+                ("operation", operation_str.clone()),
+                ("entity_type", entity_type_str.clone()),
+                ("outcome", "success"),
             );
+            metrics::KV_DRAINER_PUSH_COUNT.add(1, attrs);
+            metrics::KV_DRAINER_PUSH_DURATION.record(duration.as_secs_f64(), attrs);
         })
         .inspect_err(|error| {
-            metrics::KV_FAILED_TO_PUSH_TO_DRAINER.add(
-                1,
-                crate::metric_attributes!(
-                    ("operation", operation_str.clone()),
-                    ("entity_type", entity_type_str.clone()),
-                ),
+            let duration = start.elapsed();
+            let attrs = crate::metric_attributes!(
+                ("operation", operation_str.clone()),
+                ("entity_type", entity_type_str.clone()),
+                ("outcome", "error"),
             );
+            metrics::KV_DRAINER_PUSH_COUNT.add(1, attrs);
+            metrics::KV_DRAINER_PUSH_DURATION.record(duration.as_secs_f64(), attrs);
             logger::error!(?error, "Failed to add entry in drainer stream");
         })
         .change_context(RedisError::StreamAppendFailed)

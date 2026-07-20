@@ -33,6 +33,10 @@ pub struct Merchant {
     pub created_at: time::PrimitiveDateTime,
 }
 
+impl Merchant {
+    pub const CACHE_NAME: &'static str = "merchant";
+}
+
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
 pub(crate) struct MerchantNewInner<'a> {
@@ -59,7 +63,7 @@ pub(crate) struct LockerInner {
     hash_id: String,
     #[serde(with = "crate::utils::primitive_datetime_serde::iso8601::option")]
     ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl From<LockerNew> for LockerInner {
@@ -102,7 +106,7 @@ pub struct Locker {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[derive(Debug)]
@@ -147,7 +151,7 @@ pub struct LockerNew {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl LockerNew {
@@ -164,7 +168,7 @@ impl LockerNew {
             hash_id: hash_id.to_string(),
             ttl: *request.ttl,
             // Placeholder — overwritten by `set_storage_scheme` when locker joins KV.
-            updated_by: StorageScheme::PostgresOnly,
+            updated_by: Some(StorageScheme::PostgresOnly),
         }
     }
 }
@@ -225,14 +229,18 @@ impl From<ReverseLookupNew> for ReverseLookup {
     }
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
+}
+
+impl HashTable {
+    pub const CACHE_NAME: &'static str = "hash_table";
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
@@ -241,7 +249,7 @@ pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 impl From<FingerprintTableNew> for Fingerprint {
@@ -255,6 +263,10 @@ impl From<FingerprintTableNew> for Fingerprint {
     }
 }
 
+impl Fingerprint {
+    pub const CACHE_NAME: &'static str = "fingerprint";
+}
+
 #[cfg(feature = "external_key_manager")]
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::entity)]
@@ -263,6 +275,11 @@ pub struct Entity {
     pub entity_id: String,
     pub enc_key_id: String,
     pub created_at: time::PrimitiveDateTime,
+}
+
+#[cfg(feature = "external_key_manager")]
+impl Entity {
+    pub const CACHE_NAME: &'static str = "entity";
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Clone)]
@@ -297,7 +314,7 @@ impl std::ops::Deref for CardNumber {
 pub(crate) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
-    pub updated_by: StorageScheme,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -310,10 +327,23 @@ pub(super) struct EntityTableNew {
 
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::hash_table)]
-pub(super) struct HashTableNew {
+pub(crate) struct HashTableNew {
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
-    pub updated_by: StorageScheme,
+    pub data_hash: Secret<Vec<u8>>,
+    pub created_at: time::PrimitiveDateTime,
+    pub updated_by: Option<StorageScheme>,
+}
+
+impl From<HashTableNew> for HashTable {
+    fn from(value: HashTableNew) -> Self {
+        Self {
+            id: 0,
+            hash_id: value.hash_id,
+            data_hash: value.data_hash,
+            created_at: value.created_at,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 ///
@@ -517,7 +547,7 @@ mod tests {
             created_at,
             hash_id: "hash_id".to_string(),
             ttl: Some(ttl),
-            updated_by: StorageScheme::RedisKv,
+            updated_by: Some(StorageScheme::RedisKv),
         };
 
         let serialized = serde_json::to_value(&locker);
@@ -585,7 +615,7 @@ mod tests {
             created_at,
             hash_id: "hash_id".to_string(),
             ttl: Some(ttl),
-            updated_by: StorageScheme::RedisKv,
+            updated_by: Some(StorageScheme::RedisKv),
         };
 
         let serialized = serde_json::to_string(&locker);

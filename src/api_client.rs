@@ -42,10 +42,14 @@ impl HeaderExt for Headers {
     }
 }
 
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "UPPERCASE")]
 pub enum Method {
     Get,
     Post,
 }
+
+crate::impl_metric_value_from!(Method);
 
 #[derive(Clone, serde::Deserialize, Debug)]
 #[serde(default)]
@@ -90,10 +94,10 @@ impl std::ops::Deref for ApiClient {
 }
 
 impl ApiClient {
-    #[allow(unused_mut)]
     pub fn new(
         global_config: &GlobalConfig,
     ) -> Result<Self, error::ContainerError<error::ApiClientError>> {
+        #[cfg_attr(not(feature = "external_key_manager"), expect(unused_mut))]
         let mut client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .pool_idle_timeout(std::time::Duration::from_secs(
@@ -142,6 +146,7 @@ impl ApiClient {
 
     pub async fn send_request<T>(
         &self,
+        purpose: &'static str,
         url: String,
         headers: Headers,
         method: Method,
@@ -153,6 +158,7 @@ impl ApiClient {
         let url =
             reqwest::Url::parse(&url).change_error(error::ApiClientError::UrlEncodingFailed)?;
 
+        let host = url.host_str().unwrap_or("UNKNOWN").to_string();
         let headers = headers.construct_header_map()?;
 
         let request_builder = match method {
@@ -160,11 +166,49 @@ impl ApiClient {
             Method::Post => self.post(url).json(&request_body),
         };
 
-        let response = request_builder
-            .headers(headers)
-            .send()
-            .await
-            .change_error(error::ApiClientError::RequestNotSent)?;
+        crate::observability::metrics::EXTERNAL_HTTP_REQUEST_COUNT.add(
+            1,
+            crate::metric_attributes!(
+                ("purpose", purpose),
+                ("method", method),
+                ("host", host.clone())
+            ),
+        );
+        let start = std::time::Instant::now();
+
+        let response = request_builder.headers(headers).send().await;
+
+        let (outcome, status_code) = match response.as_ref() {
+            Ok(resp) => {
+                let status = resp.status();
+                let outcome = match status.as_u16() {
+                    200..=299 => "success",
+                    300..=399 => "redirect",
+                    400..=499 => "client_error",
+                    500..=599 => "server_error",
+                    _ => "unknown",
+                };
+                (outcome, Some(status.as_u16()))
+            }
+            Err(_) => ("transport_error", None),
+        };
+
+        let status_code = status_code
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "UNKNOWN".to_string());
+
+        crate::observability::metrics::EXTERNAL_HTTP_REQUEST_DURATION.record(
+            start.elapsed().as_secs_f64(),
+            crate::metric_attributes!(
+                ("purpose", purpose),
+                ("method", method),
+                ("host", host),
+                ("outcome", outcome),
+                ("status_code", status_code)
+            ),
+        );
+
+        let response = response.change_error(error::ApiClientError::RequestNotSent)?;
 
         match response.status() {
             StatusCode::OK => Ok(ApiResponse(response)),

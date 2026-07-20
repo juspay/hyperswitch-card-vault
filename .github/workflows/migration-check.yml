@@ -1,0 +1,68 @@
+name: Migration Consistency Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Allow more retries for network requests in cargo (downloading crates) and
+  # rustup (installing toolchains). This should help to reduce flaky CI failures
+  # from transient network timeouts or other issues.
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  migration_verify:
+    name: Verify consistency of migrations with `schema.rs` file
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/locker
+
+    services:
+      postgres:
+        image: "postgres:alpine"
+        env:
+          POSTGRES_DB: locker
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable 2 weeks ago
+          components: rustfmt
+
+      - uses: baptiste0928/cargo-install@v3.4.0
+        with:
+          crate: diesel_cli
+          features: postgres
+          args: --no-default-features
+
+      - name: Verify `diesel migration run` stays consistent
+        shell: bash
+        run: diesel migration run --locked-schema
+
+      - name: Verify `diesel migration redo` stays consistent
+        shell: bash
+        run: diesel migration redo --locked-schema --all
