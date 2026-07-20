@@ -10,7 +10,7 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                self as kv_resouce, KvDeletableResource, KvDeleteWithoutLookup, KvResource,
+                self as kv_resource, KvDeletableResource, KvDeleteWithoutLookup, KvResource,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
@@ -44,7 +44,7 @@ impl crate::storage::kv::resource::GetPartitionKey for ReverseLookupPrimaryKey {
 impl KvResource for ReverseLookup {
     type Error = ReverseLookupDBError;
 
-    type InsertStrategy = kv_resouce::DirectInsert;
+    type InsertStrategy = kv_resource::DirectInsert;
 
     type DieselNew = ReverseLookupNew;
 
