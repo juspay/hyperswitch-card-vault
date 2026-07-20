@@ -17,11 +17,11 @@ use crate::{
                 generate_update_query,
             },
         },
-        storage_v2::types::{Vault, VaultInner, VaultNew, VaultUpdate},
+        storage_v2::types::{Vault, VaultInner, VaultNewInner, VaultUpdate},
     },
 };
 
-impl EntityType for VaultNew {
+impl EntityType for VaultNewInner {
     const ENTITY_TYPE: &'static str = "vault";
 }
 
@@ -53,14 +53,14 @@ impl KvResource for Vault {
 
     type InsertStrategy = DirectInsert;
 
-    type DieselNew = VaultNew;
+    type DieselNew = VaultNewInner;
 
     type DieselEntity = VaultInner;
 
     type PrimaryKeyType = VaultPrimaryKey;
 
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
-        new_object.updated_by = scheme;
+        new_object.set_updated_by(scheme);
     }
 
     fn generate_insert_drainer_query(

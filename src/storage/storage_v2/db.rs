@@ -31,9 +31,13 @@ impl VaultInterface for Storage {
                 entity_id: &entity_id,
                 vault_id: &vault_id,
             };
-
-            return crate::storage::kv::insert_resource::<types::Vault>(self, new, partition_key)
-                .await;
+            let new_inner = types::VaultNewInner::from(new);
+            return crate::storage::kv::insert_resource::<types::Vault>(
+                self,
+                new_inner,
+                partition_key,
+            )
+            .await;
         }
 
         #[cfg(not(feature = "kv"))]

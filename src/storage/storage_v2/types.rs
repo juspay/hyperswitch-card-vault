@@ -28,7 +28,7 @@ pub struct VaultNew {
     pub encrypted_data: Encrypted,
     pub created_at: time::PrimitiveDateTime,
     pub expires_at: Option<time::PrimitiveDateTime>,
-    pub updated_by: Option<StorageScheme>,
+    pub updated_by: StorageScheme,
 }
 
 impl VaultNew {
@@ -39,7 +39,7 @@ impl VaultNew {
             encrypted_data,
             created_at: crate::utils::date_time::now(),
             expires_at: *request.ttl,
-            updated_by: Some(StorageScheme::PostgresOnly),
+            updated_by: StorageScheme::PostgresOnly,
         }
     }
 }
@@ -72,7 +72,7 @@ pub(crate) struct VaultInner {
     encrypted_data: Encrypted,
     created_at: time::PrimitiveDateTime,
     expires_at: Option<time::PrimitiveDateTime>,
-    pub updated_by: Option<StorageScheme>,
+    updated_by: Option<StorageScheme>,
 }
 
 impl VaultInner {
@@ -91,13 +91,26 @@ impl VaultInner {
             encrypted_data,
             created_at: current.created_at,
             expires_at,
-            updated_by,
+            updated_by: Some(updated_by),
         }
     }
 }
 
-impl From<VaultNew> for VaultInner {
+impl From<VaultNew> for VaultNewInner {
     fn from(value: VaultNew) -> Self {
+        Self {
+            entity_id: value.entity_id,
+            vault_id: value.vault_id,
+            encrypted_data: value.encrypted_data,
+            created_at: value.created_at,
+            expires_at: value.expires_at,
+            updated_by: Some(value.updated_by),
+        }
+    }
+}
+
+impl From<VaultNewInner> for VaultInner {
+    fn from(value: VaultNewInner) -> Self {
         Self {
             id: 0,
             entity_id: value.entity_id,
@@ -123,20 +136,20 @@ impl From<VaultInner> for Vault {
     }
 }
 
-impl From<VaultNew> for Vault {
-    fn from(value: VaultNew) -> Self {
-        Self {
-            vault_id: value.vault_id,
-            entity_id: value.entity_id,
-            data: value.encrypted_data.into(),
-            created_at: value.created_at,
-            expires_at: value.expires_at,
-            updated_by: value.updated_by,
-        }
-    }
-}
+// impl From<VaultNew> for Vault {
+//     fn from(value: VaultNew) -> Self {
+//         Self {
+//             vault_id: value.vault_id,
+//             entity_id: value.entity_id,
+//             data: value.encrypted_data.into(),
+//             created_at: value.created_at,
+//             expires_at: value.expires_at,
+//             updated_by: Some(value.updated_by),
+//         }
+//     }
+// }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::vault)]
 pub struct VaultNewInner {
     vault_id: Secret<String>,
@@ -145,4 +158,10 @@ pub struct VaultNewInner {
     created_at: time::PrimitiveDateTime,
     expires_at: Option<time::PrimitiveDateTime>,
     updated_by: Option<StorageScheme>,
+}
+
+impl VaultNewInner {
+    pub fn set_updated_by(&mut self, updated_by: StorageScheme) {
+        self.updated_by = Some(updated_by);
+    }
 }
