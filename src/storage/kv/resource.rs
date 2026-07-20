@@ -244,6 +244,7 @@ async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> StorageS
     }
 }
 
+/// Call this to decide storage scheme for Update and Delete operations
 async fn decide_storage_scheme_for_mutate_operation<M>(
     store: &Storage,
     partition_key: &PartitionKey<'_>,
