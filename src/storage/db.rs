@@ -745,13 +745,22 @@ impl super::ReverseLookupInterface for Storage {
         #[cfg(not(feature = "kv"))]
         {
             let mut conn = self.get_conn().await?;
+            let query = diesel::delete(types::ReverseLookup::table())
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id));
 
-            diesel::delete(types::ReverseLookup::table())
-                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id))
-                .execute(&mut conn)
-                .await
-                .change_error(error::StorageError::DeleteError)
-                .map_err(From::from)
+            let pool = conn.pool();
+            let operation = DbOperation::Delete;
+            super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output = super::record_db_query_rows::<
+                <types::ReverseLookup as HasTable>::Table,
+                _,
+                _,
+            >(query.execute(conn.get_mut()), operation, pool)
+            .await?;
+            Ok(output)
         }
     }
 }
