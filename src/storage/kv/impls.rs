@@ -3,6 +3,7 @@
 pub(crate) mod fingerprint;
 pub(crate) mod hash_table;
 pub(crate) mod locker;
+pub(crate) mod vault;
 
 use crate::error::{HashDBError, VaultDBError, kv::KvError};
 

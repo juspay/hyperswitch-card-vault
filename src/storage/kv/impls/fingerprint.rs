@@ -12,7 +12,7 @@ use crate::{
             PartitionKey, StorageScheme,
             entity::EntityType,
             partition_key::KvStorePartition,
-            resource::{GetPartitionKey, KvResource},
+            resource::{DirectInsert, GetPartitionKey, KvResource},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
         types::{Fingerprint, FingerprintTableNew},
@@ -45,6 +45,8 @@ impl GetPartitionKey for FingerprintPrimaryKey {
 impl KvResource for Fingerprint {
     type Error = FingerprintDBError;
 
+    type InsertStrategy = DirectInsert;
+
     type DieselNew = FingerprintTableNew;
 
     type DieselEntity = Self;
@@ -64,7 +66,7 @@ impl KvResource for Fingerprint {
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
-    ) -> Result<Self, ContainerError<FingerprintDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<FingerprintDBError>> {
         // Writes always go to the primary pool, never a read replica.
         let mut conn = store.get_conn().await?;
 
@@ -87,7 +89,7 @@ impl KvResource for Fingerprint {
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
-    ) -> Result<Self, ContainerError<FingerprintDBError>> {
+    ) -> Result<Self::DieselEntity, ContainerError<FingerprintDBError>> {
         // Read path: route to the read replica when runtime config enables it.
         let mut conn = store.route_conn().await?;
         let query = Self::table().filter(

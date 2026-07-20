@@ -1,10 +1,12 @@
 #[cfg(not(feature = "kv"))]
-use diesel::OptionalExtension;
-use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
+use diesel::{BoolExpressionMethods, OptionalExtension};
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+#[cfg(not(feature = "kv"))]
+use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "kv")]
 use hyperswitch_masking::PeekInterface;
-use hyperswitch_masking::{ExposeInterface, Secret};
+use hyperswitch_masking::Secret;
 
 use super::{
     DbOperation, MerchantInterface, Storage, schema, types,
@@ -278,27 +280,42 @@ impl super::LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let pk = super::kv::impls::locker::LockerPrimaryKeyType {
+                locker_id,
+                merchant_id: merchant_id.to_string(),
+                customer_id: customer_id.to_string(),
+            };
 
-        let query = diesel::delete(types::LockerInner::table()).filter(
-            schema::locker::locker_id
-                .eq(locker_id.expose())
-                .and(schema::locker::merchant_id.eq(merchant_id))
-                .and(schema::locker::customer_id.eq(customer_id)),
-        );
+            return super::kv::delete_resource_by_id::<types::Locker>(self, pk).await;
+        }
 
-        let pool = conn.pool();
-        let operation = DbOperation::Delete;
-        super::log_db_query::<<types::LockerInner as HasTable>::Table, _>(&query, operation, pool);
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+            let query = diesel::delete(types::LockerInner::table()).filter(
+                schema::locker::locker_id
+                    .eq(locker_id.expose())
+                    .and(schema::locker::merchant_id.eq(merchant_id))
+                    .and(schema::locker::customer_id.eq(customer_id)),
+            );
 
-        let output = super::record_db_query_rows::<<types::LockerInner as HasTable>::Table, _, _>(
-            query.execute(conn.get_mut()),
-            operation,
-            pool,
-        )
-        .await?;
+            let pool = conn.pool();
+            let operation = DbOperation::Delete;
+            super::log_db_query::<<types::LockerInner as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
 
-        Ok(output)
+            let output =
+                super::record_db_query_rows::<<types::LockerInner as HasTable>::Table, _, _>(
+                    query.execute(conn.get_mut()),
+                    operation,
+                    pool,
+                )
+                .await?;
+            Ok(output)
+        }
     }
 }
 

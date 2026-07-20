@@ -10,7 +10,7 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::{GetPartitionKey, KvResource},
+            resource::{DirectInsert, GetPartitionKey, KvResource},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
         types::{HashTable, HashTableNew},
@@ -41,6 +41,8 @@ impl GetPartitionKey for HashTablePrimaryKey {
 
 impl KvResource for HashTable {
     type Error = HashDBError;
+
+    type InsertStrategy = DirectInsert;
 
     type DieselNew = HashTableNew;
 

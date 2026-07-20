@@ -26,10 +26,12 @@ pub(crate) trait VaultInterface {
         entity_id: &str,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
-    /// Overwrite `encrypted_data` + `expires_at` for an existing vault row.
+    /// Overwrite mutable fields for an existing vault row.
     async fn update_vault_data(
         &self,
-        new: types::VaultNew,
+        vault_id: Secret<String>,
+        entity_id: String,
+        update: types::VaultUpdate,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
     /// Delete a vault row by primary key.

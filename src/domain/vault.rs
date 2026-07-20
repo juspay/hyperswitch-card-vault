@@ -4,7 +4,7 @@ use crate::{
     observability::metrics,
     storage::storage_v2::{
         VaultInterface,
-        types::{Vault, VaultNew},
+        types::{Vault, VaultNew, VaultUpdate},
     },
 };
 
@@ -61,7 +61,9 @@ pub async fn upsert(
     state: &TenantAppState,
     new: VaultNew,
 ) -> Result<Vault, ContainerError<error::VaultDBError>> {
-    let cloned_new = new.clone();
+    let vault_id = new.vault_id.clone();
+    let entity_id = new.entity_id.clone();
+    let update = VaultUpdate::from(new.clone());
 
     match state.db.insert_vault(new).await {
         Ok(vault) => {
@@ -73,7 +75,11 @@ pub async fn upsert(
         }
 
         Err(err) if err.get_inner().is_duplicate() => {
-            match state.db.update_vault_data(cloned_new).await {
+            match state
+                .db
+                .update_vault_data(vault_id, entity_id, update)
+                .await
+            {
                 Ok(vault) => {
                     super::record_get_or_insert_outcome(
                         metrics::Resource::Vault,
