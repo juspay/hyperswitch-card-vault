@@ -7,14 +7,13 @@ use hyperswitch_redis_interface::{
     types::{HsetnxReply, RedisEntryId},
 };
 use serde::de;
-use tracing::debug;
 
 use super::{
-    metrics,
+    entity,
     partition_key::{KvStorePartition, PartitionKey},
     serializable_query::SerializableQuery,
 };
-use crate::logger;
+use crate::{logger, observability::metrics};
 
 /// Drainer-entry `request_id`: log-only, empty (not threaded), kept for wire-format parity.
 const REQUEST_ID: &str = "VAULT_CONSTANT_REQUEST_ID";
@@ -130,7 +129,7 @@ pub(crate) async fn kv_wrapper<'a, T, S>(
 ) -> error_stack::Result<KvResult<T>, RedisError>
 where
     T: de::DeserializeOwned,
-    S: serde::Serialize + Debug + KvStorePartition + Sync,
+    S: serde::Serialize + Debug + KvStorePartition + Sync + entity::EntityType,
 {
     let redis_conn = store.get_redis_conn()?;
 
@@ -140,6 +139,8 @@ where
     let operation = op.to_string();
 
     let ttl = store.ttl_for_kv();
+
+    let start = std::time::Instant::now();
 
     let result = async {
         match op {
@@ -173,26 +174,33 @@ where
     result
         .await
         .inspect(|_| {
-            debug!(kv_operation = %operation, status = "success");
-            metrics::KV_OPERATION_SUCCESSFUL.add(
-                1,
-                crate::metric_attributes!(("operation", operation.clone())),
+            let duration = start.elapsed();
+            let attrs = crate::metric_attributes!(
+                ("operation", operation.clone()),
+                ("outcome", "success"),
             );
+            logger::debug!(kv_operation = %operation, status = "success");
+            metrics::KV_OPERATION_COUNT.add(1, attrs);
+            metrics::KV_OPERATION_DURATION.record(duration.as_secs_f64(), attrs);
         })
-        .inspect_err(
-            |err: &error_stack::Report<RedisError>| match err.current_context() {
+        .inspect_err(|err: &error_stack::Report<RedisError>| {
+            let outcome = match err.current_context() {
                 RedisError::NotFound => {
-                    debug!(kv_operation = %operation, status = "not_found");
+                    logger::debug!(kv_operation = %operation, status = "not_found");
+                    "not_found"
                 }
                 other => {
                     logger::error!(kv_operation = %operation, status = "error", error = ?other);
-                    metrics::KV_OPERATION_FAILED.add(
-                        1,
-                        crate::metric_attributes!(("operation", operation.clone())),
-                    );
+                    "error"
                 }
-            },
-        )
+            };
+            let duration = start.elapsed();
+            let attrs =
+                crate::metric_attributes!(("operation", operation.clone()), ("outcome", outcome));
+
+            metrics::KV_OPERATION_COUNT.add(1, attrs);
+            metrics::KV_OPERATION_DURATION.record(duration.as_secs_f64(), attrs);
+        })
 }
 
 async fn push_to_drainer_stream<R>(
@@ -213,6 +221,8 @@ where
 
     let redis_conn = store.get_redis_conn()?;
 
+    let start = std::time::Instant::now();
+
     redis_conn
         .stream_append_entry(
             &stream_name.into(),
@@ -224,22 +234,24 @@ where
         .await
         .bridge()
         .map(|_| {
-            metrics::KV_PUSHED_TO_DRAINER.add(
-                1,
-                crate::metric_attributes!(
-                    ("operation", operation_str.clone()),
-                    ("entity_type", entity_type_str.clone()),
-                ),
+            let duration = start.elapsed();
+            let attrs = crate::metric_attributes!(
+                ("operation", operation_str.clone()),
+                ("entity_type", entity_type_str.clone()),
+                ("outcome", "success"),
             );
+            metrics::KV_DRAINER_PUSH_COUNT.add(1, attrs);
+            metrics::KV_DRAINER_PUSH_DURATION.record(duration.as_secs_f64(), attrs);
         })
         .inspect_err(|error| {
-            metrics::KV_FAILED_TO_PUSH_TO_DRAINER.add(
-                1,
-                crate::metric_attributes!(
-                    ("operation", operation_str.clone()),
-                    ("entity_type", entity_type_str.clone()),
-                ),
+            let duration = start.elapsed();
+            let attrs = crate::metric_attributes!(
+                ("operation", operation_str.clone()),
+                ("entity_type", entity_type_str.clone()),
+                ("outcome", "error"),
             );
+            metrics::KV_DRAINER_PUSH_COUNT.add(1, attrs);
+            metrics::KV_DRAINER_PUSH_DURATION.record(duration.as_secs_f64(), attrs);
             logger::error!(?error, "Failed to add entry in drainer stream");
         })
         .change_context(RedisError::StreamAppendFailed)

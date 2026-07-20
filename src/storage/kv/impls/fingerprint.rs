@@ -7,7 +7,7 @@ use hyperswitch_masking::{PeekInterface, Secret};
 use crate::{
     error::{ContainerError, FingerprintDBError, kv::KvError},
     storage::{
-        Storage,
+        DbOperation, Storage,
         kv::{
             PartitionKey, StorageScheme,
             entity::EntityType,
@@ -37,7 +37,7 @@ pub(crate) struct FingerprintPrimaryKey {
 impl GetPartitionKey for FingerprintPrimaryKey {
     fn get_partition_key(&self) -> PartitionKey<'_> {
         PartitionKey::Fingerprint {
-            fingerprint_hash: self.fingerprint_hash.peek().as_slice(),
+            fingerprint_hash: &self.fingerprint_hash,
         }
     }
 }
@@ -67,10 +67,21 @@ impl KvResource for Fingerprint {
     ) -> Result<Self, ContainerError<FingerprintDBError>> {
         // Writes always go to the primary pool, never a read replica.
         let mut conn = store.get_conn().await?;
-        Ok(diesel::insert_into(Self::table())
-            .values(new_object)
-            .get_result(&mut conn)
-            .await?)
+
+        let query = diesel::insert_into(Self::table()).values(new_object);
+
+        let pool = conn.pool();
+        let operation = DbOperation::Insert;
+        crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
+
+        let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
+            query.get_result(conn.get_mut()),
+            operation,
+            pool,
+        )
+        .await?;
+
+        Ok(output)
     }
 
     async fn storage_find(
@@ -79,13 +90,23 @@ impl KvResource for Fingerprint {
     ) -> Result<Self, ContainerError<FingerprintDBError>> {
         // Read path: route to the read replica when runtime config enables it.
         let mut conn = store.route_conn().await?;
-        Ok(Self::table()
-            .filter(
-                crate::storage::schema::fingerprint::fingerprint_hash
-                    .eq(pk.fingerprint_hash.peek().as_slice()),
-            )
-            .get_result::<Self>(&mut conn)
-            .await?)
+        let query = Self::table().filter(
+            crate::storage::schema::fingerprint::fingerprint_hash
+                .eq(pk.fingerprint_hash.peek().as_slice()),
+        );
+
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
+
+        let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
+            query.get_result(conn.get_mut()),
+            operation,
+            pool,
+        )
+        .await?;
+
+        Ok(output)
     }
 }
 

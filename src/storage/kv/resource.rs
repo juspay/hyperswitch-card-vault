@@ -19,6 +19,7 @@ use crate::{
         ContainerError, StorageErrorExt,
         kv::{KvError, RedisErrorExt},
     },
+    observability::metrics,
     storage::{ReverseLookupInterface, Storage, types},
 };
 
@@ -53,6 +54,7 @@ pub(crate) trait KvResource:
         + serde::de::DeserializeOwned
         + std::fmt::Debug
         + KvStorePartition
+        + super::entity::EntityType
         + Sync
         + Into<Self>;
 
@@ -243,7 +245,7 @@ where
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
-                    super::metrics::KV_MISS
+                    metrics::KV_CACHE_MISS_COUNT
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
                     M::storage_find(store, &primary_key).await
                 }
@@ -281,7 +283,7 @@ where
                         crate::error::ReverseLookupDBError::NotFoundError
                     ) =>
                 {
-                    super::metrics::KV_MISS
+                    metrics::KV_CACHE_MISS_COUNT
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
                     return M::storage_find_by_lookup(store, &lookup_key).await;
                 }
@@ -306,7 +308,7 @@ where
             match result {
                 Ok(KvResult::HGet(v)) => Ok(v.into()),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
-                    super::metrics::KV_MISS
+                    metrics::KV_CACHE_MISS_COUNT
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
                     M::storage_find_by_lookup(store, &lookup_key).await
                 }

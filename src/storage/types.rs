@@ -33,6 +33,10 @@ pub struct Merchant {
     pub created_at: time::PrimitiveDateTime,
 }
 
+impl Merchant {
+    pub const CACHE_NAME: &'static str = "merchant";
+}
+
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
 pub(crate) struct MerchantNewInner<'a> {
@@ -231,9 +235,13 @@ impl From<ReverseLookupNew> for ReverseLookup {
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
     pub updated_by: Option<StorageScheme>,
+}
+
+impl HashTable {
+    pub const CACHE_NAME: &'static str = "hash_table";
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
@@ -256,6 +264,10 @@ impl From<FingerprintTableNew> for Fingerprint {
     }
 }
 
+impl Fingerprint {
+    pub const CACHE_NAME: &'static str = "fingerprint";
+}
+
 #[cfg(feature = "external_key_manager")]
 #[derive(Debug, Clone, Identifiable, Queryable)]
 #[diesel(table_name = schema::entity)]
@@ -264,6 +276,11 @@ pub struct Entity {
     pub entity_id: String,
     pub enc_key_id: String,
     pub created_at: time::PrimitiveDateTime,
+}
+
+#[cfg(feature = "external_key_manager")]
+impl Entity {
+    pub const CACHE_NAME: &'static str = "entity";
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Clone)]
@@ -313,7 +330,7 @@ pub(super) struct EntityTableNew {
 #[diesel(table_name = schema::hash_table)]
 pub(crate) struct HashTableNew {
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
     pub updated_by: Option<StorageScheme>,
 }

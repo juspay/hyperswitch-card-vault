@@ -4,6 +4,7 @@ use crate::{
     app::TenantAppState,
     crypto::hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
     error::{self, ContainerError, StorageErrorExt},
+    observability::metrics,
     storage::{FingerprintInterface, consts, types::Fingerprint, utils},
 };
 
@@ -26,6 +27,10 @@ pub async fn get_or_insert(
         .find_optional_by_fingerprint_hash(fingerprint_hash.clone())
         .await?
     {
+        super::record_get_or_insert_outcome(
+            metrics::Resource::Fingerprint,
+            metrics::DomainGetOrInsertOutcome::FoundExisting,
+        );
         return Ok(fingerprint);
     }
 
@@ -38,12 +43,50 @@ pub async fn get_or_insert(
         .insert_fingerprint(fingerprint_hash.clone(), fingerprint_id)
         .await
     {
-        Ok(fingerprint) => Ok(fingerprint),
-        Err(err) if err.get_inner().is_duplicate() => state
-            .db
-            .find_optional_by_fingerprint_hash(fingerprint_hash)
-            .await?
-            .ok_or_else(|| error::FingerprintDBError::DBInsertError.into()),
-        Err(err) => Err(err),
+        Ok(fingerprint) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Fingerprint,
+                metrics::DomainGetOrInsertOutcome::Created,
+            );
+            Ok(fingerprint)
+        }
+
+        Err(err) if err.get_inner().is_duplicate() => {
+            match state
+                .db
+                .find_optional_by_fingerprint_hash(fingerprint_hash)
+                .await
+            {
+                Ok(Some(fingerprint)) => {
+                    super::record_get_or_insert_outcome(
+                        metrics::Resource::Fingerprint,
+                        metrics::DomainGetOrInsertOutcome::FoundExistingAfterDuplicateInsert,
+                    );
+                    Ok(fingerprint)
+                }
+                Ok(None) => {
+                    super::record_get_or_insert_outcome(
+                        metrics::Resource::Fingerprint,
+                        metrics::DomainGetOrInsertOutcome::Error,
+                    );
+                    Err(error::FingerprintDBError::DBInsertError.into())
+                }
+                Err(err) => {
+                    super::record_get_or_insert_outcome(
+                        metrics::Resource::Fingerprint,
+                        metrics::DomainGetOrInsertOutcome::Error,
+                    );
+                    Err(err)
+                }
+            }
+        }
+
+        Err(err) => {
+            super::record_get_or_insert_outcome(
+                metrics::Resource::Fingerprint,
+                metrics::DomainGetOrInsertOutcome::Error,
+            );
+            Err(err)
+        }
     }
 }
