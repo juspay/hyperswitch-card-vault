@@ -70,19 +70,18 @@ impl KvResource for ReverseLookup {
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
         let mut conn = store.get_conn().await?;
 
-        let query = diesel::insert_into(ReverseLookup::table()).values(new_object);
+        let query = diesel::insert_into(Self::table()).values(new_object);
 
         let pool = conn.pool();
         let operation = storage::DbOperation::Insert;
-        storage::log_db_query::<<ReverseLookup as HasTable>::Table, _>(&query, operation, pool);
+        storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
-        let reverse_lookup =
-            storage::record_db_query::<<ReverseLookup as HasTable>::Table, _, _, _>(
-                query.get_result(conn.get_mut()),
-                operation,
-                pool,
-            )
-            .await?;
+        let reverse_lookup = storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
+            query.get_result(conn.get_mut()),
+            operation,
+            pool,
+        )
+        .await?;
         Ok(reverse_lookup)
     }
 
@@ -91,19 +90,18 @@ impl KvResource for ReverseLookup {
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
         let mut conn = store.get_conn().await?;
-        let query = ReverseLookup::table()
-            .filter(schema::reverse_lookup::lookup_id.eq(pk.lookup_id.as_str()));
+        let query =
+            Self::table().filter(schema::reverse_lookup::lookup_id.eq(pk.lookup_id.as_str()));
 
         let pool = conn.pool();
         let operation = storage::DbOperation::FindOne;
-        storage::log_db_query::<<ReverseLookup as HasTable>::Table, _>(&query, operation, pool);
+        storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
-        let output: ReverseLookup = storage::record_db_query::<
-            <ReverseLookup as HasTable>::Table,
-            _,
-            _,
-            _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        let output: Self = storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
+            query.get_result(conn.get_mut()),
+            operation,
+            pool,
+        )
         .await?;
         Ok(output)
     }
