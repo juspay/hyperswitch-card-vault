@@ -46,7 +46,6 @@ impl VaultNew {
 
 #[derive(Debug, Clone, AsChangeset)]
 #[diesel(table_name = schema::vault)]
-#[diesel(treat_none_as_null = true)]
 pub struct VaultUpdate {
     pub encrypted_data: Encrypted,
     pub expires_at: Option<time::PrimitiveDateTime>,
