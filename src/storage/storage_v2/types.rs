@@ -136,19 +136,6 @@ impl From<VaultInner> for Vault {
     }
 }
 
-// impl From<VaultNew> for Vault {
-//     fn from(value: VaultNew) -> Self {
-//         Self {
-//             vault_id: value.vault_id,
-//             entity_id: value.entity_id,
-//             data: value.encrypted_data.into(),
-//             created_at: value.created_at,
-//             expires_at: value.expires_at,
-//             updated_by: Some(value.updated_by),
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::vault)]
 pub struct VaultNewInner {
