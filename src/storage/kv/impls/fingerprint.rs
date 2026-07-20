@@ -54,7 +54,7 @@ impl KvResource for Fingerprint {
     type PrimaryKeyType = FingerprintPrimaryKey;
 
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
-        new_object.updated_by = scheme;
+        new_object.updated_by = Some(scheme);
     }
 
     fn generate_insert_drainer_query(
