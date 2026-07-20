@@ -134,7 +134,7 @@ pub struct Secrets {
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct TenantSecrets {
     #[serde(deserialize_with = "deserialize_hex")]
-    pub master_key: Vec<u8>,
+    pub master_key: hyperswitch_masking::Secret<Vec<u8>>,
     #[cfg(feature = "middleware")]
     pub public_key: hyperswitch_masking::Secret<String>,
 
@@ -147,7 +147,9 @@ pub struct TenantSecrets {
     pub redis_key_prefix: String,
 }
 
-fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+fn deserialize_hex<'de, D>(
+    deserializer: D,
+) -> Result<hyperswitch_masking::Secret<Vec<u8>>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -155,7 +157,7 @@ where
 
     let deserialized_str = deserialized_str.into_bytes();
 
-    Ok(deserialized_str)
+    Ok(hyperswitch_masking::Secret::new(deserialized_str))
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -293,7 +295,7 @@ impl GlobalConfig {
             tenant_secrets.master_key = hex::decode(
                 secret_management_client
                     .get_secret(
-                        String::from_utf8(tenant_secrets.master_key.clone())
+                        String::from_utf8(tenant_secrets.master_key.clone().expose())
                             .expect("Failed while converting master key to `String`")
                             .into(),
                     )
@@ -302,6 +304,7 @@ impl GlobalConfig {
                     .expose(),
             )
             .expect("Failed to hex decode master key")
+            .into()
         }
 
         #[cfg(feature = "middleware")]
