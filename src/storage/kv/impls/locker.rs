@@ -11,8 +11,8 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                GetLookupKey, GetPartitionKey, KvDeletableResource, KvDeletableWithLookup, KvResource,
-                KvSecondaryLookupResource, ReverseLookupInsert, ReverseLookupKey,
+                GetLookupKey, GetPartitionKey, KvDeletableResource, KvDeletableWithLookup,
+                KvResource, KvSecondaryLookupResource, ReverseLookupInsert, ReverseLookupKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
