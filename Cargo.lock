@@ -911,7 +911,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools",
  "lazy_static",
  "lazycell",
  "log",
@@ -1329,7 +1329,7 @@ dependencies = [
 [[package]]
 name = "common_enums"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.12.0#c15bf9c3cdfa3f7b1d84ecad4205710c92d25a43"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "diesel",
  "hyperswitch_masking",
@@ -1346,7 +1346,7 @@ dependencies = [
 [[package]]
 name = "common_utils"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.12.0#c15bf9c3cdfa3f7b1d84ecad4205710c92d25a43"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "ammonia",
  "async-trait",
@@ -1614,7 +1614,7 @@ dependencies = [
  "clap",
  "criterion-plot",
  "is-terminal",
- "itertools 0.10.5",
+ "itertools",
  "num-traits",
  "once_cell",
  "oorandom",
@@ -1635,7 +1635,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
- "itertools 0.10.5",
+ "itertools",
 ]
 
 [[package]]
@@ -2070,7 +2070,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3712,10 +3712,12 @@ dependencies = [
  "bytes",
  "config",
  "console-subscriber",
+ "crc32fast",
  "criterion",
  "diesel",
  "diesel-async",
  "digest",
+ "error-stack 0.4.1",
  "error-stack 0.5.0",
  "futures",
  "futures-util",
@@ -3743,6 +3745,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "strum 0.28.0",
  "thiserror 1.0.69",
  "time",
  "tokio",
@@ -3960,15 +3963,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3986,7 +3980,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4449,7 +4443,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5297,7 +5291,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -5310,7 +5304,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -5605,7 +5599,7 @@ dependencies = [
 [[package]]
 name = "redis_interface"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.12.0#c15bf9c3cdfa3f7b1d84ecad4205710c92d25a43"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "common_utils",
  "error-stack 0.4.1",
@@ -5902,7 +5896,7 @@ dependencies = [
 [[package]]
 name = "router_derive"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.12.0#c15bf9c3cdfa3f7b1d84ecad4205710c92d25a43"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "indexmap 2.13.0",
  "proc-macro2",
@@ -5915,7 +5909,7 @@ dependencies = [
 [[package]]
 name = "router_env"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.12.0#c15bf9c3cdfa3f7b1d84ecad4205710c92d25a43"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "actix-web",
  "cargo_metadata 0.18.1",
@@ -6084,7 +6078,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6490,7 +6484,7 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 [[package]]
 name = "smithy"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.12.0#c15bf9c3cdfa3f7b1d84ecad4205710c92d25a43"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6501,7 +6495,7 @@ dependencies = [
 [[package]]
 name = "smithy-core"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.06.12.0#c15bf9c3cdfa3f7b1d84ecad4205710c92d25a43"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.07.17.0#a452870f59ca02af7244af344e626333cf0ca464"
 dependencies = [
  "proc-macro2",
  "serde",
@@ -6627,6 +6621,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros 0.28.0",
+]
+
+[[package]]
 name = "strum_macros"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6644,6 +6647,18 @@ name = "strum_macros"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -6781,7 +6796,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

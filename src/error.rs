@@ -4,6 +4,8 @@ use std::string::FromUtf8Error;
 pub mod container;
 
 mod custom_error;
+#[cfg(feature = "kv")]
+pub mod kv;
 mod transforms;
 
 pub use container::*;

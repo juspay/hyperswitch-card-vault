@@ -5,9 +5,7 @@ use std::{
 };
 
 use error_stack::ResultExt;
-#[cfg(feature = "external_key_manager")]
-use hyperswitch_masking::Secret;
-use hyperswitch_masking::{ExposeInterface, PeekInterface};
+use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret};
 #[cfg(feature = "redis")]
 use hyperswitch_redis_interface::RedisSettings;
 
@@ -46,6 +44,9 @@ pub struct GlobalConfig {
     pub redis: Option<RedisSettings>,
     #[serde(default)]
     pub runtime_config: RuntimeConfig,
+    #[cfg(feature = "kv")]
+    #[serde(default)]
+    pub kv: KvConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +55,9 @@ pub struct TenantConfig {
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
     pub external_key_manager: ExternalKeyManagerConfig,
+    /// Redis key namespace for this tenant.
+    #[cfg(feature = "redis")]
+    pub redis_key_prefix: String,
 }
 
 impl TenantConfig {
@@ -63,16 +67,23 @@ impl TenantConfig {
     /// Never, as tenant_id would already be validated from [`crate::custom_extractors::TenantId`] custom extractor
     ///
     pub fn from_global_config(global_config: &GlobalConfig, tenant_id: String) -> Self {
+        #[allow(clippy::unwrap_used)]
+        let tenant_secrets = global_config
+            .tenant_secrets
+            .get(&tenant_id)
+            .cloned()
+            .unwrap();
+
+        #[cfg(feature = "redis")]
+        let redis_key_prefix = tenant_secrets.redis_key_prefix.clone();
+
         Self {
-            tenant_id: tenant_id.clone(),
+            tenant_id,
             locker_secrets: global_config.secrets.clone(),
-            #[allow(clippy::unwrap_used)]
-            tenant_secrets: global_config
-                .tenant_secrets
-                .get(&tenant_id)
-                .cloned()
-                .unwrap(),
+            tenant_secrets,
             external_key_manager: global_config.external_key_manager.clone(),
+            #[cfg(feature = "redis")]
+            redis_key_prefix,
         }
     }
 }
@@ -121,15 +132,20 @@ pub struct Secrets {
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct TenantSecrets {
     #[serde(deserialize_with = "deserialize_hex")]
-    pub master_key: Vec<u8>,
+    pub master_key: Secret<Vec<u8>>,
     #[cfg(feature = "middleware")]
     pub public_key: hyperswitch_masking::Secret<String>,
 
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
+
+    /// Redis key prefix (deser-only; app reads `TenantConfig.redis_key_prefix`).
+    #[cfg(feature = "redis")]
+    #[serde(default)]
+    pub redis_key_prefix: String,
 }
 
-fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+fn deserialize_hex<'de, D>(deserializer: D) -> Result<Secret<Vec<u8>>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -137,7 +153,7 @@ where
 
     let deserialized_str = deserialized_str.into_bytes();
 
-    Ok(deserialized_str)
+    Ok(Secret::new(deserialized_str))
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -275,7 +291,7 @@ impl GlobalConfig {
             tenant_secrets.master_key = hex::decode(
                 secret_management_client
                     .get_secret(
-                        String::from_utf8(tenant_secrets.master_key.clone())
+                        String::from_utf8(tenant_secrets.master_key.clone().expose())
                             .expect("Failed while converting master key to `String`")
                             .into(),
                     )
@@ -283,6 +299,7 @@ impl GlobalConfig {
                     .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
                     .expose(),
             )
+            .map(Secret::new)
             .expect("Failed to hex decode master key")
         }
 
@@ -353,6 +370,11 @@ impl GlobalConfig {
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
         self.runtime_config.validate()?;
+        #[cfg(feature = "kv")]
+        {
+            self.kv.validate()?;
+            self.validate_kv_tenant_prefixes()?;
+        }
         #[cfg(feature = "external_key_manager")]
         {
             self.external_key_manager.validate()?;
@@ -361,6 +383,91 @@ impl GlobalConfig {
         }
         self.metrics.validate()?;
 
+        Ok(())
+    }
+
+    /// Require non-empty, unique `redis_key_prefix` per tenant when kv + redis + multi-tenant.
+    #[cfg(feature = "kv")]
+    fn validate_kv_tenant_prefixes(&self) -> Result<(), error::ConfigurationError> {
+        #[cfg(feature = "redis")]
+        if self.redis.is_none() || self.tenant_secrets.len() <= 1 {
+            return Ok(());
+        }
+
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for (tenant_id, secrets) in self.tenant_secrets.iter() {
+            let prefix = secrets.redis_key_prefix.trim();
+            if prefix.is_empty() {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!(
+                        "tenant `{tenant_id}`: redis_key_prefix required with kv + multi-tenant"
+                    ),
+                ));
+            }
+            if !seen.insert(prefix) {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!("duplicate redis_key_prefix `{prefix}`"),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "kv")]
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct KvConfig {
+    /// Drainer stream suffix: `{shard_N}_{suffix}`.
+    #[serde(default = "default_drainer_stream_suffix")]
+    pub drainer_stream_suffix: String,
+    /// Drainer shard count. Must be `> 0` (validated in [`KvConfig::validate`]).
+    #[serde(default = "default_drainer_num_partitions")]
+    pub drainer_num_partitions: u8,
+    /// TTL (seconds) for KV keys in Redis. Must exceed max drainer replay lag.
+    #[serde(default = "default_ttl_for_kv")]
+    pub ttl_for_kv: u32,
+}
+
+#[cfg(feature = "kv")]
+fn default_drainer_stream_suffix() -> String {
+    "DRAINER_STREAM".to_string()
+}
+
+#[cfg(feature = "kv")]
+fn default_drainer_num_partitions() -> u8 {
+    16
+}
+
+#[cfg(feature = "kv")]
+fn default_ttl_for_kv() -> u32 {
+    900
+}
+
+#[cfg(feature = "kv")]
+impl Default for KvConfig {
+    fn default() -> Self {
+        Self {
+            drainer_stream_suffix: default_drainer_stream_suffix(),
+            drainer_num_partitions: default_drainer_num_partitions(),
+            ttl_for_kv: default_ttl_for_kv(),
+        }
+    }
+}
+
+#[cfg(feature = "kv")]
+impl KvConfig {
+    /// Format: `{shard_key}_{suffix}`.
+    pub fn drainer_stream_name(&self, shard_key: &str) -> String {
+        format!("{{{}}}_{}", shard_key, self.drainer_stream_suffix)
+    }
+
+    /// Reject `drainer_num_partitions == 0` (crc32 % 0 panics).
+    pub fn validate(&self) -> Result<(), error::ConfigurationError> {
+        if self.drainer_num_partitions == 0 {
+            return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                "kv.drainer_num_partitions must be greater than 0".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -401,6 +508,10 @@ impl std::fmt::Display for Env {
 pub struct RuntimeConfigEndpoint {
     pub base_url: String,
     pub api_key: hyperswitch_masking::Secret<String>,
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, hyperswitch_masking::Secret<String>>,
+    #[serde(default)]
+    pub path: String,
 }
 
 /// Runtime configuration source.
@@ -411,19 +522,13 @@ pub enum RuntimeConfig {
     Disabled,
     Enabled {
         endpoint: RuntimeConfigEndpoint,
-        #[serde(default = "default_runtime_config_ttl_seconds")]
-        ttl_seconds: u64,
-        #[serde(default = "default_runtime_config_cache_max_capacity")]
-        cache_max_capacity: u64,
+        #[serde(default = "default_runtime_config_refresh_interval_seconds")]
+        refresh_interval_seconds: u64,
     },
 }
 
-fn default_runtime_config_ttl_seconds() -> u64 {
+fn default_runtime_config_refresh_interval_seconds() -> u64 {
     30
-}
-
-fn default_runtime_config_cache_max_capacity() -> u64 {
-    32
 }
 
 impl RuntimeConfig {

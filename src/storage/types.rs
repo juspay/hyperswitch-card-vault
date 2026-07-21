@@ -1,3 +1,4 @@
+use base64::Engine;
 use diesel::{
     AsExpression, Identifiable, Insertable, Queryable,
     backend::Backend,
@@ -7,7 +8,9 @@ use diesel::{
 };
 use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret, StrongSecret};
 
-use super::schema;
+use super::{schema, scheme::StorageScheme};
+#[cfg(feature = "kv")]
+use crate::storage::kv;
 use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
     error,
@@ -30,6 +33,10 @@ pub struct Merchant {
     pub created_at: time::PrimitiveDateTime,
 }
 
+impl Merchant {
+    pub const CACHE_NAME: &'static str = "merchant";
+}
+
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
 pub(crate) struct MerchantNewInner<'a> {
@@ -43,17 +50,36 @@ pub struct MerchantNew<'a> {
     pub enc_key: Secret<Vec<u8>>,
 }
 
-#[derive(Debug, Identifiable, Queryable)]
+#[derive(Debug, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::locker)]
-pub(super) struct LockerInner {
+pub(crate) struct LockerInner {
     id: i32,
     locker_id: Secret<String>,
     merchant_id: String,
     customer_id: String,
     enc_data: Encrypted,
+    #[serde(with = "crate::utils::primitive_datetime_serde::iso8601")]
     created_at: time::PrimitiveDateTime,
     hash_id: String,
+    #[serde(with = "crate::utils::primitive_datetime_serde::iso8601::option")]
     ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: Option<StorageScheme>,
+}
+
+impl From<LockerNew> for LockerInner {
+    fn from(value: LockerNew) -> Self {
+        Self {
+            id: 0,
+            locker_id: value.locker_id,
+            merchant_id: value.merchant_id,
+            customer_id: value.customer_id,
+            enc_data: value.enc_data,
+            created_at: value.created_at,
+            hash_id: value.hash_id,
+            ttl: value.ttl,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 impl From<LockerInner> for Locker {
@@ -66,6 +92,7 @@ impl From<LockerInner> for Locker {
             created_at: value.created_at,
             hash_id: value.hash_id,
             ttl: value.ttl,
+            updated_by: value.updated_by,
         }
     }
 }
@@ -79,6 +106,7 @@ pub struct Locker {
     pub created_at: time::PrimitiveDateTime,
     pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[derive(Debug)]
@@ -115,17 +143,19 @@ impl From<Encrypted> for Encryptable {
 
 #[derive(Debug, Insertable, Clone)]
 #[diesel(table_name = schema::locker)]
-pub struct LockerNew<'a> {
+pub struct LockerNew {
     pub locker_id: Secret<String>,
     pub merchant_id: String,
     pub customer_id: String,
     pub enc_data: Encrypted,
-    pub hash_id: &'a str,
+    pub created_at: time::PrimitiveDateTime,
+    pub hash_id: String,
     pub ttl: Option<time::PrimitiveDateTime>,
+    pub updated_by: Option<StorageScheme>,
 }
 
-impl<'a> LockerNew<'a> {
-    pub fn new(request: StoreCardRequest, hash_id: &'a str, enc_data: Encrypted) -> Self {
+impl LockerNew {
+    pub fn new(request: StoreCardRequest, hash_id: &str, enc_data: Encrypted) -> Self {
         Self {
             locker_id: request
                 .requestor_card_reference
@@ -134,27 +164,108 @@ impl<'a> LockerNew<'a> {
             merchant_id: request.merchant_id,
             customer_id: request.merchant_customer_id,
             enc_data,
-            hash_id,
+            created_at: crate::utils::date_time::now(),
+            hash_id: hash_id.to_string(),
             ttl: *request.ttl,
+            // Placeholder — overwritten by `set_storage_scheme` when locker joins KV.
+            updated_by: Some(StorageScheme::PostgresOnly),
+        }
+    }
+}
+
+impl From<LockerNew> for Locker {
+    fn from(value: LockerNew) -> Self {
+        Self {
+            locker_id: value.locker_id,
+            merchant_id: value.merchant_id,
+            customer_id: value.customer_id,
+            data: value.enc_data.into(),
+            created_at: value.created_at,
+            hash_id: value.hash_id,
+            ttl: value.ttl,
+            updated_by: value.updated_by,
         }
     }
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable)]
+#[diesel(table_name = schema::reverse_lookup, primary_key(lookup_id))]
+#[expect(dead_code)]
+pub(crate) struct ReverseLookup {
+    pub lookup_id: String,
+    pub secondary_key: String,
+    pub partition_key: String,
+    pub source: String,
+    pub updated_by: String,
+}
+
+#[cfg(feature = "kv")]
+impl ReverseLookup {
+    pub(crate) fn get_partition_key(&self) -> kv::PartitionKey<'_> {
+        kv::PartitionKey::CombinationKey {
+            combination: &self.partition_key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Insertable)]
+#[diesel(table_name = schema::reverse_lookup)]
+pub(crate) struct ReverseLookupNew {
+    pub lookup_id: String,
+    pub secondary_key: String,
+    pub partition_key: String,
+    pub source: String,
+    pub updated_by: String,
+}
+
+impl From<ReverseLookupNew> for ReverseLookup {
+    fn from(value: ReverseLookupNew) -> Self {
+        Self {
+            lookup_id: value.lookup_id,
+            secondary_key: value.secondary_key,
+            partition_key: value.partition_key,
+            source: value.source,
+            updated_by: value.updated_by,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::hash_table)]
 pub struct HashTable {
     pub id: i32,
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
     pub created_at: time::PrimitiveDateTime,
+    pub updated_by: Option<StorageScheme>,
 }
 
-#[derive(Debug, Clone, Identifiable, Queryable)]
+impl HashTable {
+    pub const CACHE_NAME: &'static str = "hash_table";
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, serde::Serialize, serde::Deserialize)]
 #[diesel(table_name = schema::fingerprint)]
 pub struct Fingerprint {
     pub id: i32,
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: Option<StorageScheme>,
+}
+
+impl From<FingerprintTableNew> for Fingerprint {
+    fn from(value: FingerprintTableNew) -> Self {
+        Self {
+            id: 0,
+            fingerprint_hash: value.fingerprint_hash,
+            fingerprint_id: value.fingerprint_id,
+            updated_by: value.updated_by,
+        }
+    }
+}
+
+impl Fingerprint {
+    pub const CACHE_NAME: &'static str = "fingerprint";
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -165,6 +276,11 @@ pub struct Entity {
     pub entity_id: String,
     pub enc_key_id: String,
     pub created_at: time::PrimitiveDateTime,
+}
+
+#[cfg(feature = "external_key_manager")]
+impl Entity {
+    pub const CACHE_NAME: &'static str = "entity";
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Clone)]
@@ -194,11 +310,12 @@ impl std::ops::Deref for CardNumber {
     }
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::fingerprint)]
-pub(super) struct FingerprintTableNew {
+pub(crate) struct FingerprintTableNew {
     pub fingerprint_hash: Secret<Vec<u8>>,
     pub fingerprint_id: Secret<String>,
+    pub updated_by: Option<StorageScheme>,
 }
 
 #[cfg(feature = "external_key_manager")]
@@ -209,11 +326,25 @@ pub(super) struct EntityTableNew {
     pub enc_key_id: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = schema::hash_table)]
-pub(super) struct HashTableNew {
+pub(crate) struct HashTableNew {
     pub hash_id: String,
-    pub data_hash: Vec<u8>,
+    pub data_hash: Secret<Vec<u8>>,
+    pub created_at: time::PrimitiveDateTime,
+    pub updated_by: Option<StorageScheme>,
+}
+
+impl From<HashTableNew> for HashTable {
+    fn from(value: HashTableNew) -> Self {
+        Self {
+            id: 0,
+            hash_id: value.hash_id,
+            data_hash: value.data_hash,
+            created_at: value.created_at,
+            updated_by: value.updated_by,
+        }
+    }
 }
 
 ///
@@ -224,6 +355,30 @@ pub(super) struct HashTableNew {
 #[repr(transparent)]
 pub struct Encrypted {
     inner: Secret<Vec<u8>>,
+}
+
+impl serde::Serialize for Encrypted {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer
+            .serialize_str(&base64::engine::general_purpose::STANDARD.encode(self.inner.peek()))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Encrypted {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+        base64::engine::general_purpose::STANDARD
+            .decode(value)
+            .map(Secret::new)
+            .map(Self::new)
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 impl Encrypted {
@@ -338,5 +493,143 @@ impl<'a> StorageEncryption for MerchantNew<'a> {
             merchant_id: self.merchant_id,
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn primitive_datetime(second: u8, nanosecond: u32) -> Option<time::PrimitiveDateTime> {
+        Some(time::PrimitiveDateTime::new(
+            time::Date::from_calendar_date(1970, time::Month::January, 1).ok()?,
+            time::Time::from_hms_nano(0, 0, second, nanosecond).ok()?,
+        ))
+    }
+
+    #[test]
+    fn encrypted_serializes_as_base64_string() {
+        let encrypted = Encrypted::new(Secret::new(vec![1, 2, 3, 254, 255]));
+
+        let serialized = serde_json::to_string(&encrypted);
+        assert!(serialized.is_ok(), "failed to serialize encrypted data");
+        let Ok(serialized) = serialized else { return };
+
+        assert_eq!(serialized, "\"AQID/v8=\"");
+    }
+
+    #[test]
+    fn encrypted_deserializes_from_base64_string() {
+        let deserialized = serde_json::from_str::<Encrypted>("\"AQID/v8=\"");
+        assert!(deserialized.is_ok(), "failed to deserialize encrypted data");
+        let Ok(deserialized) = deserialized else {
+            return;
+        };
+
+        assert_eq!(deserialized.get_inner().peek(), &vec![1, 2, 3, 254, 255]);
+    }
+
+    #[test]
+    fn locker_inner_serializes_timestamps_as_iso8601_strings() {
+        let created_at = primitive_datetime(1, 123_456_789);
+        assert!(created_at.is_some(), "failed to build created_at");
+        let Some(created_at) = created_at else { return };
+
+        let ttl = primitive_datetime(2, 654_321_987);
+        assert!(ttl.is_some(), "failed to build ttl");
+        let Some(ttl) = ttl else { return };
+
+        let locker = LockerInner {
+            id: 1,
+            locker_id: Secret::new("locker_id".to_string()),
+            merchant_id: "merchant_id".to_string(),
+            customer_id: "customer_id".to_string(),
+            enc_data: Encrypted::new(Secret::new(vec![1, 2, 3])),
+            created_at,
+            hash_id: "hash_id".to_string(),
+            ttl: Some(ttl),
+            updated_by: Some(StorageScheme::RedisKv),
+        };
+
+        let serialized = serde_json::to_value(&locker);
+        assert!(serialized.is_ok(), "failed to serialize locker");
+        let Ok(serialized) = serialized else { return };
+
+        assert_eq!(
+            serialized["created_at"],
+            serde_json::json!("1970-01-01T00:00:01.123456789Z")
+        );
+        assert_eq!(
+            serialized["ttl"],
+            serde_json::json!("1970-01-01T00:00:02.654321987Z")
+        );
+    }
+
+    #[test]
+    fn locker_inner_deserializes_timestamps_from_iso8601_strings() {
+        let serialized = serde_json::json!({
+            "id": 1,
+            "locker_id": "locker_id",
+            "merchant_id": "merchant_id",
+            "customer_id": "customer_id",
+            "enc_data": "AQID",
+            "created_at": "1970-01-01T00:00:01.123456789Z",
+            "hash_id": "hash_id",
+            "ttl": "1970-01-01T00:00:02.654321987Z",
+            "updated_by": "redis_kv"
+        });
+
+        let deserialized = serde_json::from_value::<LockerInner>(serialized);
+        assert!(deserialized.is_ok(), "failed to deserialize locker");
+        let Ok(deserialized) = deserialized else {
+            return;
+        };
+
+        let created_at = primitive_datetime(1, 123_456_789);
+        assert!(created_at.is_some(), "failed to build created_at");
+        let Some(created_at) = created_at else { return };
+
+        let ttl = primitive_datetime(2, 654_321_987);
+        assert!(ttl.is_some(), "failed to build ttl");
+        let Some(ttl) = ttl else { return };
+
+        assert_eq!(deserialized.created_at, created_at);
+        assert_eq!(deserialized.ttl, Some(ttl));
+    }
+
+    #[test]
+    fn locker_inner_round_trips_timestamps_without_precision_loss() {
+        let created_at = primitive_datetime(1, 123_456_789);
+        assert!(created_at.is_some(), "failed to build created_at");
+        let Some(created_at) = created_at else { return };
+
+        let ttl = primitive_datetime(2, 654_321_987);
+        assert!(ttl.is_some(), "failed to build ttl");
+        let Some(ttl) = ttl else { return };
+
+        let locker = LockerInner {
+            id: 1,
+            locker_id: Secret::new("locker_id".to_string()),
+            merchant_id: "merchant_id".to_string(),
+            customer_id: "customer_id".to_string(),
+            enc_data: Encrypted::new(Secret::new(vec![1, 2, 3])),
+            created_at,
+            hash_id: "hash_id".to_string(),
+            ttl: Some(ttl),
+            updated_by: Some(StorageScheme::RedisKv),
+        };
+
+        let serialized = serde_json::to_string(&locker);
+        assert!(serialized.is_ok(), "failed to serialize locker");
+        let Ok(serialized) = serialized else { return };
+
+        let deserialized = serde_json::from_str::<LockerInner>(&serialized);
+        assert!(deserialized.is_ok(), "failed to deserialize locker");
+        let Ok(deserialized) = deserialized else {
+            return;
+        };
+
+        assert_eq!(deserialized.created_at, locker.created_at);
+        assert_eq!(deserialized.ttl, locker.ttl);
     }
 }

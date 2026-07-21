@@ -20,6 +20,7 @@ use crate::{
     },
     error::{self, ContainerError, NotFoundError},
     logger,
+    observability::metrics,
     routes::health,
     storage::{EntityInterface, types::Entity},
 };
@@ -38,6 +39,7 @@ pub async fn create_key_in_key_manager(
 
     let response = call_encryption_service::<_, error::DataKeyCreationError>(
         tenant_app_state,
+        "key_create",
         url,
         Method::Post,
         request_body,
@@ -65,6 +67,7 @@ pub async fn transfer_key_to_key_manager(
 
     let response = call_encryption_service::<_, error::DataKeyTransferError>(
         tenant_app_state,
+        "key_transfer",
         url,
         Method::Post,
         request_body,
@@ -90,6 +93,7 @@ pub async fn encrypt_data_using_key_manager(
 
     let response = call_encryption_service::<_, error::DataEncryptionError>(
         tenant_app_state,
+        "data_encrypt",
         url,
         Method::Post,
         request_body,
@@ -115,6 +119,7 @@ pub async fn decrypt_data_using_key_manager(
 
     let response = call_encryption_service::<_, error::DataDecryptionError>(
         tenant_app_state,
+        "data_decrypt",
         url,
         Method::Post,
         request_body,
@@ -145,6 +150,7 @@ pub async fn health_check_keymanager(
 
     call_encryption_service::<_, error::KeyManagerHealthCheckError>(
         tenant_app_state,
+        "health",
         url,
         Method::Get,
         (),
@@ -156,6 +162,7 @@ pub async fn health_check_keymanager(
 
 pub async fn call_encryption_service<T, E>(
     tenant_app_state: &TenantAppState,
+    operation: &'static str,
     url: String,
     method: Method,
     request_body: T,
@@ -168,7 +175,7 @@ where
 
     let response = tenant_app_state
         .api_client
-        .send_request::<_>(url, headers, method, request_body)
+        .send_request(operation, url, headers, method, request_body)
         .await?;
 
     Ok(response)
@@ -200,7 +207,14 @@ impl super::KeyProvider for ExternalKeyManager {
         let entity = tenant_app_state.db.find_by_entity_id(&entity_id).await;
 
         let entity = match entity {
-            Ok(entity) => Ok(entity),
+            Ok(entity) => {
+                crate::domain::record_get_or_insert_outcome(
+                    metrics::Resource::Entity,
+                    metrics::DomainGetOrInsertOutcome::FoundExisting,
+                );
+                Ok(entity)
+            }
+
             Err(inner_err) => match inner_err.is_not_found() {
                 // DEPRECATED lazy provisioning: clients should call `POST /entity`
                 // explicitly. Once this warning stops appearing the fallback can be removed and
@@ -217,17 +231,41 @@ impl super::KeyProvider for ExternalKeyManager {
                     )
                     .await?;
 
-                    Ok(tenant_app_state
+                    match tenant_app_state
                         .db
                         .insert_entity(
                             &entity_id,
                             &external_keymanager_resp.identifier.get_identifier(),
                         )
-                        .await?)
+                        .await
+                    {
+                        Ok(entity) => {
+                            crate::domain::record_get_or_insert_outcome(
+                                metrics::Resource::Entity,
+                                metrics::DomainGetOrInsertOutcome::Created,
+                            );
+                            Ok(entity)
+                        }
+                        Err(err) => {
+                            crate::domain::record_get_or_insert_outcome(
+                                metrics::Resource::Entity,
+                                metrics::DomainGetOrInsertOutcome::Error,
+                            );
+                            Err::<_, ContainerError<error::ApiError>>(err.into())
+                        }
+                    }
                 }
-                false => Err::<_, ContainerError<error::ApiError>>(inner_err.into()),
+
+                false => {
+                    crate::domain::record_get_or_insert_outcome(
+                        metrics::Resource::Entity,
+                        metrics::DomainGetOrInsertOutcome::Error,
+                    );
+                    Err::<_, ContainerError<error::ApiError>>(inner_err.into())
+                }
             },
         };
+
         Ok(entity
             .map(ExternalCryptoManager::from_entity)
             .map(Box::new)?)

@@ -10,3 +10,13 @@ pub mod hash;
 pub mod locker;
 pub mod merchant;
 pub mod vault;
+
+pub(crate) fn record_get_or_insert_outcome(
+    resource: crate::observability::metrics::Resource,
+    outcome: crate::observability::metrics::DomainGetOrInsertOutcome,
+) {
+    crate::observability::metrics::DOMAIN_GET_OR_INSERT_COUNT.add(
+        1,
+        crate::metric_attributes!(("resource", resource), ("outcome", outcome)),
+    );
+}

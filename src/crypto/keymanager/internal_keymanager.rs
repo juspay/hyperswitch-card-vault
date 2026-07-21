@@ -21,8 +21,14 @@ impl super::KeyProvider for InternalKeyManager {
         tenant_app_state: &TenantAppState,
         entity_id: String,
     ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
-        let master_encryption =
-            GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
+        let master_encryption = GcmAes256::new(
+            tenant_app_state
+                .config
+                .tenant_secrets
+                .master_key
+                .clone()
+                .expose(),
+        );
 
         let merchant = tenant_app_state
             .db
@@ -39,8 +45,14 @@ impl super::KeyProvider for InternalKeyManager {
         tenant_app_state: &TenantAppState,
         entity_id: String,
     ) -> Result<Box<dyn CryptoOperationsManager>, ContainerError<error::ApiError>> {
-        let master_encryption =
-            GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
+        let master_encryption = GcmAes256::new(
+            tenant_app_state
+                .config
+                .tenant_secrets
+                .master_key
+                .clone()
+                .expose(),
+        );
 
         // DEPRECATED lazy provisioning: read first so the deprecation signal only fires when the
         // add flow actually has to create the merchant. Clients should call `POST /entity`
@@ -73,8 +85,14 @@ impl super::KeyProvider for InternalKeyManager {
         tenant_app_state: &TenantAppState,
         entity_id: String,
     ) -> Result<CreatedEntity, ContainerError<error::ApiError>> {
-        let master_encryption =
-            GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
+        let master_encryption = GcmAes256::new(
+            tenant_app_state
+                .config
+                .tenant_secrets
+                .master_key
+                .clone()
+                .expose(),
+        );
 
         let merchant =
             merchant::find_or_create(tenant_app_state, &entity_id, &master_encryption).await?;

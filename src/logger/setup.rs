@@ -81,7 +81,7 @@ fn get_logger_config(
         ]),
         top_level_keys: HashSet::new(),
         persistent_keys: HashSet::new(),
-        log_span_lifecycles: true,
+        log_span_lifecycles: false,
         additional_fields_placement: AdditionalFieldsPlacement::TopLevel,
         file_config: None,
         console_config,

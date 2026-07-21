@@ -59,12 +59,20 @@ impl TenantAppState {
         #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
+        #[cfg(feature = "redis")]
+        let tenant_redis = shared_redis
+            .map(|store| store.clone_with_prefix(tenant_config.redis_key_prefix.trim()));
+
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
             &global_config.database,
             global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
             runtime_config_manager,
+            #[cfg(feature = "kv")]
+            tenant_redis.clone(),
+            #[cfg(feature = "kv")]
+            &global_config.kv,
         )
         .await
         .map(
@@ -79,7 +87,7 @@ impl TenantAppState {
             db,
             api_client,
             #[cfg(feature = "redis")]
-            redis: shared_redis.map(|store| store.clone_with_prefix(&tenant_config.tenant_id)),
+            redis: tenant_redis,
             config: tenant_config,
         })
     }
@@ -146,7 +154,13 @@ async fn shutdown_signal() {
 ///
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
+    metrics_handle: observability::MetricsHandle,
 ) -> Result<(), error::ConfigurationError> {
+    // Warm + periodically refresh the runtime-config cache. No-op when disabled.
+    let _prefetch_handle = global_app_state
+        .runtime_config_manager
+        .spawn_prefetch_task();
+
     let socket_addr = std::net::SocketAddr::new(
         global_app_state.global_config.server.host.parse()?,
         global_app_state.global_config.server.port,
@@ -218,7 +232,6 @@ pub async fn server_builder(
 
     router = router.nest("/health", routes::health::serve());
 
-    let metrics_handle = observability::init_metrics(&global_app_state.global_config.metrics);
     if metrics_handle.provider().is_some() {
         router = router.layer(observability::HttpRequestMetricsLayer);
     }
@@ -231,6 +244,16 @@ pub async fn server_builder(
     } = &metrics_handle
     {
         observability::start_prometheus_metrics_server(host, *port, registry.clone())?;
+    }
+
+    if metrics_handle.provider().is_some() {
+        observability::spawn_bg_metrics_collector(
+            &global_app_state,
+            global_app_state
+                .global_config
+                .metrics
+                .background_metrics_collection_interval_secs(),
+        );
     }
 
     router = router.layer(
