@@ -70,6 +70,13 @@ impl super::KeyProvider for InternalKeyManager {
                     deprecation = "add_flow_auto_create",
                     "merchant auto-created during add flow; clients should call POST /entity explicitly"
                 );
+                crate::observability::metrics::ENTITY_IMPLICIT_CREATE_COUNT.add(
+                    1,
+                    crate::metric_attributes!((
+                        "key_manager",
+                        crate::observability::metrics::KeyManagerKind::Internal
+                    )),
+                );
                 merchant::find_or_create(tenant_app_state, &entity_id, &master_encryption).await?
             }
             Err(err) => return Err(err.into()),

@@ -225,6 +225,13 @@ impl super::KeyProvider for ExternalKeyManager {
                         deprecation = "add_flow_auto_create",
                         "entity auto-created during add flow; clients should call POST /entity explicitly"
                     );
+                    metrics::ENTITY_IMPLICIT_CREATE_COUNT.add(
+                        1,
+                        crate::metric_attributes!((
+                            "key_manager",
+                            metrics::KeyManagerKind::External
+                        )),
+                    );
                     let external_keymanager_resp = external_keymanager::create_key_in_key_manager(
                         tenant_app_state,
                         DataKeyCreateRequest::create_request(),
