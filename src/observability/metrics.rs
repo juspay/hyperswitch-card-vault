@@ -211,7 +211,6 @@ counter_metric!(
     pub(crate) HTTP_SERVER_REQUEST_COUNT, CARD_VAULT_METER,
     name: "http.server.request.count",
     description: "Number of HTTP server requests received",
-    unit: "1",
 );
 histogram_metric_f64!(
     pub(crate) HTTP_SERVER_REQUEST_DURATION, CARD_VAULT_METER,
@@ -224,7 +223,6 @@ up_down_counter_metric!(
     pub(crate) HTTP_SERVER_ACTIVE_REQUESTS, CARD_VAULT_METER,
     name: "http.server.active_requests",
     description: "Number of HTTP server requests currently in flight",
-    unit: "1",
 );
 
 // JWE/JWS middleware
@@ -243,7 +241,6 @@ counter_metric!(
     pub(crate) HTTP_SERVER_RATE_LIMITED_REQUEST_COUNT, CARD_VAULT_METER,
     name: "http.server.rate_limited_request.count",
     description: "Number of HTTP server requests rejected by rate limiting",
-    unit: "1",
 );
 
 // Health check
@@ -260,7 +257,6 @@ counter_metric!(
     pub(crate) DATABASE_QUERY_COUNT, CARD_VAULT_METER,
     name: "database.query.count",
     description: "Number of database query attempts",
-    unit: "1",
 );
 histogram_metric_f64!(
     pub(crate) DATABASE_QUERY_DURATION, CARD_VAULT_METER,
@@ -280,19 +276,16 @@ gauge_metric!(
     pub(crate) DATABASE_POOL_SIZE, CARD_VAULT_METER,
     name: "database.pool.size",
     description: "Total number of connections in the database pool",
-    unit: "1",
 );
 gauge_metric!(
     pub(crate) DATABASE_POOL_AVAILABLE, CARD_VAULT_METER,
     name: "database.pool.available",
     description: "Number of available connections in the database pool",
-    unit: "1",
 );
 gauge_metric!(
     pub(crate) DATABASE_POOL_WAITING, CARD_VAULT_METER,
     name: "database.pool.waiting",
     description: "Number of callers waiting for a database connection",
-    unit: "1",
 );
 
 // External HTTP client
@@ -300,7 +293,6 @@ counter_metric!(
     pub(crate) EXTERNAL_HTTP_REQUEST_COUNT, CARD_VAULT_METER,
     name: "external_http.request.count",
     description: "Number of external HTTP request attempts",
-    unit: "1",
 );
 histogram_metric_f64!(
     pub(crate) EXTERNAL_HTTP_REQUEST_DURATION, CARD_VAULT_METER,
@@ -316,28 +308,24 @@ counter_metric!(
     pub(crate) CACHE_LOOKUP_COUNT, CARD_VAULT_METER,
     name: "cache.lookup.count",
     description: "Number of cache lookup attempts",
-    unit: "1",
 );
 #[cfg(feature = "caching")]
 counter_metric!(
     pub(crate) CACHE_INSERT_COUNT, CARD_VAULT_METER,
     name: "cache.insert.count",
     description: "Number of cache insert attempts",
-    unit: "1",
 );
 #[cfg(feature = "caching")]
 counter_metric!(
     pub(crate) CACHE_REMOVAL_COUNT, CARD_VAULT_METER,
     name: "cache.removal.count",
     description: "Number of cache removal events",
-    unit: "1",
 );
 #[cfg(feature = "caching")]
 gauge_metric!(
     pub(crate) CACHE_ENTRY_COUNT, CARD_VAULT_METER,
     name: "cache.entry.count",
     description: "Current number of cache entries",
-    unit: "1",
 );
 
 // TTL-based cleanup
@@ -345,13 +333,11 @@ counter_metric!(
     pub(crate) TTL_EXPIRED_DATA_ENCOUNTERED_COUNT, CARD_VAULT_METER,
     name: "ttl.expired_data_encountered.count",
     description: "Number of requests that encountered data with expired TTL",
-    unit: "1",
 );
 counter_metric!(
     pub(crate) TTL_DELETION_COUNT, CARD_VAULT_METER,
     name: "ttl.deletion.count",
     description: "Number of background TTL-based deletions",
-    unit: "1",
 );
 
 // Domain
@@ -359,7 +345,6 @@ counter_metric!(
     pub(crate) DOMAIN_GET_OR_INSERT_COUNT, CARD_VAULT_METER,
     name: "domain.get_or_insert.count",
     description: "Number of domain get-or-insert workflow outcomes",
-    unit: "1",
 );
 
 // Runtime config
@@ -377,7 +362,6 @@ counter_metric!(
     pub(crate) KV_OPERATION_COUNT, CARD_VAULT_METER,
     name: "kv.operation.count",
     description: "Number of KV operation attempts",
-    unit: "1",
 );
 #[cfg(feature = "kv")]
 histogram_metric_f64!(
@@ -392,7 +376,6 @@ counter_metric!(
     pub(crate) KV_DRAINER_PUSH_COUNT, CARD_VAULT_METER,
     name: "kv.drainer.push.count",
     description: "Number of drainer stream push attempts",
-    unit: "1",
 );
 #[cfg(feature = "kv")]
 histogram_metric_f64!(
@@ -407,7 +390,6 @@ counter_metric!(
     pub(crate) KV_CACHE_MISS_COUNT, CARD_VAULT_METER,
     name: "kv.cache_miss.count",
     description: "Redis cache misses that fell back to Postgres",
-    unit: "1",
 );
 
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
