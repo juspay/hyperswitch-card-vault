@@ -4,10 +4,11 @@ use crate::{
     app::TenantAppState,
     crypto::{
         encryption_manager::{encryption_interface::Encryption, managers::aes::GcmAes256},
-        keymanager::CryptoOperationsManager,
+        keymanager::{CreatedEntity, CryptoOperationsManager},
     },
     domain::merchant,
-    error::{self, ContainerError},
+    error::{self, ContainerError, NotFoundError},
+    logger,
     storage::MerchantInterface,
 };
 
@@ -53,14 +54,60 @@ impl super::KeyProvider for InternalKeyManager {
                 .expose(),
         );
 
-        let entity =
-            merchant::find_or_create(tenant_app_state, &entity_id, &master_encryption).await;
+        // DEPRECATED lazy provisioning: read first so the deprecation signal only fires when the
+        // add flow actually has to create the merchant. Clients should call `POST /entity`
+        // explicitly; once this warning stops appearing the fallback can be removed and the add
+        // flow switched to `find_by_entity_id`.
+        let merchant = match tenant_app_state
+            .db
+            .find_by_merchant_id(&entity_id, &master_encryption)
+            .await
+        {
+            Ok(merchant) => merchant,
+            Err(err) if err.is_not_found() => {
+                logger::warn!(
+                    entity_id = %entity_id,
+                    deprecation = "add_flow_auto_create",
+                    "merchant auto-created during add flow; clients should call POST /entity explicitly"
+                );
+                crate::observability::metrics::ENTITY_IMPLICIT_CREATE_COUNT.add(
+                    1,
+                    crate::metric_attributes!((
+                        "key_manager",
+                        crate::observability::metrics::KeyManagerKind::Internal
+                    )),
+                );
+                merchant::find_or_create(tenant_app_state, &entity_id, &master_encryption).await?
+            }
+            Err(err) => return Err(err.into()),
+        };
 
-        let response = entity
-            .map(|inner| InternalCryptoManager::from_secret_key(inner.enc_key))
-            .map(Box::new)?;
+        Ok(Box::new(InternalCryptoManager::from_secret_key(
+            merchant.enc_key,
+        )))
+    }
 
-        Ok(response)
+    async fn create_entity(
+        &self,
+        tenant_app_state: &TenantAppState,
+        entity_id: String,
+    ) -> Result<CreatedEntity, ContainerError<error::ApiError>> {
+        let master_encryption = GcmAes256::new(
+            tenant_app_state
+                .config
+                .tenant_secrets
+                .master_key
+                .clone()
+                .expose(),
+        );
+
+        let merchant =
+            merchant::find_or_create(tenant_app_state, &entity_id, &master_encryption).await?;
+
+        Ok(CreatedEntity {
+            entity_id: merchant.merchant_id,
+            created_at: merchant.created_at,
+        })
     }
 }
 

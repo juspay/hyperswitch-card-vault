@@ -347,6 +347,13 @@ counter_metric!(
     description: "Number of domain get-or-insert workflow outcomes",
 );
 
+// Entity provisioning
+counter_metric!(
+    pub(crate) ENTITY_IMPLICIT_CREATE_COUNT, CARD_VAULT_METER,
+    name: "entity.implicit_create.count",
+    description: "Number of key-holder records auto-created during the add flow (deprecated lazy provisioning)",
+);
+
 // Runtime config
 histogram_metric_f64!(
     pub(crate) RUNTIME_CONFIG_FETCH_DURATION, CARD_VAULT_METER,
@@ -421,4 +428,18 @@ pub(crate) enum TtlDeletionOutcome {
     Failed,
 }
 
-crate::impl_metric_value_from!(Resource, DomainGetOrInsertOutcome, TtlDeletionOutcome);
+/// Which key manager backed an operation, used as a metric attribute.
+#[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub(crate) enum KeyManagerKind {
+    Internal,
+    #[cfg(feature = "external_key_manager")]
+    External,
+}
+
+crate::impl_metric_value_from!(
+    Resource,
+    DomainGetOrInsertOutcome,
+    TtlDeletionOutcome,
+    KeyManagerKind
+);
