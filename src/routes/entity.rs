@@ -33,8 +33,8 @@ impl Validation for CreateEntityRequest {
 #[derive(Debug, Serialize)]
 pub struct CreateEntityResponse {
     pub entity_id: String,
-    /// ISO 8601 / RFC 3339, UTC, millisecond precision (e.g. `2026-06-24T19:27:37.552Z`).
-    #[serde(serialize_with = "crate::utils::date_time::serialize")]
+    /// ISO 8601 UTC timestamp, using the shared locker timestamp format.
+    #[serde(serialize_with = "crate::utils::primitive_datetime_serde::iso8601::serialize")]
     pub created_at: time::PrimitiveDateTime,
 }
 

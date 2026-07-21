@@ -65,7 +65,7 @@ hyperswitch_masking = { version = "0.0.1", features = ["diesel", "serde"] }
 hyperswitch_redis_interface = { git = "https://github.com/juspay/hyperswitch", tag = "2026.07.17.0", package = "redis_interface", default-features = false, features = ["fred", "metrics"], optional = true }
 ring = { version = "0.17.14", features = ["std"] }
 hex = "0.4.3"
-time = { version = "0.3.45", features = ["formatting", "macros"] }
+time = { version = "0.3.45" }
 uuid = { version = "1.20.0", features = ["v7", "fast-rng"] }
 moka = { version = "0.12.8", features = ["future"], optional = true }
 reqwest = { version = "0.12.7", features = ["json", "__rustls"] }
