@@ -12,7 +12,7 @@ use super::{
     partition_key::{KvStorePartition, PartitionKey},
     scheme::KvState,
     serializable_query::SerializableQuery,
-    wrapper::{KvBehaviour, KvInsertResult, RedisBackend},
+    wrapper::{KvBehaviour, KvFindResult, KvInsertResult, RedisBackend},
 };
 use crate::{
     error::{
@@ -267,13 +267,15 @@ where
             // With this implementation, Hot keys may never recover out of KV.
             let partition_key_str = partition_key.to_string();
             let result = RedisBackend::new(store)
-                .find::<M::DieselEntity>(partition_key.clone())
+                .find_with_status::<M::DieselEntity>(partition_key.clone())
                 .await;
 
             match result {
-                // return the found redis item so that if the caller is doing update operation, updates can be applied.
-                Ok(v) => Ok((StorageScheme::RedisKv, Some(v))),
-                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                // in case of value Present and value Deleted response, stick to KV mode
+                // in order to cover for drainer delay.
+                Ok(KvFindResult::Present(v)) => Ok((StorageScheme::RedisKv, Some(v))),
+                Ok(KvFindResult::Deleted) => Ok((StorageScheme::RedisKv, None)),
+                Ok(KvFindResult::Absent) => {
                     crate::observability::metrics::KV_CACHE_MISS_COUNT
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
                     Ok((StorageScheme::PostgresOnly, None))

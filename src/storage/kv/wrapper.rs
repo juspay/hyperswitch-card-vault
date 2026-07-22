@@ -122,6 +122,12 @@ pub(crate) enum KvInsertResult {
     AlreadyExists,
 }
 
+pub(crate) enum KvFindResult<V> {
+    Absent,
+    Deleted,
+    Present(V),
+}
+
 #[derive(Clone, Copy)]
 enum KvOperationKind {
     Insert,
@@ -144,6 +150,8 @@ impl std::fmt::Display for KvOperationKind {
 pub(crate) trait KvBehaviour {
     type Error: error_stack::Context;
 
+    fn not_found_error() -> Self::Error;
+
     async fn insert<V>(
         &self,
         partition_key: PartitionKey<'_>,
@@ -154,6 +162,21 @@ pub(crate) trait KvBehaviour {
         V: serde::Serialize + Debug + KvStorePartition + Sync;
 
     async fn find<V>(&self, partition_key: PartitionKey<'_>) -> error_stack::Result<V, Self::Error>
+    where
+        V: de::DeserializeOwned,
+    {
+        match self.find_with_status(partition_key).await? {
+            KvFindResult::Present(value) => Ok(value),
+            KvFindResult::Deleted | KvFindResult::Absent => {
+                Err(error_stack::Report::new(Self::not_found_error()))
+            }
+        }
+    }
+
+    async fn find_with_status<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+    ) -> error_stack::Result<KvFindResult<V>, Self::Error>
     where
         V: de::DeserializeOwned;
 
@@ -197,6 +220,10 @@ where
 {
     type Error = RedisError;
 
+    fn not_found_error() -> Self::Error {
+        RedisError::NotFound
+    }
+
     async fn insert<V>(
         &self,
         partition_key: PartitionKey<'_>,
@@ -234,7 +261,10 @@ where
         .await
     }
 
-    async fn find<V>(&self, partition_key: PartitionKey<'_>) -> error_stack::Result<V, Self::Error>
+    async fn find_with_status<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+    ) -> error_stack::Result<KvFindResult<V>, Self::Error>
     where
         V: de::DeserializeOwned,
     {
@@ -244,7 +274,7 @@ where
             let redis_key = key.clone().into();
 
             let stored_value = redis_conn
-                .get_hash_field_and_deserialize::<KvStoredValue<V>>(
+                .get_hash_field_and_deserialize::<Option<KvStoredValue<V>>>(
                     &redis_key,
                     &key,
                     std::any::type_name::<KvStoredValue<V>>(),
@@ -253,8 +283,9 @@ where
                 .bridge()?;
 
             match stored_value {
-                KvStoredValue::Tombstone(_) => Err(RedisError::NotFound.into()),
-                KvStoredValue::Value(value) => Ok(value),
+                Some(KvStoredValue::Tombstone(_)) => Ok(KvFindResult::Deleted),
+                Some(KvStoredValue::Value(value)) => Ok(KvFindResult::Present(value)),
+                None => Ok(KvFindResult::Absent),
             }
         })
         .await
