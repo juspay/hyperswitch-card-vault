@@ -288,7 +288,8 @@ impl super::LockerInterface for Storage {
                 customer_id: customer_id.to_string(),
             };
 
-            return super::kv::delete_resource_by_id::<types::Locker>(self, pk).await;
+            return super::kv::delete_resource_by_id_with_reverse_lookup::<types::Locker>(self, pk)
+                .await;
         }
 
         #[cfg(not(feature = "kv"))]
@@ -652,58 +653,114 @@ impl super::ReverseLookupInterface for Storage {
         &self,
         lookup_id: &str,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let primary_key = super::kv::impls::reverse_lookup::ReverseLookupPrimaryKey {
+                lookup_id: lookup_id.to_string(),
+            };
 
-        let query =
-            types::ReverseLookup::table().filter(schema::reverse_lookup::lookup_id.eq(lookup_id));
-
-        let pool = conn.pool();
-        let operation = DbOperation::FindOne;
-        super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
-            &query, operation, pool,
-        );
-
-        let output: Result<types::ReverseLookup, diesel::result::Error> =
-            super::record_db_query::<<types::ReverseLookup as HasTable>::Table, _, _, _>(
-                query.get_result(conn.get_mut()),
-                operation,
-                pool,
-            )
-            .await;
-
-        match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
-                }
-                _ => Err(err).change_error(error::StorageError::FindError),
-            },
-            Ok(reverse_lookup) => Ok(reverse_lookup),
+            return super::kv::find_resource_by_id::<types::ReverseLookup>(self, primary_key).await;
         }
-        .map_err(From::from)
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+            let query = types::ReverseLookup::table()
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id));
+
+            let pool = conn.pool();
+            let operation = DbOperation::FindOne;
+            super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output: types::ReverseLookup =
+                super::record_db_query::<<types::ReverseLookup as HasTable>::Table, _, _, _>(
+                    query.get_result(conn.get_mut()),
+                    operation,
+                    pool,
+                )
+                .await?;
+            Ok(output)
+        }
     }
 
     async fn insert_reverse_lookup(
         &self,
         new: types::ReverseLookupNew,
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let lookup_id = new.lookup_id.clone();
+            let partition_key = super::kv::PartitionKey::ReverseLookup {
+                lookup_id: &lookup_id,
+            };
 
-        let query = diesel::insert_into(types::ReverseLookup::table()).values(new);
+            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(
+                self,
+                new,
+                partition_key,
+            ))
+            .await;
+        }
 
-        let pool = conn.pool();
-        let operation = DbOperation::Insert;
-        super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
-            &query, operation, pool,
-        );
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
 
-        super::record_db_query::<<types::ReverseLookup as HasTable>::Table, _, _, _>(
-            query.get_result(conn.get_mut()),
-            operation,
-            pool,
-        )
-        .await
-        .change_error(error::StorageError::InsertError)
-        .map_err(ContainerError::from)
+            let query = diesel::insert_into(types::ReverseLookup::table()).values(new);
+
+            let pool = conn.pool();
+            let operation = DbOperation::Insert;
+            super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let reverse_lookup = super::record_db_query::<
+                <types::ReverseLookup as HasTable>::Table,
+                _,
+                _,
+                _,
+            >(query.get_result(conn.get_mut()), operation, pool)
+            .await?;
+            Ok(reverse_lookup)
+        }
+    }
+
+    async fn delete_reverse_lookup(
+        &self,
+        lookup_id: &str,
+    ) -> Result<usize, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            return Box::pin(super::kv::delete_resource_by_id::<types::ReverseLookup>(
+                self,
+                super::kv::impls::reverse_lookup::ReverseLookupPrimaryKey {
+                    lookup_id: lookup_id.to_string(),
+                },
+            ))
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let mut conn = self.get_conn().await?;
+            let query = diesel::delete(types::ReverseLookup::table())
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id));
+
+            let pool = conn.pool();
+            let operation = DbOperation::Delete;
+            super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output = super::record_db_query_rows::<
+                <types::ReverseLookup as HasTable>::Table,
+                _,
+                _,
+            >(query.execute(conn.get_mut()), operation, pool)
+            .await?;
+            Ok(output)
+        }
     }
 }

@@ -112,6 +112,8 @@ pub enum ReverseLookupDBError {
     DBInsertError,
     #[error("Reverse lookup record not found in database")]
     NotFoundError,
+    #[error("Reverse lookup record already exists in database")]
+    Duplicate,
     #[error("Unpredictable error occurred")]
     UnknownError,
 }
@@ -220,6 +222,12 @@ impl_storage_error!(
 );
 impl_storage_error!(
     EntityDBError,
+    duplicate = Duplicate,
+    not_found = NotFoundError,
+    other = DBError
+);
+impl_storage_error!(
+    ReverseLookupDBError,
     duplicate = Duplicate,
     not_found = NotFoundError,
     other = DBError

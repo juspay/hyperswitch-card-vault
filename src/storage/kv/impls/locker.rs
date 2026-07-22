@@ -11,8 +11,8 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                GetLookupKey, GetPartitionKey, KvDeletableResource, KvResource,
-                KvSecondaryLookupResource, ReverseLookupInsert, ReverseLookupKey,
+                GetLookupKey, GetPartitionKey, KvDeletableResource, KvDeletableWithLookup,
+                KvResource, KvSecondaryLookupResource, ReverseLookupInsert, ReverseLookupKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
@@ -36,6 +36,7 @@ impl KvStorePartition for Locker {}
 
 impl KvStorePartition for LockerInner {}
 
+#[derive(Clone)]
 pub struct LockerPrimaryKeyType {
     pub locker_id: hyperswitch_masking::Secret<String>,
     pub merchant_id: String,
@@ -238,5 +239,16 @@ impl KvDeletableResource for Locker {
             )
             .await?;
         Ok(output)
+    }
+}
+
+impl KvDeletableWithLookup for Locker {
+    fn get_reverse_lookup_key_from_resource(resource: &Self) -> ReverseLookupKey {
+        ReverseLookupKey {
+            lookup_id: format!(
+                "locker_{}_{}_{}",
+                resource.merchant_id, resource.customer_id, resource.hash_id
+            ),
+        }
     }
 }

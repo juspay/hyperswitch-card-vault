@@ -141,6 +141,12 @@ pub(crate) trait KvDeletableResource: KvResource {
     ) -> Result<usize, ContainerError<Self::Error>>;
 }
 
+pub(crate) trait KvDeleteWithoutLookup: KvDeletableResource {}
+
+pub(crate) trait KvDeletableWithLookup: KvDeletableResource {
+    fn get_reverse_lookup_key_from_resource(resource: &Self) -> ReverseLookupKey;
+}
+
 /// Extension of `KvResource` for resources that support updates by primary key.
 ///
 /// The primary-key insert and find behavior is inherited from `KvResource`.
@@ -599,7 +605,7 @@ where
 }
 
 #[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
-pub(crate) async fn delete_resource_by_id<M>(
+async fn delete_resource_by_id_inner<M>(
     store: &Storage,
     primary_key: M::PrimaryKeyType,
 ) -> Result<usize, ContainerError<M::Error>>
@@ -632,6 +638,47 @@ where
             })
         }
     }
+}
+
+#[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn delete_resource_by_id<M>(
+    store: &Storage,
+    primary_key: M::PrimaryKeyType,
+) -> Result<usize, ContainerError<M::Error>>
+where
+    M: KvDeleteWithoutLookup,
+{
+    delete_resource_by_id_inner::<M>(store, primary_key).await
+}
+
+#[instrument(skip(store, primary_key), fields(resource = M::ENTITY_TYPE))]
+pub(crate) async fn delete_resource_by_id_with_reverse_lookup<M>(
+    store: &Storage,
+    primary_key: M::PrimaryKeyType,
+) -> Result<usize, ContainerError<M::Error>>
+where
+    M: KvDeletableWithLookup,
+    M::PrimaryKeyType: Clone,
+{
+    let reverse_lookup_key = find_optional_resource_by_id::<M>(store, primary_key.clone())
+        .await?
+        .map(|resource| M::get_reverse_lookup_key_from_resource(&resource));
+
+    let deleted_rows = delete_resource_by_id_inner::<M>(store, primary_key).await?;
+
+    if let Some(reverse_lookup_key) = reverse_lookup_key {
+        store
+            .delete_reverse_lookup(&reverse_lookup_key.lookup_id)
+            .await
+            .map_err(|err| {
+                kv_backend_error::<M::Error>(
+                    Report::new(KvError::Backend)
+                        .attach_printable(format!("failed to delete reverse lookup record: {err}")),
+                )
+            })?;
+    }
+
+    Ok(deleted_rows)
 }
 
 #[instrument(skip(store, lookup_key), fields(resource = M::ENTITY_TYPE))]

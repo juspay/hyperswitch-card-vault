@@ -10,7 +10,8 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                DirectInsert, GetPartitionKey, KvDeletableResource, KvResource, KvUpdatableResource,
+                DirectInsert, GetPartitionKey, KvDeletableResource, KvDeleteWithoutLookup,
+                KvResource, KvUpdatableResource,
             },
             serializable_query::{
                 SerializableQuery, generate_delete_query, generate_insert_query,
@@ -160,6 +161,7 @@ impl KvDeletableResource for Vault {
         Ok(output)
     }
 }
+impl KvDeleteWithoutLookup for Vault {}
 
 impl KvUpdatableResource for Vault {
     type DieselUpdate = VaultUpdate;
