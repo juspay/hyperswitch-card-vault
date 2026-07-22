@@ -12,7 +12,10 @@ pub mod storage_v2;
 pub mod types;
 pub mod utils;
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use diesel_async::{
     AsyncPgConnection,
@@ -52,6 +55,7 @@ pub struct Storage {
     primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
+    use_replica: Arc<AtomicBool>,
     #[cfg(feature = "kv")]
     redis: Option<redis_store::RedisStore>,
     #[cfg(feature = "kv")]
@@ -154,6 +158,7 @@ impl Storage {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
             runtime_config_manager,
+            use_replica: Arc::new(AtomicBool::new(false)),
             #[cfg(feature = "kv")]
             redis,
             #[cfg(feature = "kv")]
@@ -198,17 +203,36 @@ impl Storage {
         self.replica_pg_pool.is_some()
     }
 
-    /// Returns `true` when both a replica pool exists and runtime config allows replica reads.
+    /// Returns `true` when runtime config allows replica reads. Replica availability is checked
+    /// only while enabling replica reads.
     async fn should_use_replica(&self) -> bool {
         if !self.has_replica() {
             crate::logger::debug!("No replica pool configured");
             return false;
         }
 
-        self.runtime_config_manager
+        let requested_use_replica = self
+            .runtime_config_manager
             .get::<RuntimeConfigValues>()
             .await
-            .is_some_and(|runtime_conf| runtime_conf.use_replica)
+            .is_some_and(|runtime_conf| runtime_conf.use_replica);
+
+        let current_use_replica = self.use_replica.load(Ordering::Acquire);
+        match (current_use_replica, requested_use_replica) {
+            (false, true) => {
+                if let Err(error) = self.get_replica_conn().await {
+                    crate::logger::warn!(?error, "Read replica unavailable");
+                } else {
+                    self.use_replica.store(true, Ordering::Release);
+                }
+            }
+            (true, false) => {
+                self.use_replica.store(false, Ordering::Release);
+            }
+            _ => {}
+        }
+
+        self.use_replica.load(Ordering::Acquire)
     }
 
     /// Returns a connection from the replica pool when the runtime config enables it,
