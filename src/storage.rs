@@ -49,6 +49,19 @@ pub struct RuntimeConfigValues {
     use_replica: bool,
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct StorageRuntimeConfigStatus {
+    pub runtime_config: crate::runtime_config::RuntimeConfigStatus,
+    pub storage: StorageRuntimeConfigState,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct StorageRuntimeConfigState {
+    pub use_replica: bool,
+    #[cfg(feature = "kv")]
+    pub kv_state: String,
+}
+
 /// Storage State that is to be passed though the application
 #[derive(Clone)]
 pub struct Storage {
@@ -201,6 +214,17 @@ impl Storage {
     /// Returns `true` if a read replica pool was configured and initialized.
     pub fn has_replica(&self) -> bool {
         self.replica_pg_pool.is_some()
+    }
+
+    pub async fn runtime_config_status(&self) -> StorageRuntimeConfigStatus {
+        StorageRuntimeConfigStatus {
+            runtime_config: self.runtime_config_manager.status().await,
+            storage: StorageRuntimeConfigState {
+                use_replica: self.use_replica.load(Ordering::Acquire),
+                #[cfg(feature = "kv")]
+                kv_state: self.kv_state.read().await.to_string(),
+            },
+        }
     }
 
     /// Returns `true` when runtime config allows replica reads. Replica availability is checked

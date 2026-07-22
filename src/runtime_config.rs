@@ -29,6 +29,22 @@ enum RuntimeConfigState {
     },
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct RuntimeConfigStatus {
+    pub status: RuntimeConfigStatusKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<serde_json::Value>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeConfigStatusKind {
+    Disabled,
+    NotFetched,
+    Available,
+    Invalid,
+}
+
 /// Fetches the runtime-config endpoint on a schedule and serves the last-known-good body.
 pub struct RuntimeConfigManager {
     state: RuntimeConfigState,
@@ -114,6 +130,38 @@ impl RuntimeConfigManager {
             Err(error) => {
                 crate::logger::error!(?error, raw, "Failed to deserialize runtime config");
                 None
+            }
+        }
+    }
+
+    /// Returns the current cached runtime-config status without fetching from the endpoint.
+    pub async fn status(&self) -> RuntimeConfigStatus {
+        let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
+            return RuntimeConfigStatus {
+                status: RuntimeConfigStatusKind::Disabled,
+                config: None,
+            };
+        };
+
+        let guard = cache.read().await;
+        let Some(raw) = guard.as_deref() else {
+            return RuntimeConfigStatus {
+                status: RuntimeConfigStatusKind::NotFetched,
+                config: None,
+            };
+        };
+
+        match serde_json::from_str(raw) {
+            Ok(config) => RuntimeConfigStatus {
+                status: RuntimeConfigStatusKind::Available,
+                config: Some(config),
+            },
+            Err(error) => {
+                crate::logger::error!(?error, raw, "Cached runtime config is invalid");
+                RuntimeConfigStatus {
+                    status: RuntimeConfigStatusKind::Invalid,
+                    config: None,
+                }
             }
         }
     }
