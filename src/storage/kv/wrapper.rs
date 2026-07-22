@@ -9,7 +9,6 @@ use hyperswitch_redis_interface::{RedisConnectionPool, errors::RedisError, types
 use serde::de;
 
 use super::{
-    entity,
     partition_key::{KvStorePartition, PartitionKey},
     serializable_query::SerializableQuery,
 };
@@ -404,6 +403,7 @@ async fn with_kv_metrics<T, F>(
 where
     F: Future<Output = error_stack::Result<T, RedisError>>,
 {
+    let start = std::time::Instant::now();
     let operation = operation.to_string();
 
     future
