@@ -19,6 +19,7 @@ use crate::{
         },
     },
     error::{self, ContainerError, NotFoundError},
+    logger,
     observability::metrics,
     routes::health,
     storage::{EntityInterface, types::Entity},
@@ -215,7 +216,22 @@ impl super::KeyProvider for ExternalKeyManager {
             }
 
             Err(inner_err) => match inner_err.is_not_found() {
+                // DEPRECATED lazy provisioning: clients should call `POST /entity`
+                // explicitly. Once this warning stops appearing the fallback can be removed and
+                // the add flow switched to `find_by_entity_id`.
                 true => {
+                    logger::warn!(
+                        entity_id = %entity_id,
+                        deprecation = "add_flow_auto_create",
+                        "entity auto-created during add flow; clients should call POST /entity explicitly"
+                    );
+                    metrics::ENTITY_IMPLICIT_CREATE_COUNT.add(
+                        1,
+                        crate::metric_attributes!((
+                            "key_manager",
+                            metrics::KeyManagerKind::External
+                        )),
+                    );
                     let external_keymanager_resp = external_keymanager::create_key_in_key_manager(
                         tenant_app_state,
                         DataKeyCreateRequest::create_request(),
@@ -260,6 +276,39 @@ impl super::KeyProvider for ExternalKeyManager {
         Ok(entity
             .map(ExternalCryptoManager::from_entity)
             .map(Box::new)?)
+    }
+
+    async fn create_entity(
+        &self,
+        tenant_app_state: &TenantAppState,
+        entity_id: String,
+    ) -> Result<super::CreatedEntity, ContainerError<error::ApiError>> {
+        // Idempotent: return the existing entity if present, otherwise create a key in the
+        // external key manager and persist a new entity row.
+        let entity = match tenant_app_state.db.find_by_entity_id(&entity_id).await {
+            Ok(entity) => entity,
+            Err(err) if err.is_not_found() => {
+                let external_keymanager_resp = external_keymanager::create_key_in_key_manager(
+                    tenant_app_state,
+                    DataKeyCreateRequest::create_request(),
+                )
+                .await?;
+
+                tenant_app_state
+                    .db
+                    .insert_entity(
+                        &entity_id,
+                        &external_keymanager_resp.identifier.get_identifier(),
+                    )
+                    .await?
+            }
+            Err(err) => return Err(err.into()),
+        };
+
+        Ok(super::CreatedEntity {
+            entity_id: entity.entity_id,
+            created_at: entity.created_at,
+        })
     }
 }
 
