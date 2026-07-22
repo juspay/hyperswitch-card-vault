@@ -23,6 +23,8 @@ use diesel_async::{
 };
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
+#[cfg(feature = "kv")]
+use tokio::sync::RwLock;
 
 pub use self::scheme::StorageScheme;
 #[cfg(feature = "kv")]
@@ -54,6 +56,8 @@ pub struct Storage {
     redis: Option<redis_store::RedisStore>,
     #[cfg(feature = "kv")]
     kv_config: crate::config::KvConfig,
+    #[cfg(feature = "kv")]
+    kv_state: Arc<RwLock<kv::KvState>>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -154,6 +158,8 @@ impl Storage {
             redis,
             #[cfg(feature = "kv")]
             kv_config: kv_config.clone(),
+            #[cfg(feature = "kv")]
+            kv_state: Arc::new(RwLock::new(kv::KvState::Disabled)),
         })
     }
 
@@ -220,11 +226,39 @@ impl Storage {
     /// Resolve `KvState` from runtime config; fail-closed to `Disabled` when absent.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::KvState {
-        self.runtime_config_manager
+        let requested_state = self
+            .runtime_config_manager
             .get::<RuntimeConfigValues>()
             .await
             .map(|runtime_config_values| runtime_config_values.enable_kv)
-            .unwrap_or(kv::KvState::Disabled)
+            .unwrap_or(kv::KvState::Disabled);
+
+        let mut current_state = self.kv_state.write().await;
+        let can_enable_kv = if matches!(
+            (*current_state, requested_state),
+            (kv::KvState::Disabled, kv::KvState::Enabled)
+        ) {
+            match &self.redis {
+                Some(redis) => redis.test().await.is_ok(),
+                None => false,
+            }
+        } else {
+            false
+        };
+
+        let next_state = current_state.apply_transition(requested_state, can_enable_kv);
+        if next_state != *current_state {
+            crate::logger::info!(from = %*current_state, to = %next_state, "KV mode transition accepted");
+            *current_state = next_state;
+        } else if requested_state != *current_state {
+            crate::logger::warn!(
+                current = %*current_state,
+                requested = %requested_state,
+                "KV mode transition ignored"
+            );
+        }
+
+        *current_state
     }
 
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
