@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use axum::{Json, extract::State, routing::post};
+use axum::{
+    Json,
+    extract::{Path, State},
+    routing::{get, post},
+};
 use error_stack::ResultExt;
 use hyperswitch_masking::{ExposeInterface, Secret};
 
@@ -50,6 +54,13 @@ pub struct CustodianRespPayload {
     pub message: String,
 }
 
+/// Api response model for custodian status routes
+#[derive(serde::Serialize, Debug)]
+pub struct CustodianStatus {
+    pub tenant_id: String,
+    pub unlocked: bool,
+}
+
 ///
 /// Function for registering routes that is specifically handling the custodian apis
 ///
@@ -58,6 +69,8 @@ pub fn serve() -> axum::Router<Arc<GlobalAppState>> {
         .route("/key1", post(key1))
         .route("/key2", post(key2))
         .route("/decrypt", post(decrypt))
+        .route("/status", get(status_all))
+        .route("/status/:tenant_id", get(status))
 }
 
 /// Handler for `/custodian/key1`
@@ -151,6 +164,53 @@ pub async fn decrypt(
             Err(inner_err)?
         }
     }
+}
+
+/// Handler for `/custodian/status/:tenant_id`
+/// Returns 200 when the custodian is unlocked for the tenant, 423 otherwise.
+#[tracing::instrument(skip_all)]
+pub async fn status(
+    State(global_app_state): State<Arc<GlobalAppState>>,
+    Path(tenant_id): Path<String>,
+) -> Result<Json<CustodianStatus>, hyper::StatusCode> {
+    let unlocked = global_app_state
+        .get_custodian_status(&tenant_id)
+        .await
+        .map_err(|_| hyper::StatusCode::BAD_REQUEST)?;
+
+    if !unlocked {
+        return Err(hyper::StatusCode::LOCKED);
+    }
+
+    Ok(Json(CustodianStatus {
+        tenant_id,
+        unlocked,
+    }))
+}
+
+/// Handler for `/custodian/status` (all tenants)
+/// Returns 200 only when every tenant is unlocked; 423 with the full status list otherwise.
+#[tracing::instrument(skip_all)]
+pub async fn status_all(
+    State(global_app_state): State<Arc<GlobalAppState>>,
+) -> (hyper::StatusCode, Json<Vec<CustodianStatus>>) {
+    let mut statuses: Vec<CustodianStatus> = global_app_state
+        .get_all_custodian_statuses()
+        .await
+        .into_iter()
+        .map(|(tenant_id, unlocked)| CustodianStatus {
+            tenant_id,
+            unlocked,
+        })
+        .collect();
+
+    statuses.sort_by(|a, b| a.tenant_id.cmp(&b.tenant_id));
+
+    if statuses.iter().any(|status| !status.unlocked) {
+        return (hyper::StatusCode::LOCKED, Json(statuses));
+    }
+
+    (hyper::StatusCode::OK, Json(statuses))
 }
 
 async fn aes_decrypt_custodian_key(

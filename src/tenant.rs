@@ -154,4 +154,21 @@ impl GlobalAppState {
             .transpose()?;
         Ok(())
     }
+
+    #[cfg(feature = "key_custodian")]
+    /// Returns whether the custodian has been unlocked for a known tenant.
+    pub async fn get_custodian_status(&self, tenant_id: &str) -> Result<bool, ApiError> {
+        self.is_known_tenant(tenant_id)?;
+        Ok(self.tenants_app_state.read().await.contains_key(tenant_id))
+    }
+
+    #[cfg(feature = "key_custodian")]
+    /// Returns the custodian unlocked status for every known tenant.
+    pub async fn get_all_custodian_statuses(&self) -> FxHashMap<String, bool> {
+        let app_states = self.tenants_app_state.read().await;
+        self.known_tenants
+            .iter()
+            .map(|tenant_id| (tenant_id.clone(), app_states.contains_key(tenant_id)))
+            .collect()
+    }
 }
