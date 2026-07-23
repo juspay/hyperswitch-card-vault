@@ -43,8 +43,6 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
-    #[cfg(feature = "redis")]
-    pub redis: Option<storage::redis::RedisStore>,
 }
 
 #[allow(clippy::expect_used)]
@@ -86,8 +84,6 @@ impl TenantAppState {
         Ok(Self {
             db,
             api_client,
-            #[cfg(feature = "redis")]
-            redis: tenant_redis,
             config: tenant_config,
         })
     }
