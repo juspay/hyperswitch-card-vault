@@ -62,6 +62,65 @@ pub struct StorageRuntimeConfigState {
     pub kv_state: String,
 }
 
+#[cfg(feature = "kv")]
+pub struct KvGlobalStore {
+    config: crate::config::KvConfig,
+    state: RwLock<kv::KvState>,
+}
+
+#[cfg(feature = "kv")]
+impl KvGlobalStore {
+    pub fn new(config: crate::config::KvConfig) -> Self {
+        Self {
+            config,
+            state: RwLock::new(kv::KvState::Disabled),
+        }
+    }
+
+    async fn state(&self) -> kv::KvState {
+        *self.state.read().await
+    }
+
+    /// Apply runtime-config KV state transitions after the runtime config cache is refreshed.
+    pub(crate) async fn refresh_from_runtime_config(
+        &self,
+        runtime_config_manager: &crate::runtime_config::RuntimeConfigManager,
+        redis: Option<&redis_store::RedisStore>,
+    ) {
+        let requested_state = runtime_config_manager
+            .get::<RuntimeConfigValues>()
+            .await
+            .map(|runtime_config_values| runtime_config_values.enable_kv)
+            .unwrap_or(kv::KvState::Disabled);
+
+        let current_state = self.state().await;
+        let can_enable_kv = if matches!(
+            (current_state, requested_state),
+            (kv::KvState::Disabled, kv::KvState::Enabled)
+        ) {
+            match redis {
+                Some(redis) => redis.test().await.is_ok(),
+                None => false,
+            }
+        } else {
+            false
+        };
+
+        let mut current_state = self.state.write().await;
+        let next_state = current_state.apply_transition(requested_state, can_enable_kv);
+        if next_state != *current_state {
+            crate::logger::info!(from = %*current_state, to = %next_state, "KV mode transition accepted");
+            *current_state = next_state;
+        } else if requested_state != *current_state {
+            crate::logger::warn!(
+                current = %*current_state,
+                requested = %requested_state,
+                "KV mode transition ignored"
+            );
+        }
+    }
+}
+
 /// Storage State that is to be passed though the application
 #[derive(Clone)]
 pub struct Storage {
@@ -72,9 +131,7 @@ pub struct Storage {
     #[cfg(feature = "kv")]
     redis: Option<redis_store::RedisStore>,
     #[cfg(feature = "kv")]
-    kv_config: crate::config::KvConfig,
-    #[cfg(feature = "kv")]
-    kv_state: Arc<RwLock<kv::KvState>>,
+    kv_store: Arc<KvGlobalStore>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -153,7 +210,7 @@ impl Storage {
         schema: &str,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
         #[cfg(feature = "kv")] redis: Option<redis_store::RedisStore>,
-        #[cfg(feature = "kv")] kv_config: &crate::config::KvConfig,
+        #[cfg(feature = "kv")] kv_store: Arc<KvGlobalStore>,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -175,9 +232,7 @@ impl Storage {
             #[cfg(feature = "kv")]
             redis,
             #[cfg(feature = "kv")]
-            kv_config: kv_config.clone(),
-            #[cfg(feature = "kv")]
-            kv_state: Arc::new(RwLock::new(kv::KvState::Disabled)),
+            kv_store,
         })
     }
 
@@ -222,7 +277,7 @@ impl Storage {
             storage: StorageRuntimeConfigState {
                 use_replica: self.use_replica.load(Ordering::Acquire),
                 #[cfg(feature = "kv")]
-                kv_state: self.kv_state.read().await.to_string(),
+                kv_state: self.kv_store.state().await.to_string(),
             },
         }
     }
@@ -271,43 +326,10 @@ impl Storage {
         }
     }
 
-    /// Resolve `KvState` from runtime config; fail-closed to `Disabled` when absent.
+    /// Return the current KV state cached by the runtime-config poller.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::KvState {
-        let requested_state = self
-            .runtime_config_manager
-            .get::<RuntimeConfigValues>()
-            .await
-            .map(|runtime_config_values| runtime_config_values.enable_kv)
-            .unwrap_or(kv::KvState::Disabled);
-
-        let current_state = *self.kv_state.read().await;
-        let can_enable_kv = if matches!(
-            (current_state, requested_state),
-            (kv::KvState::Disabled, kv::KvState::Enabled)
-        ) {
-            match &self.redis {
-                Some(redis) => redis.test().await.is_ok(),
-                None => false,
-            }
-        } else {
-            false
-        };
-
-        let current_state = self.kv_state.read().await;
-        let next_state = current_state.apply_transition(requested_state, can_enable_kv);
-        if next_state != *current_state {
-            crate::logger::info!(from = %*current_state, to = %next_state, "KV mode transition accepted");
-            *self.kv_state.write().await = next_state;
-        } else if requested_state != *current_state {
-            crate::logger::warn!(
-                current = %*current_state,
-                requested = %requested_state,
-                "KV mode transition ignored"
-            );
-        }
-
-        *current_state
+        self.kv_store.state().await
     }
 
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
@@ -386,15 +408,15 @@ impl kv::RedisConnInterface for Storage {
 #[cfg(feature = "kv")]
 impl kv::KvStoreContext for Storage {
     fn ttl_for_kv(&self) -> u32 {
-        self.kv_config.ttl_for_kv
+        self.kv_store.config.ttl_for_kv
     }
 
     fn drainer_stream_name(&self, shard_key: &str) -> String {
-        self.kv_config.drainer_stream_name(shard_key)
+        self.kv_store.config.drainer_stream_name(shard_key)
     }
 
     fn drainer_num_partitions(&self) -> u8 {
-        self.kv_config.drainer_num_partitions
+        self.kv_store.config.drainer_num_partitions
     }
 }
 

@@ -21,6 +21,8 @@ pub struct GlobalAppState {
     pub global_config: GlobalConfig,
     #[cfg(feature = "redis")]
     pub redis_store: Option<crate::storage::redis::RedisStore>,
+    #[cfg(feature = "kv")]
+    pub kv_store: Arc<crate::storage::KvGlobalStore>,
     pub runtime_config_manager: Arc<RuntimeConfigManager>,
 }
 
@@ -78,6 +80,9 @@ impl GlobalAppState {
             .expect("Failed to create runtime config manager"),
         );
 
+        #[cfg(feature = "kv")]
+        let kv_store = Arc::new(crate::storage::KvGlobalStore::new(global_config.kv.clone()));
+
         let tenants_app_state = {
             #[cfg(feature = "key_custodian")]
             {
@@ -97,6 +102,8 @@ impl GlobalAppState {
                         #[cfg(feature = "redis")]
                         redis_store.as_ref(),
                         runtime_config_manager.clone(),
+                        #[cfg(feature = "kv")]
+                        kv_store.clone(),
                     )
                     .await
                     .expect("Failed while configuring AppState for tenants");
@@ -115,6 +122,8 @@ impl GlobalAppState {
             global_config,
             #[cfg(feature = "redis")]
             redis_store,
+            #[cfg(feature = "kv")]
+            kv_store,
             runtime_config_manager,
         })
     }
@@ -141,6 +150,18 @@ impl GlobalAppState {
     pub async fn set_app_state(&self, state: TenantAppState) {
         let mut write_guard = self.tenants_app_state.write().await;
         write_guard.insert(state.config.tenant_id.clone(), Arc::new(state));
+    }
+
+    pub async fn apply_runtime_config_updates(&self) {
+        #[cfg(feature = "kv")]
+        {
+            self.kv_store
+                .refresh_from_runtime_config(
+                    &self.runtime_config_manager,
+                    self.redis_store.as_ref(),
+                )
+                .await;
+        }
     }
 
     #[cfg(feature = "key_custodian")]
