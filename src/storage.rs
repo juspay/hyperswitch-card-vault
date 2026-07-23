@@ -294,11 +294,11 @@ impl Storage {
             false
         };
 
-        let mut current_state = self.kv_state.write().await;
+        let current_state = self.kv_state.read().await;
         let next_state = current_state.apply_transition(requested_state, can_enable_kv);
         if next_state != *current_state {
             crate::logger::info!(from = %*current_state, to = %next_state, "KV mode transition accepted");
-            *current_state = next_state;
+            *self.kv_state.write().await = next_state;
         } else if requested_state != *current_state {
             crate::logger::warn!(
                 current = %*current_state,
