@@ -281,9 +281,9 @@ impl Storage {
             .map(|runtime_config_values| runtime_config_values.enable_kv)
             .unwrap_or(kv::KvState::Disabled);
 
-        let mut current_state = self.kv_state.write().await;
+        let current_state = *self.kv_state.read().await;
         let can_enable_kv = if matches!(
-            (*current_state, requested_state),
+            (current_state, requested_state),
             (kv::KvState::Disabled, kv::KvState::Enabled)
         ) {
             match &self.redis {
@@ -294,6 +294,7 @@ impl Storage {
             false
         };
 
+        let mut current_state = self.kv_state.write().await;
         let next_state = current_state.apply_transition(requested_state, can_enable_kv);
         if next_state != *current_state {
             crate::logger::info!(from = %*current_state, to = %next_state, "KV mode transition accepted");
