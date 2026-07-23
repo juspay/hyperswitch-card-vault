@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::Path,
-    extract::State,
+    extract::{Path, State},
     routing::{get, post},
 };
 use error_stack::ResultExt;
