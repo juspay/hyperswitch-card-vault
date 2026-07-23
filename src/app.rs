@@ -67,7 +67,7 @@ impl TenantAppState {
             global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
             runtime_config_manager,
-            #[cfg(feature = "kv")]
+            #[cfg(feature = "redis")]
             tenant_redis.clone(),
             #[cfg(feature = "kv")]
             &global_config.kv,

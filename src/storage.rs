@@ -25,7 +25,7 @@ use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
 
 pub use self::scheme::StorageScheme;
-#[cfg(feature = "kv")]
+#[cfg(feature = "redis")]
 use crate::storage::redis as redis_store;
 use crate::{
     config::Database,
@@ -50,7 +50,7 @@ pub struct Storage {
     primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
-    #[cfg(feature = "kv")]
+    #[cfg(feature = "redis")]
     redis: Option<redis_store::TenantAwareRedisStore>,
     #[cfg(feature = "kv")]
     kv_config: crate::config::KvConfig,
@@ -97,7 +97,7 @@ impl DbConnection {
 }
 
 impl Storage {
-    #[cfg(feature = "kv")]
+    #[cfg(feature = "redis")]
     pub fn get_redis_store(&self) -> Option<redis_store::TenantAwareRedisStore> {
         self.redis.clone()
     }
@@ -135,7 +135,7 @@ impl Storage {
         replica_config: Option<&Database>,
         schema: &str,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
-        #[cfg(feature = "kv")] redis: Option<redis_store::TenantAwareRedisStore>,
+        #[cfg(feature = "redis")] redis: Option<redis_store::TenantAwareRedisStore>,
         #[cfg(feature = "kv")] kv_config: &crate::config::KvConfig,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
@@ -154,7 +154,7 @@ impl Storage {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
             runtime_config_manager,
-            #[cfg(feature = "kv")]
+            #[cfg(feature = "redis")]
             redis,
             #[cfg(feature = "kv")]
             kv_config: kv_config.clone(),
