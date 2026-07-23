@@ -58,7 +58,7 @@ impl TenantAppState {
         api_client: ApiClient,
         #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
-        #[cfg(feature = "kv")] kv_store: Arc<storage::KvGlobalStore>,
+        global_store: Arc<storage::GlobalStore>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[cfg(feature = "redis")]
         let tenant_redis = shared_redis
@@ -70,10 +70,9 @@ impl TenantAppState {
             global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
             runtime_config_manager,
+            global_store,
             #[cfg(feature = "kv")]
             tenant_redis.clone(),
-            #[cfg(feature = "kv")]
-            kv_store,
         )
         .await
         .map(

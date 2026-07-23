@@ -21,8 +21,7 @@ pub struct GlobalAppState {
     pub global_config: GlobalConfig,
     #[cfg(feature = "redis")]
     pub redis_store: Option<crate::storage::redis::RedisStore>,
-    #[cfg(feature = "kv")]
-    pub kv_store: Arc<crate::storage::KvGlobalStore>,
+    pub storage_global_store: Arc<crate::storage::GlobalStore>,
     pub runtime_config_manager: Arc<RuntimeConfigManager>,
 }
 
@@ -80,8 +79,10 @@ impl GlobalAppState {
             .expect("Failed to create runtime config manager"),
         );
 
-        #[cfg(feature = "kv")]
-        let kv_store = Arc::new(crate::storage::KvGlobalStore::new(global_config.kv.clone()));
+        let storage_global_store = Arc::new(crate::storage::GlobalStore::new(
+            #[cfg(feature = "kv")]
+            global_config.kv.clone(),
+        ));
 
         let tenants_app_state = {
             #[cfg(feature = "key_custodian")]
@@ -102,8 +103,7 @@ impl GlobalAppState {
                         #[cfg(feature = "redis")]
                         redis_store.as_ref(),
                         runtime_config_manager.clone(),
-                        #[cfg(feature = "kv")]
-                        kv_store.clone(),
+                        storage_global_store.clone(),
                     )
                     .await
                     .expect("Failed while configuring AppState for tenants");
@@ -122,8 +122,7 @@ impl GlobalAppState {
             global_config,
             #[cfg(feature = "redis")]
             redis_store,
-            #[cfg(feature = "kv")]
-            kv_store,
+            storage_global_store,
             runtime_config_manager,
         })
     }
@@ -148,6 +147,8 @@ impl GlobalAppState {
     }
 
     pub async fn set_app_state(&self, state: TenantAppState) {
+        state.db.refresh_replica_state_from_runtime_config().await;
+
         let mut write_guard = self.tenants_app_state.write().await;
         write_guard.insert(state.config.tenant_id.clone(), Arc::new(state));
     }
@@ -155,11 +156,22 @@ impl GlobalAppState {
     pub async fn apply_runtime_config_updates(&self) {
         #[cfg(feature = "kv")]
         {
-            self.kv_store
-                .refresh_from_runtime_config(
+            self.storage_global_store
+                .refresh_kv_state_from_runtime_config(
                     &self.runtime_config_manager,
                     self.redis_store.as_ref(),
                 )
+                .await;
+        }
+
+        // `use_replica` is global, but replica availability is still checked through a tenant
+        // `Storage` because the replica pool is owned there. Any tenant handle is sufficient to
+        // validate the shared replica config and update the global routing state.
+        let tenant_app_state = self.tenants_app_state.read().await.values().next().cloned();
+        if let Some(tenant_app_state) = tenant_app_state {
+            tenant_app_state
+                .db
+                .refresh_replica_state_from_runtime_config()
                 .await;
         }
     }

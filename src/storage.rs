@@ -62,27 +62,45 @@ pub struct StorageRuntimeConfigState {
     pub kv_state: String,
 }
 
-#[cfg(feature = "kv")]
-pub struct KvGlobalStore {
+pub struct GlobalStore {
+    use_replica: AtomicBool,
+    #[cfg(feature = "kv")]
     config: crate::config::KvConfig,
+    #[cfg(feature = "kv")]
     state: RwLock<kv::KvState>,
 }
 
-#[cfg(feature = "kv")]
-impl KvGlobalStore {
-    pub fn new(config: crate::config::KvConfig) -> Self {
+impl GlobalStore {
+    pub fn new(#[cfg(feature = "kv")] config: crate::config::KvConfig) -> Self {
         Self {
+            use_replica: AtomicBool::new(false),
+            #[cfg(feature = "kv")]
             config,
+            #[cfg(feature = "kv")]
             state: RwLock::new(kv::KvState::Disabled),
         }
     }
 
+    fn use_replica(&self) -> bool {
+        self.use_replica.load(Ordering::Acquire)
+    }
+
+    fn enable_replica(&self) {
+        self.use_replica.store(true, Ordering::Release);
+    }
+
+    fn disable_replica(&self) {
+        self.use_replica.store(false, Ordering::Release);
+    }
+
+    #[cfg(feature = "kv")]
     async fn state(&self) -> kv::KvState {
         *self.state.read().await
     }
 
     /// Apply runtime-config KV state transitions after the runtime config cache is refreshed.
-    pub(crate) async fn refresh_from_runtime_config(
+    #[cfg(feature = "kv")]
+    pub(crate) async fn refresh_kv_state_from_runtime_config(
         &self,
         runtime_config_manager: &crate::runtime_config::RuntimeConfigManager,
         redis: Option<&redis_store::RedisStore>,
@@ -106,11 +124,11 @@ impl KvGlobalStore {
             false
         };
 
-        let current_state = self.state.read().await;
+        let mut current_state = self.state.write().await;
         let next_state = current_state.apply_transition(requested_state, can_enable_kv);
         if next_state != *current_state {
             crate::logger::info!(from = %*current_state, to = %next_state, "KV mode transition accepted");
-            *self.state.write().await = next_state;
+            *current_state = next_state;
         } else if requested_state != *current_state {
             crate::logger::warn!(
                 current = %*current_state,
@@ -127,11 +145,9 @@ pub struct Storage {
     primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
-    use_replica: Arc<AtomicBool>,
+    global_store: Arc<GlobalStore>,
     #[cfg(feature = "kv")]
     redis: Option<redis_store::RedisStore>,
-    #[cfg(feature = "kv")]
-    kv_store: Arc<KvGlobalStore>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -209,8 +225,8 @@ impl Storage {
         replica_config: Option<&Database>,
         schema: &str,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
+        global_store: Arc<GlobalStore>,
         #[cfg(feature = "kv")] redis: Option<redis_store::RedisStore>,
-        #[cfg(feature = "kv")] kv_store: Arc<KvGlobalStore>,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -228,11 +244,9 @@ impl Storage {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
             runtime_config_manager,
-            use_replica: Arc::new(AtomicBool::new(false)),
+            global_store,
             #[cfg(feature = "kv")]
             redis,
-            #[cfg(feature = "kv")]
-            kv_store,
         })
     }
 
@@ -275,19 +289,19 @@ impl Storage {
         StorageRuntimeConfigStatus {
             runtime_config: self.runtime_config_manager.status().await,
             storage: StorageRuntimeConfigState {
-                use_replica: self.use_replica.load(Ordering::Acquire),
+                use_replica: self.global_store.use_replica(),
                 #[cfg(feature = "kv")]
-                kv_state: self.kv_store.state().await.to_string(),
+                kv_state: self.global_store.state().await.to_string(),
             },
         }
     }
 
-    /// Returns `true` when runtime config allows replica reads. Replica availability is checked
-    /// only while enabling replica reads.
-    async fn should_use_replica(&self) -> bool {
+    /// Apply runtime-config replica read transitions after the runtime config cache is refreshed.
+    pub(crate) async fn refresh_replica_state_from_runtime_config(&self) {
         if !self.has_replica() {
             crate::logger::debug!("No replica pool configured");
-            return false;
+            self.global_store.disable_replica();
+            return;
         }
 
         let requested_use_replica = self
@@ -296,28 +310,31 @@ impl Storage {
             .await
             .is_some_and(|runtime_conf| runtime_conf.use_replica);
 
-        let current_use_replica = self.use_replica.load(Ordering::Acquire);
+        let current_use_replica = self.global_store.use_replica();
         match (current_use_replica, requested_use_replica) {
             (false, true) => {
                 if let Err(error) = self.get_replica_conn().await {
                     crate::logger::warn!(?error, "Read replica unavailable");
                 } else {
-                    self.use_replica.store(true, Ordering::Release);
+                    self.global_store.enable_replica();
                 }
             }
             (true, false) => {
-                self.use_replica.store(false, Ordering::Release);
+                self.global_store.disable_replica();
             }
             _ => {}
         }
+    }
 
-        self.use_replica.load(Ordering::Acquire)
+    /// Returns `true` when runtime config allows replica reads.
+    fn should_use_replica(&self) -> bool {
+        self.has_replica() && self.global_store.use_replica()
     }
 
     /// Returns a connection from the replica pool when the runtime config enables it,
     /// otherwise returns a primary pool connection.
     pub async fn route_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
-        if self.should_use_replica().await {
+        if self.should_use_replica() {
             crate::logger::debug!("Routing to read replica");
             self.get_replica_conn().await
         } else {
@@ -329,7 +346,7 @@ impl Storage {
     /// Return the current KV state cached by the runtime-config poller.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::KvState {
-        self.kv_store.state().await
+        self.global_store.state().await
     }
 
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
@@ -408,15 +425,15 @@ impl kv::RedisConnInterface for Storage {
 #[cfg(feature = "kv")]
 impl kv::KvStoreContext for Storage {
     fn ttl_for_kv(&self) -> u32 {
-        self.kv_store.config.ttl_for_kv
+        self.global_store.config.ttl_for_kv
     }
 
     fn drainer_stream_name(&self, shard_key: &str) -> String {
-        self.kv_store.config.drainer_stream_name(shard_key)
+        self.global_store.config.drainer_stream_name(shard_key)
     }
 
     fn drainer_num_partitions(&self) -> u8 {
-        self.kv_store.config.drainer_num_partitions
+        self.global_store.config.drainer_num_partitions
     }
 }
 
