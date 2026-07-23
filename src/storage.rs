@@ -12,9 +12,12 @@ pub mod storage_v2;
 pub mod types;
 pub mod utils;
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use diesel_async::{
@@ -91,6 +94,36 @@ impl GlobalStore {
 
     fn disable_replica(&self) {
         self.use_replica.store(false, Ordering::Release);
+    }
+
+    /// Apply runtime-config replica read transitions after the runtime config cache is refreshed.
+    pub(crate) async fn refresh_replica_state_from_runtime_config<F, Fut>(
+        &self,
+        runtime_config_manager: &crate::runtime_config::RuntimeConfigManager,
+        replica_health_check: F,
+    ) where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = bool>,
+    {
+        let requested_use_replica = runtime_config_manager
+            .get::<RuntimeConfigValues>()
+            .await
+            .is_some_and(|runtime_conf| runtime_conf.use_replica);
+
+        let current_use_replica = self.use_replica();
+        match (current_use_replica, requested_use_replica) {
+            (false, true) => {
+                if replica_health_check().await {
+                    self.enable_replica();
+                } else {
+                    crate::logger::warn!("Read replica unavailable");
+                }
+            }
+            (true, false) => {
+                self.disable_replica();
+            }
+            _ => {}
+        }
     }
 
     #[cfg(feature = "kv")]
@@ -293,36 +326,6 @@ impl Storage {
                 #[cfg(feature = "kv")]
                 kv_state: self.global_store.state().await.to_string(),
             },
-        }
-    }
-
-    /// Apply runtime-config replica read transitions after the runtime config cache is refreshed.
-    pub(crate) async fn refresh_replica_state_from_runtime_config(&self) {
-        if !self.has_replica() {
-            crate::logger::debug!("No replica pool configured");
-            self.global_store.disable_replica();
-            return;
-        }
-
-        let requested_use_replica = self
-            .runtime_config_manager
-            .get::<RuntimeConfigValues>()
-            .await
-            .is_some_and(|runtime_conf| runtime_conf.use_replica);
-
-        let current_use_replica = self.global_store.use_replica();
-        match (current_use_replica, requested_use_replica) {
-            (false, true) => {
-                if let Err(error) = self.get_replica_conn().await {
-                    crate::logger::warn!(?error, "Read replica unavailable");
-                } else {
-                    self.global_store.enable_replica();
-                }
-            }
-            (true, false) => {
-                self.global_store.disable_replica();
-            }
-            _ => {}
         }
     }
 

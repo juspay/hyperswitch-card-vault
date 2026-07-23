@@ -147,8 +147,6 @@ impl GlobalAppState {
     }
 
     pub async fn set_app_state(&self, state: TenantAppState) {
-        state.db.refresh_replica_state_from_runtime_config().await;
-
         let mut write_guard = self.tenants_app_state.write().await;
         write_guard.insert(state.config.tenant_id.clone(), Arc::new(state));
     }
@@ -164,16 +162,18 @@ impl GlobalAppState {
                 .await;
         }
 
-        // `use_replica` is global, but replica availability is still checked through a tenant
-        // `Storage` because the replica pool is owned there. Any tenant handle is sufficient to
-        // validate the shared replica config and update the global routing state.
-        let tenant_app_state = self.tenants_app_state.read().await.values().next().cloned();
-        if let Some(tenant_app_state) = tenant_app_state {
-            tenant_app_state
-                .db
-                .refresh_replica_state_from_runtime_config()
-                .await;
-        }
+        self.storage_global_store
+            .refresh_replica_state_from_runtime_config(&self.runtime_config_manager, || async {
+                // `use_replica` is global, but replica availability is verified through a
+                // tenant `Storage` because the replica pool is owned there. The health check is
+                // evaluated lazily only when runtime config tries to enable replica reads.
+                let tenant_app_state = self.tenants_app_state.read().await.values().next().cloned();
+                match tenant_app_state {
+                    Some(tenant_app_state) => tenant_app_state.db.get_replica_conn().await.is_ok(),
+                    None => false,
+                }
+            })
+            .await;
     }
 
     #[cfg(feature = "key_custodian")]
