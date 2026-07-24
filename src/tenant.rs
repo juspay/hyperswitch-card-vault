@@ -62,7 +62,7 @@ impl GlobalAppState {
                     })
                     .expect("Failed to initialize Redis"),
             ),
-            None => panic!("Redis configuration is required when Redis support is enabled"),
+            None => None,
         };
 
         #[allow(clippy::expect_used)]
