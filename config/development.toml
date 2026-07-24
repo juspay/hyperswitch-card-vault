@@ -26,7 +26,7 @@ max_capacity = 5000
 locker_private_key = ""
 
 [tenant_secrets]
-public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
+public = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public", redis_key_prefix = "public" }
 
 [external_key_manager]
 mode = "disabled"
