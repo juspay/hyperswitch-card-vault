@@ -52,6 +52,7 @@ impl GlobalAppState {
 
         // Shared pool; tenants derive key-prefixed handles.
         #[cfg(feature = "redis")]
+        #[allow(clippy::expect_used)]
         let redis_store = match &global_config.redis {
             Some(conf) => Some(
                 crate::storage::redis::RedisStore::new(conf)
