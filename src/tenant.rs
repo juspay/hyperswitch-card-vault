@@ -8,7 +8,7 @@ use crate::config::TenantConfig;
 #[cfg(feature = "key_custodian")]
 use crate::routes::key_custodian::CustodianKeyState;
 use crate::{
-    api_client::ApiClient, app::TenantAppState, config::GlobalConfig, error::ApiError,
+    api_client::ApiClient, app::TenantAppState, config::GlobalConfig, error::ApiError, logger,
     runtime_config::RuntimeConfigManager,
 };
 
@@ -50,23 +50,18 @@ impl GlobalAppState {
         #[allow(clippy::expect_used)]
         let api_client = ApiClient::new(&global_config).expect("Failed to create api client");
 
-        // Shared pool; tenants derive key-prefixed handles. None if unconfigured or unreachable.
+        // Shared pool; tenants derive key-prefixed handles.
         #[cfg(feature = "redis")]
         let redis_store = match &global_config.redis {
-            Some(conf) => match crate::storage::redis::RedisStore::new(conf).await {
-                Ok(store) => {
-                    store.spawn_error_watcher();
-                    Some(store)
-                }
-                Err(err) => {
-                    crate::logger::error!(
-                        ?err,
-                        "Failed to initialize Redis; continuing without it"
-                    );
-                    None
-                }
-            },
-            None => None,
+            Some(conf) => Some(
+                crate::storage::redis::RedisStore::new(conf)
+                    .await
+                    .inspect_err(|err| {
+                        crate::logger::error!(?err, "Failed to initialize Redis;");
+                    })
+                    .expect("Failed to initialize Redis"),
+            ),
+            None => panic!("Redis configuration is required when Redis support is enabled"),
         };
 
         #[allow(clippy::expect_used)]
@@ -169,7 +164,14 @@ impl GlobalAppState {
                 // evaluated lazily only when runtime config tries to enable replica reads.
                 let tenant_app_state = self.tenants_app_state.read().await.values().next().cloned();
                 match tenant_app_state {
-                    Some(tenant_app_state) => tenant_app_state.db.get_replica_conn().await.is_ok(),
+                    Some(tenant_app_state) => tenant_app_state
+                        .db
+                        .get_replica_conn()
+                        .await
+                        .inspect_err(|err| {
+                            logger::error!("Error while checking read replica connection: {}", err)
+                        })
+                        .is_ok(),
                     None => false,
                 }
             })

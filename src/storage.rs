@@ -150,8 +150,20 @@ impl GlobalStore {
             (kv::KvState::Disabled, kv::KvState::Enabled)
         ) {
             match redis {
-                Some(redis) => redis.test().await.is_ok(),
-                None => false,
+                Some(redis) => redis
+                    .test()
+                    .await
+                    .inspect_err(|err| {
+                        crate::logger::error!(
+                            "error while checking redis connection, Error message: {}",
+                            err
+                        );
+                    })
+                    .is_ok(),
+                None => {
+                    crate::logger::error!("Redis connection unavailable");
+                    false
+                }
             }
         } else {
             false
