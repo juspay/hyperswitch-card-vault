@@ -280,12 +280,16 @@ where
                     std::any::type_name::<KvStoredValue<V>>(),
                 )
                 .await
-                .bridge()?;
+                .bridge();
 
             match stored_value {
-                Some(KvStoredValue::Tombstone(_)) => Ok(KvFindResult::Deleted),
-                Some(KvStoredValue::Value(value)) => Ok(KvFindResult::Present(value)),
-                None => Ok(KvFindResult::Absent),
+                Ok(Some(KvStoredValue::Tombstone(_))) => Ok(KvFindResult::Deleted),
+                Ok(Some(KvStoredValue::Value(value))) => Ok(KvFindResult::Present(value)),
+                Ok(None) => Ok(KvFindResult::Absent),
+                Err(err) if matches!(err.current_context(), RedisError::NotFound) => {
+                    Ok(KvFindResult::Absent)
+                }
+                Err(err) => Err(err),
             }
         })
         .await
