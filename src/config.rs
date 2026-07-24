@@ -141,7 +141,6 @@ pub struct TenantSecrets {
 
     /// Redis key prefix (deser-only; app reads `TenantConfig.redis_key_prefix`).
     #[cfg(feature = "redis")]
-    #[serde(default)]
     pub redis_key_prefix: String,
 }
 

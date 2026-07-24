@@ -16,6 +16,19 @@ pub struct RedisStore {
     redis_conn: Arc<RedisConnectionPool>,
 }
 
+#[derive(Clone)]
+pub struct TenantAwareRedisStore {
+    inner: RedisStore,
+}
+
+impl std::ops::Deref for TenantAwareRedisStore {
+    type Target = RedisStore;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
 impl std::fmt::Debug for RedisStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RedisStore")
@@ -33,10 +46,12 @@ impl RedisStore {
     }
 
     /// A handle onto the same pool that namespaces every key with `key_prefix`.
-    pub fn clone_with_prefix(&self, key_prefix: &str) -> Self {
+    pub fn clone_with_prefix(&self, key_prefix: &str) -> TenantAwareRedisStore {
         // `.as_ref().clone(..)` calls the pool's inherent `clone`, not `Arc::clone`.
-        Self {
-            redis_conn: Arc::new(self.redis_conn.as_ref().clone(key_prefix)),
+        TenantAwareRedisStore {
+            inner: Self {
+                redis_conn: Arc::new(self.redis_conn.as_ref().clone(key_prefix)),
+            },
         }
     }
 

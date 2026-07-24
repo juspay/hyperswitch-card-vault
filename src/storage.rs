@@ -33,7 +33,7 @@ use hyperswitch_masking::{PeekInterface, Secret};
 use tokio::sync::RwLock;
 
 pub use self::scheme::StorageScheme;
-#[cfg(feature = "kv")]
+#[cfg(feature = "redis")]
 use crate::storage::redis as redis_store;
 use crate::{
     config::Database,
@@ -191,8 +191,8 @@ pub struct Storage {
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     global_store: Arc<GlobalStore>,
-    #[cfg(feature = "kv")]
-    redis: Option<redis_store::RedisStore>,
+    #[cfg(feature = "redis")]
+    redis: Option<redis_store::TenantAwareRedisStore>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -236,6 +236,10 @@ impl DbConnection {
 }
 
 impl Storage {
+    #[cfg(feature = "redis")]
+    pub fn get_redis_store(&self) -> Option<redis_store::TenantAwareRedisStore> {
+        self.redis.clone()
+    }
     fn create_database_connection_pool(
         database_config: &Database,
         schema: &str,
@@ -271,7 +275,7 @@ impl Storage {
         schema: &str,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
         global_store: Arc<GlobalStore>,
-        #[cfg(feature = "kv")] redis: Option<redis_store::RedisStore>,
+        #[cfg(feature = "redis")] redis: Option<redis_store::TenantAwareRedisStore>,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -290,7 +294,7 @@ impl Storage {
             replica_pg_pool: replica_pool,
             runtime_config_manager,
             global_store,
-            #[cfg(feature = "kv")]
+            #[cfg(feature = "redis")]
             redis,
         })
     }

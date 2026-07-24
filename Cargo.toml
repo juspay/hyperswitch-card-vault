@@ -17,7 +17,7 @@ middleware = []
 key_custodian = []
 caching = ["dep:moka"]
 redis = ["dep:hyperswitch_redis_interface"]
-kv = ["redis", "caching", "dep:crc32fast", "dep:error-stack-04"]
+kv = ["redis", "caching", "dep:crc32fast", "dep:error-stack-04", "dep:fred"]
 console = ["tokio/tracing", "dep:console-subscriber"]
 external_key_manager = ["reqwest/rustls-tls"]
 vergen = ["build_info/vergen-gix"]
@@ -60,6 +60,7 @@ config = "0.14.1"
 serde_path_to_error = "0.1.16"
 error-stack = "0.5.0"
 futures-util = "0.3.30"
+fred = { version = "8.0.6", optional = true, features = ["metrics", "partial-tracing", "subscriber-client"] }
 digest = "0.10"
 hyperswitch_masking = { version = "0.0.1", features = ["diesel", "serde"] }
 hyperswitch_redis_interface = { git = "https://github.com/juspay/hyperswitch", tag = "2026.07.17.0", package = "redis_interface", default-features = false, features = ["fred", "metrics"], optional = true }

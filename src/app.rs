@@ -43,8 +43,6 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
-    #[cfg(feature = "redis")]
-    pub redis: Option<storage::redis::RedisStore>,
 }
 
 #[allow(clippy::expect_used)]
@@ -71,7 +69,7 @@ impl TenantAppState {
             &tenant_config.tenant_secrets.schema,
             runtime_config_manager,
             global_store,
-            #[cfg(feature = "kv")]
+            #[cfg(feature = "redis")]
             tenant_redis.clone(),
         )
         .await
@@ -86,8 +84,6 @@ impl TenantAppState {
         Ok(Self {
             db,
             api_client,
-            #[cfg(feature = "redis")]
-            redis: tenant_redis,
             config: tenant_config,
         })
     }
