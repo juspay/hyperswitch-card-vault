@@ -31,6 +31,7 @@ pub fn serve() -> axum::Router<Arc<GlobalAppState>> {
     axum::Router::new()
         .route("/", get(health))
         .route("/diagnostics", get(diagnostics))
+        .route("/runtime-config", get(runtime_config_status))
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -45,6 +46,14 @@ pub async fn health() -> Json<HealthRespPayload> {
     Json(HealthRespPayload {
         message: "Health is good".into(),
     })
+}
+
+/// '/health/runtime-config` API handler`
+#[tracing::instrument(skip_all)]
+pub async fn runtime_config_status(
+    TenantStateResolver(state): TenantStateResolver,
+) -> Json<crate::storage::StorageRuntimeConfigStatus> {
+    Json(state.db.runtime_config_status().await)
 }
 
 #[derive(Debug, serde::Serialize, Default)]

@@ -56,6 +56,7 @@ impl TenantAppState {
         api_client: ApiClient,
         #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
+        global_store: Arc<storage::GlobalStore>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[cfg(feature = "redis")]
         let tenant_redis = shared_redis
@@ -67,10 +68,9 @@ impl TenantAppState {
             global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
             runtime_config_manager,
-            #[cfg(feature = "redis")]
-            tenant_redis.clone(),
+            global_store,
             #[cfg(feature = "kv")]
-            &global_config.kv,
+            tenant_redis.clone(),
         )
         .await
         .map(
@@ -153,9 +153,14 @@ pub async fn server_builder(
     metrics_handle: observability::MetricsHandle,
 ) -> Result<(), error::ConfigurationError> {
     // Warm + periodically refresh the runtime-config cache. No-op when disabled.
-    let _prefetch_handle = global_app_state
-        .runtime_config_manager
-        .spawn_prefetch_task();
+    let runtime_config_manager = global_app_state.runtime_config_manager.clone();
+    let state_for_prefetch = global_app_state.clone();
+    let _prefetch_handle = runtime_config_manager.spawn_prefetch_task(move || {
+        let state_for_prefetch = state_for_prefetch.clone();
+        async move {
+            state_for_prefetch.apply_runtime_config_updates().await;
+        }
+    });
 
     let socket_addr = std::net::SocketAddr::new(
         global_app_state.global_config.server.host.parse()?,
