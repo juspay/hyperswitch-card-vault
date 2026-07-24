@@ -159,8 +159,7 @@ impl GlobalStore {
                     .inspect_err(|err| {
                         crate::logger::error!(
                             storage_runtime_config = "state_refresh",
-                            "error while checking redis connection, Error message: {}",
-                            err
+                            "error while checking redis connection, Error message: {err:?}",
                         );
                     })
                     .is_ok(),
