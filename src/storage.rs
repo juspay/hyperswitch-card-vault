@@ -191,7 +191,7 @@ pub struct Storage {
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     global_store: Arc<GlobalStore>,
-    #[cfg(feature = "kv")]
+    #[cfg(feature = "redis")]
     redis: Option<redis_store::TenantAwareRedisStore>,
 }
 
@@ -275,7 +275,7 @@ impl Storage {
         schema: &str,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
         global_store: Arc<GlobalStore>,
-        #[cfg(feature = "kv")] redis: Option<redis_store::TenantAwareRedisStore>,
+        #[cfg(feature = "redis")] redis: Option<redis_store::TenantAwareRedisStore>,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -294,7 +294,7 @@ impl Storage {
             replica_pg_pool: replica_pool,
             runtime_config_manager,
             global_store,
-            #[cfg(feature = "kv")]
+            #[cfg(feature = "redis")]
             redis,
         })
     }

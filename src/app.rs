@@ -69,7 +69,7 @@ impl TenantAppState {
             &tenant_config.tenant_secrets.schema,
             runtime_config_manager,
             global_store,
-            #[cfg(feature = "kv")]
+            #[cfg(feature = "redis")]
             tenant_redis.clone(),
         )
         .await
