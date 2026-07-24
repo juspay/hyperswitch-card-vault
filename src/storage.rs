@@ -70,7 +70,7 @@ pub struct GlobalStore {
     #[cfg(feature = "kv")]
     config: crate::config::KvConfig,
     #[cfg(feature = "kv")]
-    state: RwLock<kv::KvState>,
+    kv_state: RwLock<kv::KvState>,
 }
 
 impl GlobalStore {
@@ -80,7 +80,7 @@ impl GlobalStore {
             #[cfg(feature = "kv")]
             config,
             #[cfg(feature = "kv")]
-            state: RwLock::new(kv::KvState::Disabled),
+            kv_state: RwLock::new(kv::KvState::Disabled),
         }
     }
 
@@ -116,7 +116,10 @@ impl GlobalStore {
                 if replica_health_check().await {
                     self.enable_replica();
                 } else {
-                    crate::logger::warn!("Read replica unavailable");
+                    crate::logger::warn!(
+                        storage_runtime_config = "state_refresh",
+                        "Read replica unavailable"
+                    );
                 }
             }
             (true, false) => {
@@ -127,8 +130,8 @@ impl GlobalStore {
     }
 
     #[cfg(feature = "kv")]
-    async fn state(&self) -> kv::KvState {
-        *self.state.read().await
+    async fn kv_state(&self) -> kv::KvState {
+        *self.kv_state.read().await
     }
 
     /// Apply runtime-config KV state transitions after the runtime config cache is refreshed.
@@ -144,7 +147,7 @@ impl GlobalStore {
             .map(|runtime_config_values| runtime_config_values.enable_kv)
             .unwrap_or(kv::KvState::Disabled);
 
-        let current_state = self.state().await;
+        let current_state = self.kv_state().await;
         let can_enable_kv = if matches!(
             (current_state, requested_state),
             (kv::KvState::Disabled, kv::KvState::Enabled)
@@ -155,13 +158,17 @@ impl GlobalStore {
                     .await
                     .inspect_err(|err| {
                         crate::logger::error!(
+                            storage_runtime_config = "state_refresh",
                             "error while checking redis connection, Error message: {}",
                             err
                         );
                     })
                     .is_ok(),
                 None => {
-                    crate::logger::error!("Redis connection unavailable");
+                    crate::logger::error!(
+                        storage_runtime_config = "state_refresh",
+                        "Redis connection unavailable"
+                    );
                     false
                 }
             }
@@ -169,13 +176,19 @@ impl GlobalStore {
             false
         };
 
-        let mut current_state = self.state.write().await;
+        let mut current_state = self.kv_state.write().await;
         let next_state = current_state.apply_transition(requested_state, can_enable_kv);
         if next_state != *current_state {
-            crate::logger::info!(from = %*current_state, to = %next_state, "KV mode transition accepted");
+            crate::logger::info!(
+                storage_runtime_config = "state_refresh",
+                from = %*current_state,
+                to = %next_state,
+                "KV mode transition accepted"
+            );
             *current_state = next_state;
         } else if requested_state != *current_state {
             crate::logger::warn!(
+                storage_runtime_config = "state_refresh",
                 current = %*current_state,
                 requested = %requested_state,
                 "KV mode transition ignored"
@@ -336,7 +349,7 @@ impl Storage {
             storage: StorageRuntimeConfigState {
                 use_replica: self.global_store.use_replica(),
                 #[cfg(feature = "kv")]
-                kv_state: self.global_store.state().await.to_string(),
+                kv_state: self.global_store.kv_state().await.to_string(),
             },
         }
     }
@@ -361,7 +374,7 @@ impl Storage {
     /// Return the current KV state cached by the runtime-config poller.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::KvState {
-        self.global_store.state().await
+        self.global_store.kv_state().await
     }
 
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
