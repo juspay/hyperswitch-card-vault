@@ -149,9 +149,6 @@ impl std::fmt::Display for KvOperationKind {
 
 pub(crate) trait KvBehaviour {
     type Error: error_stack::Context;
-
-    fn not_found_error() -> Self::Error;
-
     async fn insert<V>(
         &self,
         partition_key: PartitionKey<'_>,
@@ -161,19 +158,7 @@ pub(crate) trait KvBehaviour {
     where
         V: serde::Serialize + Debug + KvStorePartition + Sync;
 
-    async fn find<V>(&self, partition_key: PartitionKey<'_>) -> error_stack::Result<V, Self::Error>
-    where
-        V: de::DeserializeOwned,
-    {
-        match self.find_with_status(partition_key).await? {
-            KvFindResult::Present(value) => Ok(value),
-            KvFindResult::Deleted | KvFindResult::Absent => {
-                Err(error_stack::Report::new(Self::not_found_error()))
-            }
-        }
-    }
-
-    async fn find_with_status<V>(
+    async fn find<V>(
         &self,
         partition_key: PartitionKey<'_>,
     ) -> error_stack::Result<KvFindResult<V>, Self::Error>
@@ -219,11 +204,6 @@ where
     C: KvStoreContext + Sync,
 {
     type Error = RedisError;
-
-    fn not_found_error() -> Self::Error {
-        RedisError::NotFound
-    }
-
     async fn insert<V>(
         &self,
         partition_key: PartitionKey<'_>,
@@ -261,7 +241,7 @@ where
         .await
     }
 
-    async fn find_with_status<V>(
+    async fn find<V>(
         &self,
         partition_key: PartitionKey<'_>,
     ) -> error_stack::Result<KvFindResult<V>, Self::Error>

@@ -3,7 +3,6 @@
 //! Stores the Diesel table-mapped entity in Redis and returns the resource model.
 
 use error_stack::Report;
-use hyperswitch_redis_interface::errors::RedisError;
 use tracing::instrument;
 
 use super::{
@@ -267,7 +266,7 @@ where
             // With this implementation, Hot keys may never recover out of KV.
             let partition_key_str = partition_key.to_string();
             let result = RedisBackend::new(store)
-                .find_with_status::<M::DieselEntity>(partition_key.clone())
+                .find::<M::DieselEntity>(partition_key.clone())
                 .await;
 
             match result {
@@ -405,14 +404,17 @@ where
                 .await;
 
             match result {
-                Ok(v) => Ok(v),
-                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                Ok(KvFindResult::Present(v)) => Ok(v),
+                Ok(KvFindResult::Absent) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
                     metrics::KV_CACHE_MISS_COUNT
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
                     M::storage_find(store, &primary_key).await
                 }
+                Ok(KvFindResult::Deleted) => Err(kv_backend_error::<M::Error>(Report::new(
+                    KvError::ValueNotFound(format!("Data was deleted for key {key_str}")),
+                ))),
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&key_str),
                 )),
@@ -478,12 +480,17 @@ where
                 .await;
 
             match result {
-                Ok(v) => Ok(v.into()),
-                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                Ok(KvFindResult::Present(v)) => Ok(v.into()),
+                Ok(KvFindResult::Absent) => {
+                    // Redis miss → fall back to Postgres. In SoftKill this means the key was
+                    // never written to Redis, so we read from DB.
                     metrics::KV_CACHE_MISS_COUNT
                         .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
                     M::storage_find_by_lookup(store, &lookup_key).await
                 }
+                Ok(KvFindResult::Deleted) => Err(kv_backend_error::<M::Error>(Report::new(
+                    KvError::ValueNotFound(format!("Data was deleted for key {key_str}")),
+                ))),
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&key_str),
                 )),
