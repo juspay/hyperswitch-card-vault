@@ -79,6 +79,7 @@ impl MerchantInterface for Storage {
         Ok(inner.decrypt(key)?)
     }
 
+    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,

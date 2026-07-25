@@ -72,6 +72,7 @@ enum DbOperation {
     Update,
     Delete,
     FindOne,
+    #[cfg(feature = "external_key_manager")]
     Filter,
 }
 
@@ -377,9 +378,7 @@ pub(crate) trait MerchantInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
-    // This function is under the `dead_code` lint to pass Clippy checks because it utilizes types
-    // from both internal and external key_manager.
-    #[allow(dead_code)]
+    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,
