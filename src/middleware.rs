@@ -30,7 +30,7 @@ where
 
     crate::observability::metrics::HTTP_SERVER_JWE_MIDDLEWARE_OPERATION_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(("operation", operation), ("outcome", outcome)),
+        metrics_utils::metric_attributes!(("operation", operation), ("outcome", outcome)),
     );
 
     result

@@ -9,7 +9,7 @@ pub mod routes_v2;
 
 fn record_expired_data_encountered(resource: crate::observability::metrics::Resource) {
     crate::observability::metrics::TTL_EXPIRED_DATA_ENCOUNTERED_COUNT
-        .add(1, crate::metric_attributes!(("resource", resource)));
+        .add(1, metrics_utils::metric_attributes!(("resource", resource)));
 }
 
 fn record_ttl_deletion_result(
@@ -18,6 +18,6 @@ fn record_ttl_deletion_result(
 ) {
     crate::observability::metrics::TTL_DELETION_COUNT.add(
         1,
-        crate::metric_attributes!(("resource", resource), ("outcome", outcome)),
+        metrics_utils::metric_attributes!(("resource", resource), ("outcome", outcome)),
     );
 }

@@ -37,7 +37,7 @@ async fn ratelimit_err_handler(
 
     crate::observability::metrics::HTTP_SERVER_RATE_LIMITED_REQUEST_COUNT.add(
         1,
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("http.request.method", method.to_string()),
             ("http.route", route),
         ),

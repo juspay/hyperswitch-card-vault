@@ -41,7 +41,7 @@ impl ActiveRequestGuard {
     fn new(method: String, route: String) -> Self {
         HTTP_SERVER_ACTIVE_REQUESTS.add(
             1,
-            crate::metric_attributes!(
+            metrics_utils::metric_attributes!(
                 ("http.request.method", method.clone()),
                 ("http.route", route.clone()),
             ),
@@ -55,7 +55,7 @@ impl Drop for ActiveRequestGuard {
     fn drop(&mut self) {
         HTTP_SERVER_ACTIVE_REQUESTS.add(
             -1,
-            crate::metric_attributes!(
+            metrics_utils::metric_attributes!(
                 ("http.request.method", self.method.clone()),
                 ("http.route", self.route.clone()),
             ),
@@ -88,7 +88,7 @@ where
 
         HTTP_SERVER_REQUEST_COUNT.add(
             1,
-            crate::metric_attributes!(
+            metrics_utils::metric_attributes!(
                 ("http.request.method", method.clone()),
                 ("http.route", route.clone()),
             ),
@@ -105,7 +105,7 @@ where
 
             HTTP_SERVER_REQUEST_DURATION.record(
                 duration.as_secs_f64(),
-                crate::metric_attributes!(
+                metrics_utils::metric_attributes!(
                     ("http.request.method", method.clone()),
                     ("http.route", route.clone()),
                     ("http.response.status_code", status.to_string()),

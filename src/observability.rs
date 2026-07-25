@@ -1,4 +1,3 @@
-mod macros;
 pub(crate) mod metrics;
 
 use std::num::NonZeroU64;
@@ -111,21 +110,17 @@ impl MetricsConfig {
 pub enum MetricsHandle {
     Disabled,
     Otlp {
-        provider: opentelemetry_sdk::metrics::SdkMeterProvider,
+        inner: metrics_utils::MetricsHandle,
     },
     Prometheus {
-        provider: opentelemetry_sdk::metrics::SdkMeterProvider,
-        registry: prometheus::Registry,
+        inner: metrics_utils::MetricsHandle,
         host: String,
         port: u16,
     },
 }
 
 impl MetricsHandle {
-    pub fn provider(&self) -> Option<opentelemetry_sdk::metrics::SdkMeterProvider> {
-        match self {
-            Self::Disabled => None,
-            Self::Otlp { provider } | Self::Prometheus { provider, .. } => Some(provider.clone()),
-        }
+    pub const fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
     }
 }

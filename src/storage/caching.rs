@@ -79,7 +79,7 @@ fn cache_eviction_listener(
 
     crate::observability::metrics::CACHE_REMOVAL_COUNT.add(
         1,
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("cache", cache_name),
             ("removal_cause", removal_cause_label)
         ),
@@ -175,7 +175,10 @@ where
                 cache.run_pending_tasks().await;
                 crate::observability::metrics::CACHE_ENTRY_COUNT.record(
                     cache.entry_count(),
-                    crate::metric_attributes!(("cache", name), ("tenant_id", tenant_id.to_owned())),
+                    metrics_utils::metric_attributes!(
+                        ("cache", name),
+                        ("tenant_id", tenant_id.to_owned())
+                    ),
                 );
             }};
         }
@@ -205,7 +208,7 @@ where
 
         crate::observability::metrics::CACHE_LOOKUP_COUNT.add(
             1,
-            crate::metric_attributes!(
+            metrics_utils::metric_attributes!(
                 ("cache", <Self as GetCache<T, U>>::cache_name(self)),
                 ("outcome", if value.is_some() { "hit" } else { "miss" })
             ),
@@ -227,7 +230,10 @@ where
 
         crate::observability::metrics::CACHE_INSERT_COUNT.add(
             1,
-            crate::metric_attributes!(("cache", <Self as GetCache<T, U>>::cache_name(self))),
+            metrics_utils::metric_attributes!((
+                "cache",
+                <Self as GetCache<T, U>>::cache_name(self)
+            )),
         );
     }
 

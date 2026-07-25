@@ -2,92 +2,79 @@ mod middleware;
 
 use std::time::Duration;
 
-use opentelemetry::global;
-use opentelemetry_otlp::{MetricExporter, WithExportConfig};
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
+use metrics_utils::{
+    counter_metric, f64_histogram_buckets, gauge_metric, global_meter, histogram_metric_f64,
+    up_down_counter_metric,
+};
 
 pub use self::middleware::HttpRequestMetricsLayer;
 use super::{MetricsConfig, MetricsHandle};
-use crate::{
-    counter_metric, error, gauge_metric, global_meter, histogram_metric_f64, up_down_counter_metric,
-};
+use crate::error;
 
 pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
     match config {
         MetricsConfig::Disabled => MetricsHandle::Disabled,
+
         MetricsConfig::Otlp {
             endpoint,
             endpoint_timeout_secs,
             metrics_export_interval_secs,
             ..
         } => {
-            let exporter = match MetricExporter::builder()
-                .with_tonic()
-                .with_temporality(Temporality::Cumulative)
-                .with_endpoint(endpoint)
-                .with_timeout(Duration::from_secs(*endpoint_timeout_secs))
-                .build()
-            {
-                Ok(exporter) => exporter,
+            let metrics_config = metrics_utils::MetricsConfig {
+                service_name: String::from(env!("CARGO_PKG_NAME")),
+                resource_attributes: Vec::new(),
+                otlp_config: Some(metrics_utils::OtlpConfig {
+                    endpoint: endpoint.clone(),
+                    endpoint_timeout: Some(Duration::from_secs(*endpoint_timeout_secs)),
+                    metrics_export_interval: Some(Duration::from_secs(
+                        *metrics_export_interval_secs,
+                    )),
+                    compression: Some(metrics_utils::OtlpCompression::Zstd),
+                    temporality: Some(metrics_utils::Temporality::Cumulative),
+                }),
+                enable_prometheus: false,
+            };
+
+            match metrics_utils::init_metrics(&metrics_config) {
+                Ok(inner) => {
+                    inner.register_as_global();
+                    MetricsHandle::Otlp { inner }
+                }
                 Err(error) => {
                     tracing::warn!(
                         ?error,
-                        "Failed to build OTLP metric exporter, metrics disabled"
+                        "Failed to initialize metrics pipeline; metrics disabled"
                     );
-                    return MetricsHandle::Disabled;
+                    MetricsHandle::Disabled
                 }
-            };
-
-            let reader = PeriodicReader::builder(exporter)
-                .with_interval(Duration::from_secs(*metrics_export_interval_secs))
-                .build();
-
-            let provider = SdkMeterProvider::builder()
-                .with_reader(reader)
-                .with_resource(
-                    opentelemetry_sdk::Resource::builder()
-                        .with_service_name(env!("CARGO_PKG_NAME"))
-                        .build(),
-                )
-                .build();
-
-            global::set_meter_provider(provider.clone());
-
-            MetricsHandle::Otlp { provider }
+            }
         }
-        MetricsConfig::Prometheus { host, port, .. } => {
-            let registry = prometheus::Registry::new();
 
-            let exporter = match opentelemetry_prometheus::exporter()
-                .with_registry(registry.clone())
-                .build()
-            {
-                Ok(exporter) => exporter,
+        MetricsConfig::Prometheus { host, port, .. } => {
+            let metrics_config = metrics_utils::MetricsConfig {
+                service_name: String::from(env!("CARGO_PKG_NAME")),
+                resource_attributes: Vec::new(),
+                otlp_config: None,
+                enable_prometheus: true,
+            };
+
+            match metrics_utils::init_metrics(&metrics_config) {
+                Ok(inner) => {
+                    inner.register_as_global();
+                    MetricsHandle::Prometheus {
+                        inner,
+                        host: host.clone(),
+                        port: *port,
+                    }
+                }
                 Err(error) => {
                     tracing::warn!(
                         ?error,
-                        "Failed to build Prometheus metric exporter, metrics disabled"
+                        "Failed to initialize metrics pipeline; metrics disabled"
                     );
-                    return MetricsHandle::Disabled;
+                    MetricsHandle::Disabled
                 }
-            };
-
-            let provider = SdkMeterProvider::builder()
-                .with_reader(exporter)
-                .with_resource(
-                    opentelemetry_sdk::Resource::builder()
-                        .with_service_name(env!("CARGO_PKG_NAME"))
-                        .build(),
-                )
-                .build();
-
-            global::set_meter_provider(provider.clone());
-
-            MetricsHandle::Prometheus {
-                provider,
-                registry,
-                host: host.clone(),
-                port: *port,
             }
         }
     }
@@ -96,9 +83,9 @@ pub fn init_metrics(config: &MetricsConfig) -> MetricsHandle {
 pub fn start_prometheus_metrics_server(
     host: &str,
     port: u16,
-    registry: prometheus::Registry,
+    registry: metrics_utils::prometheus::Registry,
 ) -> Result<(), error::ConfigurationError> {
-    use prometheus::Encoder;
+    use metrics_utils::prometheus::Encoder;
 
     let addr = match host.parse::<std::net::IpAddr>() {
         Ok(ip) => std::net::SocketAddr::new(ip, port),
@@ -114,7 +101,7 @@ pub fn start_prometheus_metrics_server(
         axum::routing::get(move || {
             let registry = registry.clone();
             async move {
-                let encoder = prometheus::TextEncoder::new();
+                let encoder = metrics_utils::prometheus::TextEncoder::new();
                 let mut buffer = Vec::new();
 
                 if let Err(error) = encoder.encode(&registry.gather(), &mut buffer) {
@@ -182,18 +169,6 @@ pub fn spawn_bg_metrics_collector(
     });
 }
 
-pub(crate) fn f64_histogram_buckets() -> Vec<f64> {
-    let mut init = 0.000_001;
-    let mut buckets: [f64; 30] = [0.0; 30];
-
-    for bucket in &mut buckets {
-        *bucket = init;
-        init *= 2.0;
-    }
-
-    Vec::from(buckets)
-}
-
 global_meter!(pub(crate) CARD_VAULT_METER, "card_vault");
 
 // Secret manager
@@ -203,7 +178,7 @@ histogram_metric_f64!(
     name: "secret_manager.call.duration",
     description: "Duration of completed secret-manager call attempts",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 
 // HTTP server
@@ -217,7 +192,7 @@ histogram_metric_f64!(
     name: "http.server.request.duration",
     description: "Duration of HTTP server requests",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 up_down_counter_metric!(
     pub(crate) HTTP_SERVER_ACTIVE_REQUESTS, CARD_VAULT_METER,
@@ -232,7 +207,7 @@ histogram_metric_f64!(
     name: "http.server.jwe_middleware.operation.duration",
     description: "Duration of JWE/JWS middleware operations",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 
 // Rate limiter
@@ -249,7 +224,7 @@ histogram_metric_f64!(
     name: "health.check.duration",
     description: "Duration of completed health diagnostic checks",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 
 // Database
@@ -263,14 +238,14 @@ histogram_metric_f64!(
     name: "database.query.duration",
     description: "Duration of completed database queries",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 histogram_metric_f64!(
     pub(crate) DATABASE_CONNECTION_ACQUIRE_DURATION, CARD_VAULT_METER,
     name: "database.connection.acquire.duration",
     description: "Duration of database connection acquisition attempts",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 gauge_metric!(
     pub(crate) DATABASE_POOL_SIZE, CARD_VAULT_METER,
@@ -299,7 +274,7 @@ histogram_metric_f64!(
     name: "external_http.request.duration",
     description: "Duration of completed external HTTP requests",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 
 // Cache
@@ -360,7 +335,7 @@ histogram_metric_f64!(
     name: "runtime_config.fetch.duration",
     description: "Duration of completed runtime config fetch attempts",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 
 // KV
@@ -376,7 +351,7 @@ histogram_metric_f64!(
     name: "kv.operation.duration",
     description: "Duration of completed KV operations",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 #[cfg(feature = "kv")]
 counter_metric!(
@@ -390,7 +365,7 @@ histogram_metric_f64!(
     name: "kv.drainer.push.duration",
     description: "Duration of completed drainer stream push attempts",
     unit: "s",
-    buckets: f64_histogram_buckets(),
+    buckets: f64_histogram_buckets().to_vec(),
 );
 #[cfg(feature = "kv")]
 counter_metric!(
@@ -437,7 +412,20 @@ pub(crate) enum KeyManagerKind {
     External,
 }
 
-crate::impl_metric_value_from!(
+#[macro_export]
+macro_rules! impl_metric_value_from {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl From<$ty> for metrics_utils::opentelemetry::Value {
+                fn from(v: $ty) -> Self {
+                    Self::from(<&'static str>::from(v))
+                }
+            }
+        )+
+    };
+}
+
+impl_metric_value_from!(
     Resource,
     DomainGetOrInsertOutcome,
     TtlDeletionOutcome,

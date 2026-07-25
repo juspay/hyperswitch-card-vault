@@ -72,7 +72,7 @@ impl super::KeyProvider for InternalKeyManager {
                 );
                 crate::observability::metrics::ENTITY_IMPLICIT_CREATE_COUNT.add(
                     1,
-                    crate::metric_attributes!((
+                    metrics_utils::metric_attributes!((
                         "key_manager",
                         crate::observability::metrics::KeyManagerKind::Internal
                     )),

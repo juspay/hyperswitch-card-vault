@@ -168,7 +168,7 @@ impl ApiClient {
 
         crate::observability::metrics::EXTERNAL_HTTP_REQUEST_COUNT.add(
             1,
-            crate::metric_attributes!(
+            metrics_utils::metric_attributes!(
                 ("purpose", purpose),
                 ("method", method),
                 ("host", host.clone())
@@ -199,7 +199,7 @@ impl ApiClient {
 
         crate::observability::metrics::EXTERNAL_HTTP_REQUEST_DURATION.record(
             start.elapsed().as_secs_f64(),
-            crate::metric_attributes!(
+            metrics_utils::metric_attributes!(
                 ("purpose", purpose),
                 ("method", method),
                 ("host", host),

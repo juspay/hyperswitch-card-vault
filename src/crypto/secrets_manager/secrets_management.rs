@@ -32,7 +32,7 @@ where
 
     crate::observability::metrics::SECRET_MANAGER_CALL_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("backend", backend),
             ("operation", operation),
             ("outcome", outcome),

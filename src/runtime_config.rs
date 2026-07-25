@@ -252,7 +252,7 @@ async fn record_runtime_config_fetch_duration(
 
     crate::observability::metrics::RUNTIME_CONFIG_FETCH_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(("outcome", outcome), ("status_code", status_code)),
+        metrics_utils::metric_attributes!(("outcome", outcome), ("status_code", status_code)),
     );
 
     result
