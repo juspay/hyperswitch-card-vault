@@ -218,7 +218,9 @@ impl GlobalConfig {
             .add_source(
                 config::Environment::with_prefix("LOCKER")
                     .separator("__")
-                    .try_parsing(true),
+                    .try_parsing(true)
+                    .list_separator(",")
+                    .with_list_parse_key("redis.cluster_urls"),
             )
             .build()?;
 
