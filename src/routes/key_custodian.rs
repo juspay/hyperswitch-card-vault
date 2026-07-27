@@ -125,6 +125,7 @@ pub async fn decrypt(
                 #[cfg(feature = "redis")]
                 global_app_state.redis_store.as_ref(),
                 global_app_state.runtime_config_manager.clone(),
+                global_app_state.storage_global_store.clone(),
             )
             .await
             .change_context(error::ApiError::TenantError(
