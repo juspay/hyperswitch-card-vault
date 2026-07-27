@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
@@ -27,6 +27,22 @@ enum RuntimeConfigState {
         /// Last-known-good config body; `None` until the first successful fetch.
         cache: RwLock<Option<String>>,
     },
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct RuntimeConfigStatus {
+    pub status: RuntimeConfigStatusKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<serde_json::Value>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeConfigStatusKind {
+    Disabled,
+    NotFetched,
+    Available,
+    Invalid,
 }
 
 /// Fetches the runtime-config endpoint on a schedule and serves the last-known-good body.
@@ -118,8 +134,47 @@ impl RuntimeConfigManager {
         }
     }
 
+    /// Returns the current cached runtime-config status without fetching from the endpoint.
+    pub async fn status(&self) -> RuntimeConfigStatus {
+        let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
+            return RuntimeConfigStatus {
+                status: RuntimeConfigStatusKind::Disabled,
+                config: None,
+            };
+        };
+
+        let guard = cache.read().await;
+        let Some(raw) = guard.as_deref() else {
+            return RuntimeConfigStatus {
+                status: RuntimeConfigStatusKind::NotFetched,
+                config: None,
+            };
+        };
+
+        match serde_json::from_str(raw) {
+            Ok(config) => RuntimeConfigStatus {
+                status: RuntimeConfigStatusKind::Available,
+                config: Some(config),
+            },
+            Err(error) => {
+                crate::logger::error!(?error, raw, "Cached runtime config is invalid");
+                RuntimeConfigStatus {
+                    status: RuntimeConfigStatusKind::Invalid,
+                    config: None,
+                }
+            }
+        }
+    }
+
     /// Spawn a background task that refreshes the config on an interval. Returns `None` when disabled.
-    pub fn spawn_prefetch_task(self: &Arc<Self>) -> Option<tokio::task::JoinHandle<()>> {
+    pub fn spawn_prefetch_task<F, Fut>(
+        self: &Arc<Self>,
+        on_successful_fetch: F,
+    ) -> Option<tokio::task::JoinHandle<()>>
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
         let refresh_interval = match &self.state {
             RuntimeConfigState::Disabled => return None,
             RuntimeConfigState::Enabled {
@@ -135,21 +190,25 @@ impl RuntimeConfigManager {
 
         Some(tokio::spawn(
             async move {
-                manager.prefetch().await;
+                if manager.prefetch().await {
+                    on_successful_fetch().await;
+                }
 
                 let mut ticker = tokio::time::interval(refresh_interval);
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
                 loop {
                     ticker.tick().await;
-                    manager.prefetch().await;
+                    if manager.prefetch().await {
+                        on_successful_fetch().await;
+                    }
                 }
             }
             .in_current_span(),
         ))
     }
 
-    async fn prefetch(&self) {
+    async fn prefetch(&self) -> bool {
         let RuntimeConfigState::Enabled {
             endpoint_url,
             endpoint_path,
@@ -159,19 +218,21 @@ impl RuntimeConfigManager {
             ..
         } = &self.state
         else {
-            return;
+            return false;
         };
 
         match Self::fetch_config(endpoint_url, endpoint_path, api_key, client).await {
             Ok(body) => {
                 crate::logger::info!(config = %body, "Runtime config fetched");
                 *cache.write().await = Some(body);
+                true
             }
             Err(e) => {
                 crate::logger::warn!(
                     error = ?e,
                     "Failed to prefetch runtime config, keeping last-known-good"
                 );
+                false
             }
         }
     }
