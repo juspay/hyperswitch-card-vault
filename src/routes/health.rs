@@ -19,7 +19,7 @@ where
 
     crate::observability::metrics::HEALTH_CHECK_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(("check", check), ("outcome", outcome)),
+        metrics_utils::metric_attributes!(("check", check), ("outcome", outcome)),
     );
 
     result

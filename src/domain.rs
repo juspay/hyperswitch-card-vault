@@ -17,6 +17,6 @@ pub(crate) fn record_get_or_insert_outcome(
 ) {
     crate::observability::metrics::DOMAIN_GET_OR_INSERT_COUNT.add(
         1,
-        crate::metric_attributes!(("resource", resource), ("outcome", outcome)),
+        metrics_utils::metric_attributes!(("resource", resource), ("outcome", outcome)),
     );
 }

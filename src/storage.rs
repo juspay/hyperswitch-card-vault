@@ -223,6 +223,7 @@ enum DbOperation {
     Update,
     Delete,
     FindOne,
+    #[cfg(feature = "external_key_manager")]
     Filter,
 }
 
@@ -399,7 +400,8 @@ impl Storage {
 
         let primary = self.primary_pg_pool.status();
         let pool = DbPool::Primary;
-        let attrs = crate::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
+        let attrs =
+            metrics_utils::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
 
         if let Some(size) = to_u64(primary.size, "size", pool, tenant_id) {
             DATABASE_POOL_SIZE.record(size, attrs);
@@ -414,8 +416,10 @@ impl Storage {
         if let Some(replica) = &self.replica_pg_pool {
             let replica = replica.status();
             let pool = DbPool::Replica;
-            let attrs =
-                crate::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
+            let attrs = metrics_utils::metric_attributes!(
+                ("pool", pool),
+                ("tenant_id", tenant_id.to_owned())
+            );
 
             if let Some(size) = to_u64(replica.size, "size", pool, tenant_id) {
                 DATABASE_POOL_SIZE.record(size, attrs);
@@ -523,9 +527,7 @@ pub(crate) trait MerchantInterface {
         key: &Self::Algorithm,
     ) -> Result<types::Merchant, ContainerError<Self::Error>>;
 
-    // This function is under the `dead_code` lint to pass Clippy checks because it utilizes types
-    // from both internal and external key_manager.
-    #[allow(dead_code)]
+    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,
@@ -681,7 +683,7 @@ where
 
     crate::observability::metrics::DATABASE_CONNECTION_ACQUIRE_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(("pool", pool), ("outcome", outcome)),
+        metrics_utils::metric_attributes!(("pool", pool), ("outcome", outcome)),
     );
 
     result
@@ -723,7 +725,7 @@ where
 
     crate::observability::metrics::DATABASE_QUERY_COUNT.add(
         1,
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("table", table_name),
             ("operation", operation),
             ("pool", pool)
@@ -737,7 +739,7 @@ where
 
     crate::observability::metrics::DATABASE_QUERY_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("table", table_name),
             ("operation", operation),
             ("pool", pool),
@@ -765,7 +767,7 @@ where
 
     crate::observability::metrics::DATABASE_QUERY_COUNT.add(
         1,
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("table", table_name),
             ("operation", operation),
             ("pool", pool)
@@ -783,7 +785,7 @@ where
 
     crate::observability::metrics::DATABASE_QUERY_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("table", table_name),
             ("operation", operation),
             ("pool", pool),
@@ -810,7 +812,7 @@ where
 
     crate::observability::metrics::DATABASE_QUERY_COUNT.add(
         1,
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("table", table_name),
             ("operation", operation),
             ("pool", pool)
@@ -828,7 +830,7 @@ where
 
     crate::observability::metrics::DATABASE_QUERY_DURATION.record(
         duration.as_secs_f64(),
-        crate::metric_attributes!(
+        metrics_utils::metric_attributes!(
             ("table", table_name),
             ("operation", operation),
             ("pool", pool),

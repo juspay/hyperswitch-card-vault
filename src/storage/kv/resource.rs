@@ -277,8 +277,10 @@ where
                 // return the found redis item so that if the caller is doing update operation, updates can be applied.
                 Ok(KvResult::HGet(v)) => Ok((StorageScheme::RedisKv, Some(v))),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
-                    crate::observability::metrics::KV_CACHE_MISS_COUNT
-                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    crate::observability::metrics::KV_CACHE_MISS_COUNT.add(
+                        1,
+                        metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+                    );
                     Ok((StorageScheme::PostgresOnly, None))
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
@@ -431,8 +433,10 @@ where
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
-                    metrics::KV_CACHE_MISS_COUNT
-                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    metrics::KV_CACHE_MISS_COUNT.add(
+                        1,
+                        metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+                    );
                     M::storage_find(store, &primary_key).await
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
@@ -492,8 +496,10 @@ where
                         crate::error::ReverseLookupDBError::NotFoundError
                     ) =>
                 {
-                    metrics::KV_CACHE_MISS_COUNT
-                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    metrics::KV_CACHE_MISS_COUNT.add(
+                        1,
+                        metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+                    );
                     return M::storage_find_by_lookup(store, &lookup_key).await;
                 }
                 Err(err) => {
@@ -517,8 +523,10 @@ where
             match result {
                 Ok(KvResult::HGet(v)) => Ok(v.into()),
                 Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
-                    metrics::KV_CACHE_MISS_COUNT
-                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    metrics::KV_CACHE_MISS_COUNT.add(
+                        1,
+                        metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+                    );
                     M::storage_find_by_lookup(store, &lookup_key).await
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(

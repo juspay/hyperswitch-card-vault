@@ -219,7 +219,7 @@ where
         .await
         .inspect(|_| {
             let duration = start.elapsed();
-            let attrs = crate::metric_attributes!(
+            let attrs = metrics_utils::metric_attributes!(
                 ("operation", operation.clone()),
                 ("outcome", "success"),
             );
@@ -239,8 +239,10 @@ where
                 }
             };
             let duration = start.elapsed();
-            let attrs =
-                crate::metric_attributes!(("operation", operation.clone()), ("outcome", outcome));
+            let attrs = metrics_utils::metric_attributes!(
+                ("operation", operation.clone()),
+                ("outcome", outcome)
+            );
 
             metrics::KV_OPERATION_COUNT.add(1, attrs);
             metrics::KV_OPERATION_DURATION.record(duration.as_secs_f64(), attrs);
@@ -279,7 +281,7 @@ where
         .bridge()
         .map(|_| {
             let duration = start.elapsed();
-            let attrs = crate::metric_attributes!(
+            let attrs = metrics_utils::metric_attributes!(
                 ("operation", operation_str.clone()),
                 ("entity_type", entity_type_str.clone()),
                 ("outcome", "success"),
@@ -289,7 +291,7 @@ where
         })
         .inspect_err(|error| {
             let duration = start.elapsed();
-            let attrs = crate::metric_attributes!(
+            let attrs = metrics_utils::metric_attributes!(
                 ("operation", operation_str.clone()),
                 ("entity_type", entity_type_str.clone()),
                 ("outcome", "error"),
