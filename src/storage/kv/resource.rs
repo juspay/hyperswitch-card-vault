@@ -275,8 +275,10 @@ where
                 Ok(KvFindResult::Present(v)) => Ok((StorageScheme::RedisKv, Some(v))),
                 Ok(KvFindResult::Deleted) => Ok((StorageScheme::RedisKv, None)),
                 Ok(KvFindResult::Absent) => {
-                    crate::observability::metrics::KV_CACHE_MISS_COUNT
-                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    metrics::KV_CACHE_MISS_COUNT.add(
+                        1,
+                        metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+                    );
                     Ok((StorageScheme::PostgresOnly, None))
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
@@ -488,8 +490,10 @@ where
                 Ok(KvFindResult::Absent) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
-                    metrics::KV_CACHE_MISS_COUNT
-                        .add(1, crate::metric_attributes![("resource", M::ENTITY_TYPE)]);
+                    metrics::KV_CACHE_MISS_COUNT.add(
+                        1,
+                        metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+                    );
                     M::storage_find_by_lookup(store, &lookup_key).await
                 }
                 Ok(KvFindResult::Deleted) => Err(kv_backend_error::<M::Error>(Report::new(
