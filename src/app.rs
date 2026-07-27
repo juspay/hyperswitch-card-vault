@@ -233,21 +233,17 @@ pub async fn server_builder(
 
     router = router.nest("/health", routes::health::serve());
 
-    if metrics_handle.provider().is_some() {
+    if metrics_handle.is_enabled() {
         router = router.layer(observability::HttpRequestMetricsLayer);
     }
 
-    if let observability::MetricsHandle::Prometheus {
-        registry,
-        host,
-        port,
-        ..
-    } = &metrics_handle
+    if let observability::MetricsHandle::Prometheus { inner, host, port } = &metrics_handle
+        && let Some(registry) = inner.prometheus_registry()
     {
         observability::start_prometheus_metrics_server(host, *port, registry.clone())?;
     }
 
-    if metrics_handle.provider().is_some() {
+    if metrics_handle.is_enabled() {
         observability::spawn_bg_metrics_collector(
             &global_app_state,
             global_app_state
