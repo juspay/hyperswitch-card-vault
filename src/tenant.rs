@@ -57,6 +57,7 @@ impl GlobalAppState {
             Some(conf) => Some(
                 crate::storage::redis::RedisStore::new(conf)
                     .await
+                    .inspect(|redis_conn| redis_conn.spawn_error_watcher())
                     .inspect_err(|err| {
                         crate::logger::error!(?err, "Failed to initialize Redis;");
                     })

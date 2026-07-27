@@ -38,7 +38,7 @@ impl std::fmt::Debug for RedisStore {
 }
 
 impl RedisStore {
-    pub async fn new(conf: &RedisSettings) -> error_stack::Result<Self, RedisError> {
+    pub(crate) async fn new(conf: &RedisSettings) -> error_stack::Result<Self, RedisError> {
         let pool = RedisConnectionPool::new(conf).await.map_err(into_report)?;
         Ok(Self {
             redis_conn: Arc::new(pool),
@@ -46,7 +46,7 @@ impl RedisStore {
     }
 
     /// A handle onto the same pool that namespaces every key with `key_prefix`.
-    pub fn clone_with_prefix(&self, key_prefix: &str) -> TenantAwareRedisStore {
+    pub(crate) fn clone_with_prefix(&self, key_prefix: &str) -> TenantAwareRedisStore {
         // `.as_ref().clone(..)` calls the pool's inherent `clone`, not `Arc::clone`.
         TenantAwareRedisStore {
             inner: Self {
@@ -56,7 +56,7 @@ impl RedisStore {
     }
 
     // Logs disconnects via `on_error`. `rx` stays bound (not `_`) so its `tx.send` succeeds.
-    pub fn spawn_error_watcher(&self) {
+    pub(crate) fn spawn_error_watcher(&self) {
         let redis_conn = self.redis_conn.clone();
         tokio::spawn(
             async move {
@@ -69,11 +69,11 @@ impl RedisStore {
 
     /// The shared pool. It manages (re)connection internally, so callers run
     /// commands directly and surface per-command errors themselves.
-    pub fn get_redis_conn(&self) -> Arc<RedisConnectionPool> {
+    pub(crate) fn get_redis_conn(&self) -> Arc<RedisConnectionPool> {
         self.redis_conn.clone()
     }
 
-    pub async fn test(&self) -> error_stack::Result<(), RedisError> {
+    pub(crate) async fn test(&self) -> error_stack::Result<(), RedisError> {
         let redis_conn = self.get_redis_conn();
         let key = consts::REDIS_HEALTH_CHECK_KEY.into();
         redis_conn
