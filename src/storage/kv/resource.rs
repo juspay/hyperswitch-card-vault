@@ -11,7 +11,7 @@ use super::{
     partition_key::{KvStorePartition, PartitionKey},
     scheme::KvState,
     serializable_query::SerializableQuery,
-    wrapper::{KvBehaviour, KvFindResult, KvInsertResult, RedisBackend},
+    wrapper::{KvBehaviour, KvFindResult, KvInsertResult},
 };
 use crate::{
     error::{
@@ -265,7 +265,8 @@ where
         KvState::SoftKill => {
             // With this implementation, Hot keys may never recover out of KV.
             let partition_key_str = partition_key.to_string();
-            let result = RedisBackend::new(store)
+            let result = store
+                .kv_backend()
                 .find::<M::DieselEntity>(partition_key.clone())
                 .await;
 
@@ -329,7 +330,8 @@ where
             }
 
             let diesel_entity = diesel_new.into();
-            let reply = RedisBackend::new(store)
+            let reply = store
+                .kv_backend()
                 .insert(partition_key, &diesel_entity, drainer_query)
                 .await
                 .map_err(|e| {
@@ -401,7 +403,8 @@ where
         StorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
         StorageScheme::RedisKv => {
             let key_str = key.to_string();
-            let result = RedisBackend::new(store)
+            let result = store
+                .kv_backend()
                 .find::<M::DieselEntity>(key.clone())
                 .await;
 
@@ -479,7 +482,8 @@ where
                 }
             };
 
-            let result = RedisBackend::new(store)
+            let result = store
+                .kv_backend()
                 .find::<M::DieselEntity>(PartitionKey::CombinationKey {
                     combination: &key_str,
                 })
@@ -553,7 +557,8 @@ where
             let updated_resource = updated_model.clone().into();
 
             let key_str = key.to_string();
-            RedisBackend::new(store)
+            store
+                .kv_backend()
                 .update(key.clone(), &updated_model, update_query)
                 .await
                 .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
@@ -584,7 +589,8 @@ where
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = key.to_string();
-            RedisBackend::new(store)
+            store
+                .kv_backend()
                 .delete::<M::DieselEntity>(key.clone(), delete_query)
                 .await
                 .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))

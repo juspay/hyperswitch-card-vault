@@ -9,7 +9,7 @@ use super::{
     partition_key::{KvStorePartition, PartitionKey},
     serializable_query::SerializableQuery,
 };
-use crate::{logger, observability::metrics};
+use crate::{config::KvConfig, logger, observability::metrics, storage::redis as redis_store};
 
 /// Drainer-entry `request_id`: log-only, empty (not threaded), kept for wire-format parity.
 const REQUEST_ID: &str = "VAULT_CONSTANT_REQUEST_ID";
@@ -32,18 +32,6 @@ struct KvTombstone {
 enum KvTombstoneMarker {
     #[serde(rename = "v1")]
     V1,
-}
-
-/// Provides access to the Redis connection pool.
-pub(crate) trait RedisConnInterface {
-    fn get_redis_conn(&self) -> error_stack::Result<Arc<RedisConnectionPool>, RedisError>;
-}
-
-/// Store context required by the KV wrapper.
-pub(crate) trait KvStoreContext: RedisConnInterface {
-    fn ttl_for_kv(&self) -> u32;
-    fn drainer_stream_name(&self, shard_key: &str) -> String;
-    fn drainer_num_partitions(&self) -> u8;
 }
 
 /// Reconstruct an owned `RedisError` from a `&RedisError` (not `Clone`).
@@ -172,23 +160,40 @@ pub(crate) trait KvBehaviour {
         V: KvStorePartition;
 }
 
-pub(crate) struct RedisBackend<'a, C>
-where
-    C: KvStoreContext,
-{
-    store: &'a C,
+#[derive(Clone)]
+pub(crate) enum KvBackend {
+    Redis(RedisBackend),
 }
 
-impl<'a, C> RedisBackend<'a, C>
-where
-    C: KvStoreContext,
-{
+impl KvBackend {
+    pub(crate) fn redis(
+        redis: Option<redis_store::TenantAwareRedisStore>,
+        config: KvConfig,
+    ) -> Self {
+        Self::Redis(RedisBackend::new(redis, config))
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct RedisBackend {
+    redis: Option<redis_store::TenantAwareRedisStore>,
+    config: KvConfig,
+}
+
+impl RedisBackend {
     const TOMBSTONE_VALUE: KvTombstone = KvTombstone {
         marker: KvTombstoneMarker::V1,
     };
 
-    pub(crate) fn new(store: &'a C) -> Self {
-        Self { store }
+    fn new(redis: Option<redis_store::TenantAwareRedisStore>, config: KvConfig) -> Self {
+        Self { redis, config }
+    }
+
+    fn get_redis_conn(&self) -> error_stack::Result<Arc<RedisConnectionPool>, RedisError> {
+        self.redis
+            .as_ref()
+            .map(|redis| redis.get_redis_conn())
+            .ok_or_else(|| error_stack::Report::new(RedisError::RedisConnectionError))
     }
 
     async fn insert_if_absent_or_tombstone(
@@ -196,8 +201,8 @@ where
         key: &str,
         serialized: String,
     ) -> error_stack::Result<KvInsertResult, RedisError> {
-        let redis_conn = self.store.get_redis_conn()?;
-        let ttl = self.store.ttl_for_kv();
+        let redis_conn = self.get_redis_conn()?;
+        let ttl = self.config.ttl_for_kv;
 
         for attempt in 1..=KV_TRANSACTION_MAX_RETRIES {
             let redis_key = redis_conn.add_prefix(key);
@@ -278,10 +283,64 @@ where
     }
 }
 
-impl<C> KvBehaviour for RedisBackend<'_, C>
-where
-    C: KvStoreContext + Sync,
-{
+impl KvBehaviour for KvBackend {
+    type Error = RedisError;
+
+    async fn insert<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        value: &V,
+        query: SerializableQuery,
+    ) -> error_stack::Result<KvInsertResult, Self::Error>
+    where
+        V: serde::Serialize + Debug + KvStorePartition + Sync,
+    {
+        match self {
+            Self::Redis(redis) => redis.insert(partition_key, value, query).await,
+        }
+    }
+
+    async fn find<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+    ) -> error_stack::Result<KvFindResult<V>, Self::Error>
+    where
+        V: de::DeserializeOwned,
+    {
+        match self {
+            Self::Redis(redis) => redis.find(partition_key).await,
+        }
+    }
+
+    async fn update<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        value: &V,
+        query: SerializableQuery,
+    ) -> error_stack::Result<(), Self::Error>
+    where
+        V: serde::Serialize + Debug + KvStorePartition + Sync,
+    {
+        match self {
+            Self::Redis(redis) => redis.update(partition_key, value, query).await,
+        }
+    }
+
+    async fn delete<V>(
+        &self,
+        partition_key: PartitionKey<'_>,
+        query: SerializableQuery,
+    ) -> error_stack::Result<usize, Self::Error>
+    where
+        V: KvStorePartition,
+    {
+        match self {
+            Self::Redis(redis) => redis.delete::<V>(partition_key, query).await,
+        }
+    }
+}
+
+impl KvBehaviour for RedisBackend {
     type Error = RedisError;
     async fn insert<V>(
         &self,
@@ -304,7 +363,7 @@ where
                     // On drainer-push failure the Redis key remains (TTL-bounded) with no
                     // drainer entry — accepted per eventual-consistency model; alert on
                     // KV_FAILED_TO_PUSH_TO_DRAINER.
-                    push_to_drainer_stream::<V>(self.store, query, partition_key).await?;
+                    push_to_drainer_stream::<V>(self, query, partition_key).await?;
                     Ok(KvInsertResult::Inserted)
                 }
                 KvInsertResult::AlreadyExists => Ok(KvInsertResult::AlreadyExists),
@@ -321,7 +380,7 @@ where
         V: de::DeserializeOwned,
     {
         with_kv_metrics(KvOperationKind::Find, async move {
-            let redis_conn = self.store.get_redis_conn()?;
+            let redis_conn = self.get_redis_conn()?;
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
 
@@ -357,7 +416,7 @@ where
         V: serde::Serialize + Debug + KvStorePartition + Sync,
     {
         with_kv_metrics(KvOperationKind::Update, async move {
-            let redis_conn = self.store.get_redis_conn()?;
+            let redis_conn = self.get_redis_conn()?;
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
             let serialized =
@@ -367,12 +426,12 @@ where
                 .set_hash_fields(
                     &redis_key,
                     vec![(key.as_str(), serialized)],
-                    Some(self.store.ttl_for_kv().into()),
+                    Some(self.config.ttl_for_kv.into()),
                 )
                 .await
                 .bridge()?;
 
-            push_to_drainer_stream::<V>(self.store, query, partition_key).await?;
+            push_to_drainer_stream::<V>(self, query, partition_key).await?;
             Ok(())
         })
         .await
@@ -387,7 +446,7 @@ where
         V: KvStorePartition,
     {
         with_kv_metrics(KvOperationKind::Delete, async move {
-            let redis_conn = self.store.get_redis_conn()?;
+            let redis_conn = self.get_redis_conn()?;
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
             let tombstone = serde_json::to_string(&Self::TOMBSTONE_VALUE)
@@ -397,12 +456,12 @@ where
                 .set_hash_fields(
                     &redis_key,
                     vec![(key.as_str(), tombstone)],
-                    Some(self.store.ttl_for_kv().into()),
+                    Some(self.config.ttl_for_kv.into()),
                 )
                 .await
                 .bridge()?;
 
-            push_to_drainer_stream::<V>(self.store, query, partition_key).await?;
+            push_to_drainer_stream::<V>(self, query, partition_key).await?;
             Ok(1)
         })
         .await
@@ -454,7 +513,7 @@ where
 }
 
 async fn push_to_drainer_stream<R>(
-    store: &impl KvStoreContext,
+    backend: &RedisBackend,
     serializable_query: SerializableQuery,
     partition_key: PartitionKey<'_>,
 ) -> error_stack::Result<(), RedisError>
@@ -463,13 +522,13 @@ where
 {
     let global_id = partition_key.to_string();
 
-    let shard_key = R::shard_key(partition_key, store.drainer_num_partitions());
-    let stream_name = store.drainer_stream_name(&shard_key);
+    let shard_key = R::shard_key(partition_key, backend.config.drainer_num_partitions);
+    let stream_name = backend.config.drainer_stream_name(&shard_key);
 
     let operation_str = serializable_query.operation().to_string();
     let entity_type_str = serializable_query.entity_type();
 
-    let redis_conn = store.get_redis_conn()?;
+    let redis_conn = backend.get_redis_conn()?;
 
     let start = std::time::Instant::now();
 

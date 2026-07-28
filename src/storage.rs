@@ -205,6 +205,8 @@ pub struct Storage {
     global_store: Arc<GlobalStore>,
     #[cfg(feature = "redis")]
     redis: Option<redis_store::TenantAwareRedisStore>,
+    #[cfg(feature = "kv")]
+    kv_backend: kv::KvBackend,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -306,9 +308,11 @@ impl Storage {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
             runtime_config_manager,
-            global_store,
+            global_store: global_store.clone(),
             #[cfg(feature = "redis")]
-            redis,
+            redis: redis.clone(),
+            #[cfg(feature = "kv")]
+            kv_backend: kv::KvBackend::redis(redis, global_store.config.clone()),
         })
     }
 
@@ -381,6 +385,11 @@ impl Storage {
         self.global_store.kv_state().await
     }
 
+    #[cfg(feature = "kv")]
+    pub(crate) fn kv_backend(&self) -> &kv::KvBackend {
+        &self.kv_backend
+    }
+
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
         use crate::observability::metrics::{
             DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE, DATABASE_POOL_WAITING,
@@ -435,40 +444,6 @@ impl Storage {
                 DATABASE_POOL_WAITING.record(waiting, attrs);
             }
         }
-    }
-}
-
-#[cfg(feature = "kv")]
-impl kv::RedisConnInterface for Storage {
-    fn get_redis_conn(
-        &self,
-    ) -> error_stack::Result<
-        std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>,
-        hyperswitch_redis_interface::errors::RedisError,
-    > {
-        self.redis
-            .as_ref()
-            .map(|r| r.get_redis_conn())
-            .ok_or_else(|| {
-                error_stack::Report::new(
-                    hyperswitch_redis_interface::errors::RedisError::RedisConnectionError,
-                )
-            })
-    }
-}
-
-#[cfg(feature = "kv")]
-impl kv::KvStoreContext for Storage {
-    fn ttl_for_kv(&self) -> u32 {
-        self.global_store.config.ttl_for_kv
-    }
-
-    fn drainer_stream_name(&self, shard_key: &str) -> String {
-        self.global_store.config.drainer_stream_name(shard_key)
-    }
-
-    fn drainer_num_partitions(&self) -> u8 {
-        self.global_store.config.drainer_num_partitions
     }
 }
 

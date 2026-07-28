@@ -20,8 +20,5 @@ pub(crate) use self::{
         insert_resource, insert_resource_with_reverse_lookup, update_resource_by_id,
     },
 };
-pub(crate) use self::{
-    scheme::KvState,
-    wrapper::{KvStoreContext, RedisConnInterface},
-};
+pub(crate) use self::{scheme::KvState, wrapper::KvBackend};
 pub(crate) use super::scheme::StorageScheme;
