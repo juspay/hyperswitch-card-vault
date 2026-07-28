@@ -346,6 +346,12 @@ counter_metric!(
     description: "Number of KV operation attempts",
 );
 #[cfg(feature = "kv")]
+counter_metric!(
+    pub(crate) KV_TRANSACTION_RETRY_COUNT, CARD_VAULT_METER,
+    name: "kv.transaction.retry.count",
+    description: "Number of KV optimistic transaction retries",
+);
+#[cfg(feature = "kv")]
 histogram_metric_f64!(
     pub(crate) KV_OPERATION_DURATION, CARD_VAULT_METER,
     name: "kv.operation.duration",

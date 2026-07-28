@@ -1,10 +1,7 @@
 use std::{fmt::Debug, future::Future, sync::Arc};
 
 use error_stack::ResultExt;
-use fred::{
-    interfaces::{HashesInterface, KeysInterface, TransactionInterface},
-    types::RedisValue as FredRedisValue,
-};
+use fred::interfaces::{HashesInterface, KeysInterface, TransactionInterface};
 use hyperswitch_redis_interface::{RedisConnectionPool, errors::RedisError, types::RedisEntryId};
 use serde::de;
 
@@ -25,24 +22,16 @@ enum KvStoredValue<T> {
     Value(T),
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 struct KvTombstone {
     #[serde(rename = "__hyperswitch_card_vault_kv_tombstone")]
     marker: KvTombstoneMarker,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 enum KvTombstoneMarker {
     #[serde(rename = "v1")]
     V1,
-}
-
-impl KvTombstone {
-    fn new() -> Self {
-        Self {
-            marker: KvTombstoneMarker::V1,
-        }
-    }
 }
 
 /// Provides access to the Redis connection pool.
@@ -194,8 +183,95 @@ impl<'a, C> RedisBackend<'a, C>
 where
     C: KvStoreContext,
 {
+    const TOMBSTONE_VALUE: KvTombstone = KvTombstone {
+        marker: KvTombstoneMarker::V1,
+    };
+
     pub(crate) fn new(store: &'a C) -> Self {
         Self { store }
+    }
+
+    async fn insert_if_absent_or_tombstone(
+        &self,
+        key: &str,
+        serialized: String,
+    ) -> error_stack::Result<KvInsertResult, RedisError> {
+        let redis_conn = self.store.get_redis_conn()?;
+        let ttl = self.store.ttl_for_kv();
+
+        for attempt in 1..=KV_TRANSACTION_MAX_RETRIES {
+            let redis_key = redis_conn.add_prefix(key);
+            let client = redis_conn.pool.next();
+
+            // The conditional insert needs WATCH before the pre-read and MULTI on the same
+            // client. `RedisConnectionPool::get_transaction()` chooses a transaction client
+            // directly, but does not expose a watched pre-read on that same client.
+            client
+                .watch(vec![redis_key.clone()])
+                .await
+                .change_context(RedisError::SetHashFieldFailed)?;
+
+            let current = client
+                .hget::<Option<Vec<u8>>, _, _>(redis_key.clone(), key.to_string())
+                .await
+                .change_context(RedisError::GetHashFieldFailed)?;
+
+            if current.as_deref().is_some_and(|value| !Self::is_tombstone(value)) {
+                client
+                    .unwatch()
+                    .await
+                    .change_context(RedisError::SetHashFieldFailed)?;
+                return Ok(KvInsertResult::AlreadyExists);
+            }
+
+            let transaction = client.multi();
+            transaction
+                .hset::<(), _, _>(
+                    redis_key.clone(),
+                    vec![(key.to_string(), serialized.clone())],
+                )
+                .await
+                .change_context(RedisError::SetHashFieldFailed)?;
+            transaction
+                .expire::<(), _>(&redis_key, i64::from(ttl))
+                .await
+                .change_context(RedisError::SetExpiryFailed)?;
+
+            let txn_result = transaction
+                .exec::<Option<(i32, i32)>>(true)
+                .await
+                .change_context(RedisError::SetHashFieldFailed)?;
+
+            if matches!(txn_result, Some((_, _))) {
+                return Ok(KvInsertResult::Inserted);
+            }
+
+            if attempt < KV_TRANSACTION_MAX_RETRIES {
+                metrics::KV_TRANSACTION_RETRY_COUNT.add(
+                    1,
+                    metrics_utils::metric_attributes!(
+                        ("operation", "insert_if_absent_or_tombstone"),
+                        ("reason", "transaction_conflict"),
+                    ),
+                );
+                logger::warn!(
+                    kv_operation = "insert_if_absent_or_tombstone",
+                    redis_key = %redis_key,
+                    retry_attempt = attempt + 1,
+                    max_retries = KV_TRANSACTION_MAX_RETRIES,
+                    "Retrying Redis conditional insert after transaction conflict"
+                );
+            }
+        }
+
+        Err(RedisError::SetHashFieldFailed.into())
+    }
+
+    fn is_tombstone(value: &[u8]) -> bool {
+        matches!(
+            serde_json::from_slice::<KvTombstone>(value),
+            Ok(tombstone) if tombstone == Self::TOMBSTONE_VALUE
+        )
     }
 }
 
@@ -214,18 +290,11 @@ where
         V: serde::Serialize + Debug + KvStorePartition + Sync,
     {
         with_kv_metrics(KvOperationKind::Insert, async move {
-            let redis_conn = self.store.get_redis_conn()?;
             let key = partition_key.to_string();
             let serialized =
                 serde_json::to_string(value).change_context(RedisError::JsonSerializationFailed)?;
 
-            let result = insert_if_absent_or_tombstone(
-                redis_conn.as_ref(),
-                &key,
-                serialized,
-                self.store.ttl_for_kv(),
-            )
-            .await?;
+            let result = self.insert_if_absent_or_tombstone(&key, serialized).await?;
 
             match result {
                 KvInsertResult::Inserted => {
@@ -318,7 +387,8 @@ where
             let redis_conn = self.store.get_redis_conn()?;
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
-            let tombstone = serialized_tombstone()?;
+            let tombstone = serde_json::to_string(&Self::TOMBSTONE_VALUE)
+                .change_context(RedisError::JsonSerializationFailed)?;
 
             redis_conn
                 .set_hash_fields(
@@ -334,81 +404,6 @@ where
         })
         .await
     }
-}
-
-async fn insert_if_absent_or_tombstone(
-    redis_conn: &RedisConnectionPool,
-    key: &str,
-    serialized: String,
-    ttl: u32,
-) -> error_stack::Result<KvInsertResult, RedisError> {
-    for _ in 0..KV_TRANSACTION_MAX_RETRIES {
-        let redis_key = redis_conn.add_prefix(key);
-        let client = redis_conn.pool.next();
-
-        // The conditional insert needs WATCH before the pre-read and MULTI on the same
-        // client. `RedisConnectionPool::get_transaction()` chooses a transaction client
-        // directly, but does not expose a watched pre-read on that same client.
-        client
-            .watch(vec![redis_key.clone()])
-            .await
-            .change_context(RedisError::SetHashFieldFailed)?;
-
-        let current = client
-            .hget::<Option<Vec<u8>>, _, _>(redis_key.clone(), key.to_string())
-            .await
-            .change_context(RedisError::GetHashFieldFailed)?;
-
-        if current.as_deref().is_some_and(|value| !is_tombstone(value)) {
-            client
-                .unwatch()
-                .await
-                .change_context(RedisError::SetHashFieldFailed)?;
-            return Ok(KvInsertResult::AlreadyExists);
-        }
-
-        let transaction = client.multi();
-        transaction
-            .hset::<(), _, _>(
-                redis_key.clone(),
-                vec![(key.to_string(), serialized.clone())],
-            )
-            .await
-            .change_context(RedisError::SetHashFieldFailed)?;
-        transaction
-            .expire::<(), _>(redis_key, i64::from(ttl))
-            .await
-            .change_context(RedisError::SetExpiryFailed)?;
-
-        if transaction_committed(
-            transaction
-                .exec::<FredRedisValue>(true)
-                .await
-                .change_context(RedisError::SetHashFieldFailed)?,
-        ) {
-            return Ok(KvInsertResult::Inserted);
-        }
-    }
-
-    Err(RedisError::SetHashFieldFailed.into())
-}
-
-fn transaction_committed(result: FredRedisValue) -> bool {
-    !matches!(result, FredRedisValue::Null)
-}
-
-fn serialized_tombstone() -> error_stack::Result<String, RedisError> {
-    serde_json::to_string(&KvStoredValue::<serde_json::Value>::Tombstone(
-        KvTombstone::new(),
-    ))
-    .change_context(RedisError::JsonSerializationFailed)
-}
-
-fn is_tombstone(value: &[u8]) -> bool {
-    matches!(
-        serde_json::from_slice::<KvStoredValue<de::IgnoredAny>>(value),
-        Ok(KvStoredValue::Tombstone(_))
-    )
 }
 
 async fn with_kv_metrics<T, F>(
