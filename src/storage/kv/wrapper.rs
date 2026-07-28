@@ -216,7 +216,10 @@ where
                 .await
                 .change_context(RedisError::GetHashFieldFailed)?;
 
-            if current.as_deref().is_some_and(|value| !Self::is_tombstone(value)) {
+            if current
+                .as_deref()
+                .is_some_and(|value| !Self::is_tombstone(value))
+            {
                 client
                     .unwatch()
                     .await
