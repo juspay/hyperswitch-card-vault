@@ -105,23 +105,13 @@ pub(crate) enum KvFindResult<V> {
     Present(V),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, strum::Display)]
+#[strum(serialize_all = "snake_case")]
 enum KvOperationKind {
     Insert,
     Find,
     Update,
     Delete,
-}
-
-impl std::fmt::Display for KvOperationKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Insert => f.write_str("insert"),
-            Self::Find => f.write_str("find"),
-            Self::Update => f.write_str("update"),
-            Self::Delete => f.write_str("delete"),
-        }
-    }
 }
 
 pub(crate) trait KvBehaviour {
