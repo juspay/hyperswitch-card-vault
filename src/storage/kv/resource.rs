@@ -314,7 +314,7 @@ where
                 store
                     .insert_reverse_lookup(types::ReverseLookupNew {
                         lookup_id: reverse_lookup_key.lookup_id.clone(),
-                        secondary_key: reverse_lookup_key.lookup_id,
+                        secondary_key: partition_key_str.clone(),
                         partition_key: partition_key_str.clone(),
                         source: M::ENTITY_TYPE.to_string(),
                         updated_by: scheme.to_string(),
