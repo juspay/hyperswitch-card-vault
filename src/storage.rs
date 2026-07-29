@@ -114,11 +114,11 @@ impl GlobalStore {
         match (current_use_replica, requested_use_replica) {
             (false, true) => {
                 if replica_health_check().await {
+                    self.enable_replica();
                     crate::logger::info!(
                         storage_runtime_config = "state_refresh",
                         "Read replica enabled"
                     );
-                    self.enable_replica();
                 } else {
                     crate::logger::warn!(
                         storage_runtime_config = "state_refresh",
@@ -128,6 +128,10 @@ impl GlobalStore {
             }
             (true, false) => {
                 self.disable_replica();
+                crate::logger::info!(
+                    storage_runtime_config = "state_refresh",
+                    "Read replica disabled"
+                );
             }
             _ => {}
         }
