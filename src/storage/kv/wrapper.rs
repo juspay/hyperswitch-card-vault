@@ -16,7 +16,7 @@ const REQUEST_ID: &str = "VAULT_CONSTANT_REQUEST_ID";
 const KV_TRANSACTION_MAX_RETRIES: usize = 3;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
 enum KvStoredValue<T> {
     Tombstone(KvTombstone),
     Value(T),
@@ -311,8 +311,8 @@ impl RedisBackend {
 
     fn is_tombstone(value: &[u8]) -> bool {
         matches!(
-            serde_json::from_slice::<KvTombstone>(value),
-            Ok(tombstone) if tombstone == Self::TOMBSTONE_VALUE
+            serde_json::from_slice::<KvStoredValue<de::IgnoredAny>>(value),
+            Ok(KvStoredValue::Tombstone(tombstone)) if tombstone == Self::TOMBSTONE_VALUE
         )
     }
 }
@@ -397,8 +397,8 @@ impl KvBehaviour for RedisBackend {
     {
         with_kv_metrics(KvOperationKind::Insert, async move {
             let key = partition_key.to_string();
-            let serialized =
-                serde_json::to_string(value).change_context(RedisError::JsonSerializationFailed)?;
+            let serialized = serde_json::to_string(&KvStoredValue::Value(value))
+                .change_context(RedisError::JsonSerializationFailed)?;
 
             let result = self.insert_if_absent_or_tombstone(&key, serialized).await?;
 
@@ -463,8 +463,8 @@ impl KvBehaviour for RedisBackend {
             let redis_conn = self.get_redis_conn()?;
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
-            let serialized =
-                serde_json::to_string(value).change_context(RedisError::JsonSerializationFailed)?;
+            let serialized = serde_json::to_string(&KvStoredValue::Value(value))
+                .change_context(RedisError::JsonSerializationFailed)?;
 
             redis_conn
                 .set_hash_fields(
@@ -493,8 +493,9 @@ impl KvBehaviour for RedisBackend {
             let redis_conn = self.get_redis_conn()?;
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
-            let tombstone = serde_json::to_string(&Self::TOMBSTONE_VALUE)
-                .change_context(RedisError::JsonSerializationFailed)?;
+            let tombstone =
+                serde_json::to_string(&KvStoredValue::<()>::Tombstone(Self::TOMBSTONE_VALUE))
+                    .change_context(RedisError::JsonSerializationFailed)?;
 
             redis_conn
                 .set_hash_fields(
