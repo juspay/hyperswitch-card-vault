@@ -193,10 +193,18 @@ impl RedisBackend {
     ) -> error_stack::Result<KvInsertResult, RedisError> {
         let redis_conn = self.get_redis_conn()?;
         let ttl = self.config.ttl_for_kv;
+        let redis_key = redis_conn.add_prefix(key);
 
         for attempt in 1..=KV_TRANSACTION_MAX_RETRIES {
-            let redis_key = redis_conn.add_prefix(key);
             let client = redis_conn.pool.next();
+
+            logger::debug!(
+                kv_operation = "insert_if_absent_or_tombstone",
+                redis_key = %redis_key,
+                attempt,
+                max_retries = KV_TRANSACTION_MAX_RETRIES,
+                "Starting Redis conditional insert attempt"
+            );
 
             // The conditional insert needs WATCH before the pre-read and MULTI on the same
             // client. `RedisConnectionPool::get_transaction()` chooses a transaction client
@@ -211,15 +219,37 @@ impl RedisBackend {
                 .await
                 .change_context(RedisError::GetHashFieldFailed)?;
 
-            if current
-                .as_deref()
-                .is_some_and(|value| !Self::is_tombstone(value))
-            {
-                client
-                    .unwatch()
-                    .await
-                    .change_context(RedisError::SetHashFieldFailed)?;
-                return Ok(KvInsertResult::AlreadyExists);
+            match current.as_deref() {
+                Some(value) if Self::is_tombstone(value) => {
+                    logger::debug!(
+                        kv_operation = "insert_if_absent_or_tombstone",
+                        redis_key = %redis_key,
+                        attempt,
+                        "Redis conditional insert found tombstone"
+                    );
+                }
+                Some(_) => {
+                    client
+                        .unwatch()
+                        .await
+                        .change_context(RedisError::SetHashFieldFailed)?;
+                    record_kv_insert_result("already_exists");
+                    logger::debug!(
+                        kv_operation = "insert_if_absent_or_tombstone",
+                        redis_key = %redis_key,
+                        attempt,
+                        "Redis conditional insert skipped because key already exists"
+                    );
+                    return Ok(KvInsertResult::AlreadyExists);
+                }
+                None => {
+                    logger::debug!(
+                        kv_operation = "insert_if_absent_or_tombstone",
+                        redis_key = %redis_key,
+                        attempt,
+                        "Redis conditional insert found no existing value"
+                    );
+                }
             }
 
             let transaction = client.multi();
@@ -241,6 +271,13 @@ impl RedisBackend {
                 .change_context(RedisError::SetHashFieldFailed)?;
 
             if matches!(txn_result, Some((_, _))) {
+                record_kv_insert_result("inserted");
+                logger::debug!(
+                    kv_operation = "insert_if_absent_or_tombstone",
+                    redis_key = %redis_key,
+                    attempt,
+                    "Redis conditional insert succeeded"
+                );
                 return Ok(KvInsertResult::Inserted);
             }
 
@@ -262,6 +299,13 @@ impl RedisBackend {
             }
         }
 
+        logger::error!(
+            kv_operation = "insert_if_absent_or_tombstone",
+            redis_key = %redis_key,
+            max_retries = KV_TRANSACTION_MAX_RETRIES,
+            "Redis conditional insert failed after transaction conflicts"
+        );
+        record_kv_insert_result("retry_exhausted");
         Err(RedisError::SetHashFieldFailed.into())
     }
 
@@ -271,6 +315,16 @@ impl RedisBackend {
             Ok(tombstone) if tombstone == Self::TOMBSTONE_VALUE
         )
     }
+}
+
+fn record_kv_insert_result(result: &'static str) {
+    metrics::KV_INSERT_RESULT_COUNT.add(
+        1,
+        metrics_utils::metric_attributes!(
+            ("operation", "insert_if_absent_or_tombstone"),
+            ("result", result),
+        ),
+    );
 }
 
 impl KvBehaviour for KvBackend {

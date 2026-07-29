@@ -352,6 +352,12 @@ counter_metric!(
     description: "Number of KV optimistic transaction retries",
 );
 #[cfg(feature = "kv")]
+counter_metric!(
+    pub(crate) KV_INSERT_RESULT_COUNT, CARD_VAULT_METER,
+    name: "kv.insert.result.count",
+    description: "Number of KV insert results by Redis conditional insert outcome",
+);
+#[cfg(feature = "kv")]
 histogram_metric_f64!(
     pub(crate) KV_OPERATION_DURATION, CARD_VAULT_METER,
     name: "kv.operation.duration",
