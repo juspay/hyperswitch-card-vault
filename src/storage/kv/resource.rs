@@ -11,7 +11,7 @@ use super::{
     partition_key::{KvStorePartition, PartitionKey},
     scheme::KvState,
     serializable_query::SerializableQuery,
-    wrapper::{KvBehaviour, KvFindResult, KvInsertResult},
+    wrapper::{KvBackend, KvBehaviour, KvFindResult, KvInsertResult},
 };
 use crate::{
     error::{
@@ -231,21 +231,41 @@ where
     }))
 }
 
-async fn decide_storage_scheme_for_find_operation(store: &Storage) -> StorageScheme {
-    let state = store.kv_settings().await;
-    match state {
-        KvState::Disabled => StorageScheme::PostgresOnly,
-        // in softkill mode as well, always attempt RedisKv and fallback to postgres.
-        KvState::Enabled | KvState::SoftKill => StorageScheme::RedisKv,
+#[derive(Clone, Default)]
+pub(crate) enum DecidedStorageScheme {
+    #[default]
+    PostgresOnly,
+    Kv(KvBackend),
+}
+
+impl DecidedStorageScheme {
+    fn storage_scheme(&self) -> StorageScheme {
+        match self {
+            Self::PostgresOnly => StorageScheme::PostgresOnly,
+            Self::Kv(_) => StorageScheme::RedisKv,
+        }
     }
 }
 
-async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> StorageScheme {
+async fn decide_storage_scheme_for_find_operation(store: &Storage) -> DecidedStorageScheme {
+    let state = store.kv_settings().await;
+    match state {
+        KvState::Disabled => DecidedStorageScheme::PostgresOnly,
+        // in softkill mode as well, always attempt RedisKv and fallback to postgres.
+        KvState::Enabled | KvState::SoftKill => store
+            .kv_backend()
+            .map_or(DecidedStorageScheme::PostgresOnly, DecidedStorageScheme::Kv),
+    }
+}
+
+async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> DecidedStorageScheme {
     let state = store.kv_settings().await;
     match state {
         // in disabled and softkill mode, always push new inserts to PG
-        KvState::Disabled | KvState::SoftKill => StorageScheme::PostgresOnly,
-        KvState::Enabled => StorageScheme::RedisKv,
+        KvState::Disabled | KvState::SoftKill => DecidedStorageScheme::PostgresOnly,
+        KvState::Enabled => store
+            .kv_backend()
+            .map_or(DecidedStorageScheme::PostgresOnly, DecidedStorageScheme::Kv),
     }
 }
 
@@ -253,34 +273,41 @@ async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> StorageS
 async fn decide_storage_scheme_for_mutate_operation<M>(
     store: &Storage,
     partition_key: &PartitionKey<'_>,
-) -> Result<(StorageScheme, Option<M::DieselEntity>), ContainerError<M::Error>>
+) -> Result<(DecidedStorageScheme, Option<M::DieselEntity>), ContainerError<M::Error>>
 where
     M: KvResource,
 {
     let state = store.kv_settings().await;
 
     match state {
-        KvState::Disabled => Ok((StorageScheme::PostgresOnly, None)),
-        KvState::Enabled => Ok((StorageScheme::RedisKv, None)),
+        KvState::Disabled => Ok((DecidedStorageScheme::PostgresOnly, None)),
+        KvState::Enabled => Ok((
+            store
+                .kv_backend()
+                .map_or(DecidedStorageScheme::PostgresOnly, DecidedStorageScheme::Kv),
+            None,
+        )),
         KvState::SoftKill => {
+            let Some(kv_backend) = store.kv_backend() else {
+                return Ok((DecidedStorageScheme::PostgresOnly, None));
+            };
             // With this implementation, Hot keys may never recover out of KV.
             let partition_key_str = partition_key.to_string();
-            let result = store
-                .kv_backend()
+            let result = kv_backend
                 .find::<M::DieselEntity>(partition_key.clone())
                 .await;
 
             match result {
                 // in case of value Present and value Deleted response, stick to KV mode
                 // in order to cover for drainer delay.
-                Ok(KvFindResult::Present(v)) => Ok((StorageScheme::RedisKv, Some(v))),
-                Ok(KvFindResult::Deleted) => Ok((StorageScheme::RedisKv, None)),
+                Ok(KvFindResult::Present(v)) => Ok((DecidedStorageScheme::Kv(kv_backend), Some(v))),
+                Ok(KvFindResult::Deleted) => Ok((DecidedStorageScheme::Kv(kv_backend), None)),
                 Ok(KvFindResult::Absent) => {
                     metrics::KV_CACHE_MISS_COUNT.add(
                         1,
                         metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
                     );
-                    Ok((StorageScheme::PostgresOnly, None))
+                    Ok((DecidedStorageScheme::PostgresOnly, None))
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&partition_key_str),
@@ -300,12 +327,13 @@ where
     M: KvResource,
     F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
 {
-    let scheme = decide_storage_scheme_for_insert_operation(store).await;
+    let decided_scheme = decide_storage_scheme_for_insert_operation(store).await;
+    let scheme = decided_scheme.storage_scheme();
     M::set_storage_scheme(&mut diesel_new, scheme);
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let drainer_query = M::generate_insert_drainer_query(&diesel_new)
                 .map_err(kv_backend_error::<M::Error>)?;
 
@@ -330,8 +358,7 @@ where
             }
 
             let diesel_entity = diesel_new.into();
-            let reply = store
-                .kv_backend()
+            let reply = kv_backend
                 .insert(partition_key, &diesel_entity, drainer_query)
                 .await
                 .map_err(|e| {
@@ -397,16 +424,13 @@ where
     M: KvResource,
 {
     let key = primary_key.get_partition_key();
-    let scheme = decide_storage_scheme_for_find_operation(store).await;
+    let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let key_str = key.to_string();
-            let result = store
-                .kv_backend()
-                .find::<M::DieselEntity>(key.clone())
-                .await;
+            let result = kv_backend.find::<M::DieselEntity>(key.clone()).await;
 
             match result {
                 Ok(KvFindResult::Present(v)) => Ok(v),
@@ -454,11 +478,11 @@ pub(crate) async fn find_resource_by_lookup_id<M>(
 where
     M: KvSecondaryLookupResource,
 {
-    let scheme = decide_storage_scheme_for_find_operation(store).await;
+    let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
     let lookup_id = lookup_key.get_lookup_key();
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let key_str = match store.find_by_lookup_id(&lookup_id.lookup_id).await {
                 Ok(lookup) => lookup.get_partition_key().to_string(),
                 Err(err)
@@ -482,8 +506,7 @@ where
                 }
             };
 
-            let result = store
-                .kv_backend()
+            let result = kv_backend
                 .find::<M::DieselEntity>(PartitionKey::CombinationKey {
                     combination: &key_str,
                 })
@@ -537,15 +560,16 @@ where
     M::PrimaryKeyType: Clone,
     M::DieselEntity: Clone,
 {
-    let (scheme, cached) = {
+    let (decided_scheme, cached) = {
         let key = primary_key.get_partition_key();
         decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
     };
+    let scheme = decided_scheme.storage_scheme();
     M::set_update_storage_scheme(&mut update, scheme);
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_update(store, update, primary_key).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_update(store, update, primary_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let key = primary_key.get_partition_key();
             let current = match cached {
                 Some(resource) => resource,
@@ -557,8 +581,7 @@ where
             let updated_resource = updated_model.clone().into();
 
             let key_str = key.to_string();
-            store
-                .kv_backend()
+            kv_backend
                 .update(key.clone(), &updated_model, update_query)
                 .await
                 .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
@@ -576,21 +599,20 @@ async fn delete_resource_by_id_inner<M>(
 where
     M: KvDeletableResource,
 {
-    let (scheme, _) = {
+    let (decided_scheme, _) = {
         let key = primary_key.get_partition_key();
         decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
     };
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let key = primary_key.get_partition_key();
             let delete_query = M::generate_delete_drainer_query(&primary_key)
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = key.to_string();
-            store
-                .kv_backend()
+            kv_backend
                 .delete::<M::DieselEntity>(key.clone(), delete_query)
                 .await
                 .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))

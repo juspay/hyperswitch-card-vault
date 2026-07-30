@@ -156,17 +156,14 @@ pub(crate) enum KvBackend {
 }
 
 impl KvBackend {
-    pub(crate) fn redis(
-        redis: Option<redis_store::TenantAwareRedisStore>,
-        config: KvConfig,
-    ) -> Self {
+    pub(crate) fn redis(redis: redis_store::TenantAwareRedisStore, config: KvConfig) -> Self {
         Self::Redis(RedisBackend::new(redis, config))
     }
 }
 
 #[derive(Clone)]
 pub(crate) struct RedisBackend {
-    redis: Option<redis_store::TenantAwareRedisStore>,
+    redis: redis_store::TenantAwareRedisStore,
     config: KvConfig,
 }
 
@@ -175,15 +172,12 @@ impl RedisBackend {
         marker: KvTombstoneMarker::V1,
     };
 
-    fn new(redis: Option<redis_store::TenantAwareRedisStore>, config: KvConfig) -> Self {
+    fn new(redis: redis_store::TenantAwareRedisStore, config: KvConfig) -> Self {
         Self { redis, config }
     }
 
-    fn get_redis_conn(&self) -> error_stack::Result<Arc<RedisConnectionPool>, RedisError> {
-        self.redis
-            .as_ref()
-            .map(|redis| redis.get_redis_conn())
-            .ok_or_else(|| error_stack::Report::new(RedisError::RedisConnectionError))
+    fn get_redis_conn(&self) -> Arc<RedisConnectionPool> {
+        self.redis.get_redis_conn()
     }
 
     async fn insert_if_absent_or_tombstone(
@@ -192,7 +186,7 @@ impl RedisBackend {
         resource: &str,
         serialized: String,
     ) -> error_stack::Result<KvInsertResult, RedisError> {
-        let redis_conn = self.get_redis_conn()?;
+        let redis_conn = self.get_redis_conn();
         let ttl = self.config.ttl_for_kv;
         let redis_key = redis_conn.add_prefix(key);
 
@@ -430,7 +424,7 @@ impl KvBehaviour for RedisBackend {
         V: de::DeserializeOwned,
     {
         with_kv_metrics(KvOperationKind::Find, async move {
-            let redis_conn = self.get_redis_conn()?;
+            let redis_conn = self.get_redis_conn();
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
 
@@ -466,7 +460,7 @@ impl KvBehaviour for RedisBackend {
         V: serde::Serialize + Debug + KvStorePartition + Sync,
     {
         with_kv_metrics(KvOperationKind::Update, async move {
-            let redis_conn = self.get_redis_conn()?;
+            let redis_conn = self.get_redis_conn();
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
             let serialized = serde_json::to_string(&KvStoredValue::Value(value))
@@ -496,7 +490,7 @@ impl KvBehaviour for RedisBackend {
         V: KvStorePartition,
     {
         with_kv_metrics(KvOperationKind::Delete, async move {
-            let redis_conn = self.get_redis_conn()?;
+            let redis_conn = self.get_redis_conn();
             let key = partition_key.to_string();
             let redis_key = key.clone().into();
             let tombstone =
@@ -579,7 +573,7 @@ where
     let operation_str = serializable_query.operation().to_string();
     let entity_type_str = serializable_query.entity_type();
 
-    let redis_conn = backend.get_redis_conn()?;
+    let redis_conn = backend.get_redis_conn();
 
     let start = std::time::Instant::now();
 

@@ -214,7 +214,7 @@ pub struct Storage {
     #[cfg(feature = "redis")]
     redis: Option<redis_store::TenantAwareRedisStore>,
     #[cfg(feature = "kv")]
-    kv_backend: kv::KvBackend,
+    kv_backend: Option<kv::KvBackend>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -320,7 +320,7 @@ impl Storage {
             #[cfg(feature = "redis")]
             redis: redis.clone(),
             #[cfg(feature = "kv")]
-            kv_backend: kv::KvBackend::redis(redis, global_store.config.clone()),
+            kv_backend: redis.map(|redis| kv::KvBackend::redis(redis, global_store.config.clone())),
         })
     }
 
@@ -394,8 +394,8 @@ impl Storage {
     }
 
     #[cfg(feature = "kv")]
-    pub(crate) fn kv_backend(&self) -> &kv::KvBackend {
-        &self.kv_backend
+    pub(crate) fn kv_backend(&self) -> Option<kv::KvBackend> {
+        self.kv_backend.clone()
     }
 
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
