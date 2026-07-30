@@ -189,6 +189,7 @@ impl RedisBackend {
     async fn insert_if_absent_or_tombstone(
         &self,
         key: &str,
+        resource: &str,
         serialized: String,
     ) -> error_stack::Result<KvInsertResult, RedisError> {
         let redis_conn = self.get_redis_conn()?;
@@ -233,7 +234,7 @@ impl RedisBackend {
                         .unwatch()
                         .await
                         .change_context(RedisError::SetHashFieldFailed)?;
-                    record_kv_insert_result("already_exists");
+                    record_kv_insert_result(resource, "already_exists");
                     logger::debug!(
                         kv_operation = "insert_if_absent_or_tombstone",
                         redis_key = %redis_key,
@@ -271,7 +272,7 @@ impl RedisBackend {
                 .change_context(RedisError::SetHashFieldFailed)?;
 
             if matches!(txn_result, Some((_, _))) {
-                record_kv_insert_result("inserted");
+                record_kv_insert_result(resource, "inserted");
                 logger::debug!(
                     kv_operation = "insert_if_absent_or_tombstone",
                     redis_key = %redis_key,
@@ -286,6 +287,7 @@ impl RedisBackend {
                     1,
                     metrics_utils::metric_attributes!(
                         ("operation", "insert_if_absent_or_tombstone"),
+                        ("resource", resource.to_owned()),
                         ("reason", "transaction_conflict"),
                     ),
                 );
@@ -305,7 +307,7 @@ impl RedisBackend {
             max_retries = KV_TRANSACTION_MAX_RETRIES,
             "Redis conditional insert failed after transaction conflicts"
         );
-        record_kv_insert_result("retry_exhausted");
+        record_kv_insert_result(resource, "retry_exhausted");
         Err(RedisError::SetHashFieldFailed.into())
     }
 
@@ -317,11 +319,12 @@ impl RedisBackend {
     }
 }
 
-fn record_kv_insert_result(result: &'static str) {
+fn record_kv_insert_result(resource: &str, result: &'static str) {
     metrics::KV_INSERT_RESULT_COUNT.add(
         1,
         metrics_utils::metric_attributes!(
             ("operation", "insert_if_absent_or_tombstone"),
+            ("resource", resource.to_owned()),
             ("result", result),
         ),
     );
@@ -397,10 +400,13 @@ impl KvBehaviour for RedisBackend {
     {
         with_kv_metrics(KvOperationKind::Insert, async move {
             let key = partition_key.to_string();
+            let resource = query.entity_type();
             let serialized = serde_json::to_string(&KvStoredValue::Value(value))
                 .change_context(RedisError::JsonSerializationFailed)?;
 
-            let result = self.insert_if_absent_or_tombstone(&key, serialized).await?;
+            let result = self
+                .insert_if_absent_or_tombstone(&key, &resource, serialized)
+                .await?;
 
             match result {
                 KvInsertResult::Inserted => {
