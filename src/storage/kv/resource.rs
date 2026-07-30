@@ -483,25 +483,33 @@ where
     match decided_scheme {
         DecidedStorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
         DecidedStorageScheme::Kv(kv_backend) => {
-            let key_str = match store.find_by_lookup_id(&lookup_id.lookup_id).await {
-                Ok(lookup) => lookup.get_partition_key().to_string(),
-                Err(err)
-                    if matches!(
-                        err.get_inner(),
-                        crate::error::ReverseLookupDBError::NotFoundError
-                    ) =>
-                {
+            let reverse_lookup_partition_key = PartitionKey::ReverseLookup {
+                lookup_id: &lookup_id.lookup_id,
+            };
+            let reverse_lookup_key_str = reverse_lookup_partition_key.to_string();
+            let key_str = match kv_backend
+                .find::<types::ReverseLookup>(reverse_lookup_partition_key)
+                .await
+            {
+                Ok(KvFindResult::Present(lookup)) => lookup.get_partition_key().to_string(),
+                Ok(KvFindResult::Absent) => {
                     metrics::KV_CACHE_MISS_COUNT.add(
                         1,
                         metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
                     );
                     return M::storage_find_by_lookup(store, &lookup_key).await;
                 }
+                Ok(KvFindResult::Deleted) => {
+                    return Err(kv_backend_error::<M::Error>(Report::new(
+                        KvError::ValueNotFound(format!(
+                            "Data was deleted for reverse lookup key {}",
+                            lookup_id.lookup_id
+                        )),
+                    )));
+                }
                 Err(err) => {
                     return Err(kv_backend_error::<M::Error>(
-                        Report::new(KvError::Backend).attach_printable(format!(
-                            "failed to find reverse lookup record: {err}"
-                        )),
+                        err.to_redis_failed_response(&reverse_lookup_key_str),
                     ));
                 }
             };
