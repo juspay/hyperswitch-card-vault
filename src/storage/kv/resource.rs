@@ -247,6 +247,20 @@ impl DecidedStorageScheme {
     }
 }
 
+fn log_storage_scheme_decision(
+    resource: &'static str,
+    operation: &'static str,
+    decided_scheme: &DecidedStorageScheme,
+) {
+    let storage_scheme = decided_scheme.storage_scheme();
+    crate::logger::info!(
+        resource = %resource,
+        operation = %operation,
+        storage_scheme = %storage_scheme,
+        "Storage scheme decision"
+    );
+}
+
 async fn decide_storage_scheme_for_find_operation(store: &Storage) -> DecidedStorageScheme {
     let state = store.kv_settings().await;
     match state {
@@ -328,6 +342,7 @@ where
     F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
 {
     let decided_scheme = decide_storage_scheme_for_insert_operation(store).await;
+    log_storage_scheme_decision(M::ENTITY_TYPE, "insert", &decided_scheme);
     let scheme = decided_scheme.storage_scheme();
     M::set_storage_scheme(&mut diesel_new, scheme);
 
@@ -425,6 +440,7 @@ where
 {
     let key = primary_key.get_partition_key();
     let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
+    log_storage_scheme_decision(M::ENTITY_TYPE, "find", &decided_scheme);
 
     match decided_scheme {
         DecidedStorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
@@ -479,6 +495,7 @@ where
     M: KvSecondaryLookupResource,
 {
     let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
+    log_storage_scheme_decision(M::ENTITY_TYPE, "find_by_lookup", &decided_scheme);
     let lookup_id = lookup_key.get_lookup_key();
     match decided_scheme {
         DecidedStorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
@@ -572,6 +589,7 @@ where
         let key = primary_key.get_partition_key();
         decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
     };
+    log_storage_scheme_decision(M::ENTITY_TYPE, "update", &decided_scheme);
     let scheme = decided_scheme.storage_scheme();
     M::set_update_storage_scheme(&mut update, scheme);
 
@@ -611,6 +629,7 @@ where
         let key = primary_key.get_partition_key();
         decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
     };
+    log_storage_scheme_decision(M::ENTITY_TYPE, "delete", &decided_scheme);
 
     match decided_scheme {
         DecidedStorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
