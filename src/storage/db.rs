@@ -650,42 +650,6 @@ impl super::EntityInterface for Storage {
 impl super::ReverseLookupInterface for Storage {
     type Error = error::ReverseLookupDBError;
 
-    async fn find_by_lookup_id(
-        &self,
-        lookup_id: &str,
-    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
-        #[cfg(feature = "kv")]
-        {
-            let primary_key = super::kv::impls::reverse_lookup::ReverseLookupPrimaryKey {
-                lookup_id: lookup_id.to_string(),
-            };
-
-            return super::kv::find_resource_by_id::<types::ReverseLookup>(self, primary_key).await;
-        }
-
-        #[cfg(not(feature = "kv"))]
-        {
-            let mut conn = self.get_conn().await?;
-            let query = types::ReverseLookup::table()
-                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id));
-
-            let pool = conn.pool();
-            let operation = DbOperation::FindOne;
-            super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
-                &query, operation, pool,
-            );
-
-            let output: types::ReverseLookup =
-                super::record_db_query::<<types::ReverseLookup as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
-                    operation,
-                    pool,
-                )
-                .await?;
-            Ok(output)
-        }
-    }
-
     async fn insert_reverse_lookup(
         &self,
         new: types::ReverseLookupNew,

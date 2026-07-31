@@ -89,7 +89,7 @@ impl KvResource for ReverseLookup {
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
-        let mut conn = store.get_conn().await?;
+        let mut conn = store.route_conn().await?;
         let query =
             Self::table().filter(schema::reverse_lookup::lookup_id.eq(pk.lookup_id.as_str()));
 

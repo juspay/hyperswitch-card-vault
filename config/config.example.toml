@@ -130,7 +130,7 @@ ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 # Per-tenant `redis_key_prefix` (under `[tenant_secrets.<id>]`) MUST be non-empty
 # and unique across tenants whenever KV is enabled, otherwise the service fails to
 # start.  The drainer must consume the prefixed
-# `{prefix}{shard_N}_DRAINER_STREAM` for each tenant.
+# `{prefix}:{shard_N}_DRAINER_STREAM` for each tenant.
 
 # Metrics configuration: export metrics for monitoring.
 # - disabled: no metrics exported
@@ -168,4 +168,3 @@ background_metrics_collection_interval_secs = 15 # How often to collect metrics 
 # Optional static headers sent on every runtime config pull request (omit entirely to send none)
 # [runtime_config.endpoint.headers]
 # accept = "application/json"
-

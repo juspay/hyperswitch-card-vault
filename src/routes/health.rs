@@ -7,7 +7,6 @@ use crate::{crypto::keymanager, logger};
 use crate::{
     custom_extractors::TenantStateResolver, error, storage::TestInterface, tenant::GlobalAppState,
 };
-
 async fn record_health_check<Fut, T, E>(future: Fut, check: &'static str) -> Result<T, E>
 where
     Fut: std::future::Future<Output = Result<T, E>>,
@@ -155,7 +154,7 @@ pub async fn diagnostics(TenantStateResolver(state): TenantStateResolver) -> Jso
     };
 
     #[cfg(feature = "redis")]
-    let redis_status = match &state.redis {
+    let redis_status = match &state.db.get_redis_store() {
         None => HealthState::Disabled,
         Some(redis) => match record_health_check(redis.test(), "redis").await {
             Ok(()) => HealthState::Working,

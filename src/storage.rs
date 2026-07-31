@@ -33,7 +33,7 @@ use hyperswitch_masking::{PeekInterface, Secret};
 use tokio::sync::RwLock;
 
 pub use self::scheme::StorageScheme;
-#[cfg(feature = "kv")]
+#[cfg(feature = "redis")]
 use crate::storage::redis as redis_store;
 use crate::{
     config::Database,
@@ -115,6 +115,10 @@ impl GlobalStore {
             (false, true) => {
                 if replica_health_check().await {
                     self.enable_replica();
+                    crate::logger::info!(
+                        storage_runtime_config = "state_refresh",
+                        "Read replica enabled"
+                    );
                 } else {
                     crate::logger::warn!(
                         storage_runtime_config = "state_refresh",
@@ -124,6 +128,10 @@ impl GlobalStore {
             }
             (true, false) => {
                 self.disable_replica();
+                crate::logger::info!(
+                    storage_runtime_config = "state_refresh",
+                    "Read replica disabled"
+                );
             }
             _ => {}
         }
@@ -203,8 +211,10 @@ pub struct Storage {
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     global_store: Arc<GlobalStore>,
+    #[cfg(feature = "redis")]
+    redis: Option<redis_store::TenantAwareRedisStore>,
     #[cfg(feature = "kv")]
-    redis: Option<redis_store::RedisStore>,
+    kv_backend: Option<kv::KvBackend>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -249,6 +259,10 @@ impl DbConnection {
 }
 
 impl Storage {
+    #[cfg(feature = "redis")]
+    pub fn get_redis_store(&self) -> Option<redis_store::TenantAwareRedisStore> {
+        self.redis.clone()
+    }
     fn create_database_connection_pool(
         database_config: &Database,
         schema: &str,
@@ -284,7 +298,7 @@ impl Storage {
         schema: &str,
         runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
         global_store: Arc<GlobalStore>,
-        #[cfg(feature = "kv")] redis: Option<redis_store::RedisStore>,
+        #[cfg(feature = "redis")] redis: Option<redis_store::TenantAwareRedisStore>,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -302,9 +316,11 @@ impl Storage {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
             runtime_config_manager,
-            global_store,
+            global_store: global_store.clone(),
+            #[cfg(feature = "redis")]
+            redis: redis.clone(),
             #[cfg(feature = "kv")]
-            redis,
+            kv_backend: redis.map(|redis| kv::KvBackend::redis(redis, global_store.config.clone())),
         })
     }
 
@@ -377,6 +393,11 @@ impl Storage {
         self.global_store.kv_state().await
     }
 
+    #[cfg(feature = "kv")]
+    pub(crate) fn kv_backend(&self) -> Option<kv::KvBackend> {
+        self.kv_backend.clone()
+    }
+
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
         use crate::observability::metrics::{
             DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE, DATABASE_POOL_WAITING,
@@ -431,40 +452,6 @@ impl Storage {
                 DATABASE_POOL_WAITING.record(waiting, attrs);
             }
         }
-    }
-}
-
-#[cfg(feature = "kv")]
-impl kv::RedisConnInterface for Storage {
-    fn get_redis_conn(
-        &self,
-    ) -> error_stack::Result<
-        std::sync::Arc<hyperswitch_redis_interface::RedisConnectionPool>,
-        hyperswitch_redis_interface::errors::RedisError,
-    > {
-        self.redis
-            .as_ref()
-            .map(|r| r.get_redis_conn())
-            .ok_or_else(|| {
-                error_stack::Report::new(
-                    hyperswitch_redis_interface::errors::RedisError::RedisConnectionError,
-                )
-            })
-    }
-}
-
-#[cfg(feature = "kv")]
-impl kv::KvStoreContext for Storage {
-    fn ttl_for_kv(&self) -> u32 {
-        self.global_store.config.ttl_for_kv
-    }
-
-    fn drainer_stream_name(&self, shard_key: &str) -> String {
-        self.global_store.config.drainer_stream_name(shard_key)
-    }
-
-    fn drainer_num_partitions(&self) -> u8 {
-        self.global_store.config.drainer_num_partitions
     }
 }
 
@@ -630,12 +617,6 @@ pub(crate) trait FingerprintInterface {
 /// secondary key along with the source of insertion.
 pub(crate) trait ReverseLookupInterface {
     type Error;
-
-    /// Fetch a reverse lookup record by its lookup_id.
-    async fn find_by_lookup_id(
-        &self,
-        lookup_id: &str,
-    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>>;
 
     /// Insert a new reverse lookup record into the database.
     async fn insert_reverse_lookup(

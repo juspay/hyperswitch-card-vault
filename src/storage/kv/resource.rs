@@ -3,7 +3,6 @@
 //! Stores the Diesel table-mapped entity in Redis and returns the resource model.
 
 use error_stack::Report;
-use hyperswitch_redis_interface::{errors::RedisError, types::HsetnxReply};
 use tracing::instrument;
 
 use super::{
@@ -12,7 +11,7 @@ use super::{
     partition_key::{KvStorePartition, PartitionKey},
     scheme::KvState,
     serializable_query::SerializableQuery,
-    wrapper::{KvOperation, KvResult, kv_wrapper},
+    wrapper::{KvBackend, KvBehaviour, KvFindResult, KvInsertResult},
 };
 use crate::{
     error::{
@@ -232,21 +231,55 @@ where
     }))
 }
 
-async fn decide_storage_scheme_for_find_operation(store: &Storage) -> StorageScheme {
-    let state = store.kv_settings().await;
-    match state {
-        KvState::Disabled => StorageScheme::PostgresOnly,
-        // in softkill mode as well, always attempt RedisKv and fallback to postgres.
-        KvState::Enabled | KvState::SoftKill => StorageScheme::RedisKv,
+#[derive(Clone, Default)]
+pub(crate) enum DecidedStorageScheme {
+    #[default]
+    PostgresOnly,
+    Kv(KvBackend),
+}
+
+impl DecidedStorageScheme {
+    fn storage_scheme(&self) -> StorageScheme {
+        match self {
+            Self::PostgresOnly => StorageScheme::PostgresOnly,
+            Self::Kv(_) => StorageScheme::RedisKv,
+        }
     }
 }
 
-async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> StorageScheme {
+fn log_storage_scheme_decision(
+    resource: &'static str,
+    operation: &'static str,
+    decided_scheme: &DecidedStorageScheme,
+) {
+    let storage_scheme = decided_scheme.storage_scheme();
+    crate::logger::info!(
+        resource = %resource,
+        operation = %operation,
+        storage_scheme = %storage_scheme,
+        "Storage scheme decision"
+    );
+}
+
+async fn decide_storage_scheme_for_find_operation(store: &Storage) -> DecidedStorageScheme {
+    let state = store.kv_settings().await;
+    match state {
+        KvState::Disabled => DecidedStorageScheme::PostgresOnly,
+        // in softkill mode as well, always attempt RedisKv and fallback to postgres.
+        KvState::Enabled | KvState::SoftKill => store
+            .kv_backend()
+            .map_or(DecidedStorageScheme::PostgresOnly, DecidedStorageScheme::Kv),
+    }
+}
+
+async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> DecidedStorageScheme {
     let state = store.kv_settings().await;
     match state {
         // in disabled and softkill mode, always push new inserts to PG
-        KvState::Disabled | KvState::SoftKill => StorageScheme::PostgresOnly,
-        KvState::Enabled => StorageScheme::RedisKv,
+        KvState::Disabled | KvState::SoftKill => DecidedStorageScheme::PostgresOnly,
+        KvState::Enabled => store
+            .kv_backend()
+            .map_or(DecidedStorageScheme::PostgresOnly, DecidedStorageScheme::Kv),
     }
 }
 
@@ -254,49 +287,44 @@ async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> StorageS
 async fn decide_storage_scheme_for_mutate_operation<M>(
     store: &Storage,
     partition_key: &PartitionKey<'_>,
-) -> Result<(StorageScheme, Option<M::DieselEntity>), ContainerError<M::Error>>
+) -> Result<(DecidedStorageScheme, Option<M::DieselEntity>), ContainerError<M::Error>>
 where
     M: KvResource,
 {
     let state = store.kv_settings().await;
 
     match state {
-        KvState::Disabled => Ok((StorageScheme::PostgresOnly, None)),
-        KvState::Enabled => Ok((StorageScheme::RedisKv, None)),
+        KvState::Disabled => Ok((DecidedStorageScheme::PostgresOnly, None)),
+        KvState::Enabled => Ok((
+            store
+                .kv_backend()
+                .map_or(DecidedStorageScheme::PostgresOnly, DecidedStorageScheme::Kv),
+            None,
+        )),
         KvState::SoftKill => {
+            let Some(kv_backend) = store.kv_backend() else {
+                return Ok((DecidedStorageScheme::PostgresOnly, None));
+            };
             // With this implementation, Hot keys may never recover out of KV.
             let partition_key_str = partition_key.to_string();
-            let result = kv_wrapper::<M::DieselEntity, M::DieselEntity>(
-                store,
-                KvOperation::<M::DieselEntity>::HGet(&partition_key_str),
-                partition_key.clone(),
-            )
-            .await;
+            let result = kv_backend
+                .find::<M::DieselEntity>(partition_key.clone())
+                .await;
 
             match result {
-                // return the found redis item so that if the caller is doing update operation, updates can be applied.
-                Ok(KvResult::HGet(v)) => Ok((StorageScheme::RedisKv, Some(v))),
-                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
-                    crate::observability::metrics::KV_CACHE_MISS_COUNT.add(
+                // in case of value Present and value Deleted response, stick to KV mode
+                // in order to cover for drainer delay.
+                Ok(KvFindResult::Present(v)) => Ok((DecidedStorageScheme::Kv(kv_backend), Some(v))),
+                Ok(KvFindResult::Deleted) => Ok((DecidedStorageScheme::Kv(kv_backend), None)),
+                Ok(KvFindResult::Absent) => {
+                    metrics::KV_CACHE_MISS_COUNT.add(
                         1,
                         metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
                     );
-                    Ok((StorageScheme::PostgresOnly, None))
+                    Ok((DecidedStorageScheme::PostgresOnly, None))
                 }
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&partition_key_str),
-                )),
-                Ok(KvResult::HSetNx(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected HSetNx result for an HGet operation"),
-                )),
-                Ok(KvResult::Hset(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected Hset result for an HGet operation"),
-                )),
-                Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected HDel result for an HGet operation"),
                 )),
             }
         }
@@ -313,12 +341,14 @@ where
     M: KvResource,
     F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
 {
-    let scheme = decide_storage_scheme_for_insert_operation(store).await;
+    let decided_scheme = decide_storage_scheme_for_insert_operation(store).await;
+    log_storage_scheme_decision(M::ENTITY_TYPE, "insert", &decided_scheme);
+    let scheme = decided_scheme.storage_scheme();
     M::set_storage_scheme(&mut diesel_new, scheme);
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let drainer_query = M::generate_insert_drainer_query(&diesel_new)
                 .map_err(kv_backend_error::<M::Error>)?;
 
@@ -327,7 +357,7 @@ where
                 store
                     .insert_reverse_lookup(types::ReverseLookupNew {
                         lookup_id: reverse_lookup_key.lookup_id.clone(),
-                        secondary_key: reverse_lookup_key.lookup_id,
+                        secondary_key: partition_key_str.clone(),
                         partition_key: partition_key_str.clone(),
                         source: M::ENTITY_TYPE.to_string(),
                         updated_by: scheme.to_string(),
@@ -343,30 +373,24 @@ where
             }
 
             let diesel_entity = diesel_new.into();
-            let reply = kv_wrapper::<(), M::DieselEntity>(
-                store,
-                KvOperation::HSetNx(&partition_key_str, &diesel_entity, drainer_query),
-                partition_key,
-            )
-            .await
-            .map_err(|e| {
-                kv_backend_error::<M::Error>(e.to_redis_failed_response(&partition_key_str))
-            })?;
+            let reply = kv_backend
+                .insert(partition_key, &diesel_entity, drainer_query)
+                .await
+                .map_err(|e| {
+                    kv_backend_error::<M::Error>(e.to_redis_failed_response(&partition_key_str))
+                })?;
 
-            match reply.try_into_hsetnx() {
-                Ok(HsetnxReply::KeySet) => Ok(diesel_entity),
-                Ok(HsetnxReply::KeyNotSet) => {
+            match reply {
+                KvInsertResult::Inserted => Ok(diesel_entity),
+                KvInsertResult::AlreadyExists => {
                     Err(kv_duplicate_error::<M::Error>(&partition_key_str))
                 }
-                Err(e) => Err(kv_backend_error::<M::Error>(
-                    Report::new(e).change_context(KvError::Backend),
-                )),
             }
         }
     }
 }
 
-/// Insert via HSetNx. `KeyNotSet` → `Duplicate`. `PostgresOnly` → `storage_insert`.
+/// Insert via KV backend. `AlreadyExists` → `Duplicate`. `PostgresOnly` → `storage_insert`.
 /// On the RedisKv path the model's serial `id` is unresolved (e.g. `0`); the drainer
 /// assigns it on PG replay. Callers only see the business id (`fingerprint_id`).
 #[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
@@ -415,22 +439,18 @@ where
     M: KvResource,
 {
     let key = primary_key.get_partition_key();
-    let scheme = decide_storage_scheme_for_find_operation(store).await;
+    let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
+    log_storage_scheme_decision(M::ENTITY_TYPE, "find", &decided_scheme);
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let key_str = key.to_string();
-            let result = kv_wrapper::<M::DieselEntity, M::DieselEntity>(
-                store,
-                KvOperation::<M::DieselEntity>::HGet(&key_str),
-                key.clone(),
-            )
-            .await;
+            let result = kv_backend.find::<M::DieselEntity>(key.clone()).await;
 
             match result {
-                Ok(KvResult::HGet(v)) => Ok(v),
-                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                Ok(KvFindResult::Present(v)) => Ok(v),
+                Ok(KvFindResult::Absent) => {
                     // Redis miss → fall back to Postgres. In SoftKill this means the key was
                     // never written to Redis, so we read from DB.
                     metrics::KV_CACHE_MISS_COUNT.add(
@@ -439,20 +459,11 @@ where
                     );
                     M::storage_find(store, &primary_key).await
                 }
+                Ok(KvFindResult::Deleted) => Err(kv_backend_error::<M::Error>(Report::new(
+                    KvError::ValueNotFound(format!("Data was deleted for key {key_str}")),
+                ))),
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&key_str),
-                )),
-                Ok(KvResult::HSetNx(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected HSetNx result for an HGet operation"),
-                )),
-                Ok(KvResult::Hset(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected Hset result for an HGet operation"),
-                )),
-                Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected HDel result for an HGet operation"),
                 )),
             }
         }
@@ -483,66 +494,65 @@ pub(crate) async fn find_resource_by_lookup_id<M>(
 where
     M: KvSecondaryLookupResource,
 {
-    let scheme = decide_storage_scheme_for_find_operation(store).await;
+    let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
+    log_storage_scheme_decision(M::ENTITY_TYPE, "find_by_lookup", &decided_scheme);
     let lookup_id = lookup_key.get_lookup_key();
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
-        StorageScheme::RedisKv => {
-            let key_str = match store.find_by_lookup_id(&lookup_id.lookup_id).await {
-                Ok(lookup) => lookup.get_partition_key().to_string(),
-                Err(err)
-                    if matches!(
-                        err.get_inner(),
-                        crate::error::ReverseLookupDBError::NotFoundError
-                    ) =>
-                {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
+            let reverse_lookup_partition_key = PartitionKey::ReverseLookup {
+                lookup_id: &lookup_id.lookup_id,
+            };
+            let reverse_lookup_key_str = reverse_lookup_partition_key.to_string();
+            let key_str = match kv_backend
+                .find::<types::ReverseLookup>(reverse_lookup_partition_key)
+                .await
+            {
+                Ok(KvFindResult::Present(lookup)) => lookup.get_partition_key().to_string(),
+                Ok(KvFindResult::Absent) => {
                     metrics::KV_CACHE_MISS_COUNT.add(
                         1,
                         metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
                     );
                     return M::storage_find_by_lookup(store, &lookup_key).await;
                 }
+                Ok(KvFindResult::Deleted) => {
+                    return Err(kv_backend_error::<M::Error>(Report::new(
+                        KvError::ValueNotFound(format!(
+                            "Data was deleted for reverse lookup key {}",
+                            lookup_id.lookup_id
+                        )),
+                    )));
+                }
                 Err(err) => {
                     return Err(kv_backend_error::<M::Error>(
-                        Report::new(KvError::Backend).attach_printable(format!(
-                            "failed to find reverse lookup record: {err}"
-                        )),
+                        err.to_redis_failed_response(&reverse_lookup_key_str),
                     ));
                 }
             };
 
-            let result = kv_wrapper::<M::DieselEntity, M::DieselEntity>(
-                store,
-                KvOperation::<M::DieselEntity>::HGet(&key_str),
-                PartitionKey::CombinationKey {
+            let result = kv_backend
+                .find::<M::DieselEntity>(PartitionKey::CombinationKey {
                     combination: &key_str,
-                },
-            )
-            .await;
+                })
+                .await;
 
             match result {
-                Ok(KvResult::HGet(v)) => Ok(v.into()),
-                Err(e) if matches!(e.current_context(), RedisError::NotFound) => {
+                Ok(KvFindResult::Present(v)) => Ok(v.into()),
+                Ok(KvFindResult::Absent) => {
+                    // Redis miss → fall back to Postgres. In SoftKill this means the key was
+                    // never written to Redis, so we read from DB.
                     metrics::KV_CACHE_MISS_COUNT.add(
                         1,
                         metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
                     );
                     M::storage_find_by_lookup(store, &lookup_key).await
                 }
+                Ok(KvFindResult::Deleted) => Err(kv_backend_error::<M::Error>(Report::new(
+                    KvError::ValueNotFound(format!("Data was deleted for key {key_str}")),
+                ))),
                 Err(e) => Err(kv_backend_error::<M::Error>(
                     e.to_redis_failed_response(&key_str),
-                )),
-                Ok(KvResult::HSetNx(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected HSetNx result for an HGet operation"),
-                )),
-                Ok(KvResult::Hset(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected Hset result for an HGet operation"),
-                )),
-                Ok(KvResult::HDel(_)) => Err(kv_backend_error::<M::Error>(
-                    Report::new(KvError::Backend)
-                        .attach_printable("unexpected HDel result for an HGet operation"),
                 )),
             }
         }
@@ -575,15 +585,17 @@ where
     M::PrimaryKeyType: Clone,
     M::DieselEntity: Clone,
 {
-    let (scheme, cached) = {
+    let (decided_scheme, cached) = {
         let key = primary_key.get_partition_key();
         decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
     };
+    log_storage_scheme_decision(M::ENTITY_TYPE, "update", &decided_scheme);
+    let scheme = decided_scheme.storage_scheme();
     M::set_update_storage_scheme(&mut update, scheme);
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_update(store, update, primary_key).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_update(store, update, primary_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let key = primary_key.get_partition_key();
             let current = match cached {
                 Some(resource) => resource,
@@ -595,17 +607,10 @@ where
             let updated_resource = updated_model.clone().into();
 
             let key_str = key.to_string();
-            kv_wrapper::<(), M::DieselEntity>(
-                store,
-                KvOperation::<M::DieselEntity>::Hset((&key_str, updated_model), update_query),
-                key.clone(),
-            )
-            .await
-            .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?
-            .try_into_hset()
-            .map_err(|e| {
-                kv_backend_error::<M::Error>(Report::new(e).change_context(KvError::Backend))
-            })?;
+            kv_backend
+                .update(key.clone(), &updated_model, update_query)
+                .await
+                .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
 
             Ok(updated_resource)
         }
@@ -620,30 +625,24 @@ async fn delete_resource_by_id_inner<M>(
 where
     M: KvDeletableResource,
 {
-    let (scheme, _) = {
+    let (decided_scheme, _) = {
         let key = primary_key.get_partition_key();
         decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
     };
+    log_storage_scheme_decision(M::ENTITY_TYPE, "delete", &decided_scheme);
 
-    match scheme {
-        StorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
-        StorageScheme::RedisKv => {
+    match decided_scheme {
+        DecidedStorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
+        DecidedStorageScheme::Kv(kv_backend) => {
             let key = primary_key.get_partition_key();
             let delete_query = M::generate_delete_drainer_query(&primary_key)
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = key.to_string();
-            let reply = kv_wrapper::<(), M::DieselEntity>(
-                store,
-                KvOperation::<M::DieselEntity>::HDel(&key_str, delete_query),
-                key.clone(),
-            )
-            .await
-            .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
-
-            reply.try_into_hdel().map_err(|e| {
-                kv_backend_error::<M::Error>(Report::new(e).change_context(KvError::Backend))
-            })
+            kv_backend
+                .delete::<M::DieselEntity>(key.clone(), delete_query)
+                .await
+                .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))
         }
     }
 }
