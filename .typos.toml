@@ -1,5 +1,8 @@
 [default]
 check-filename = true
+extend-ignore-re = [
+  '\b[0-9a-f]{7,40}\b',
+]
 
 [default.extend-words]
 encrypter = "encrypter"
