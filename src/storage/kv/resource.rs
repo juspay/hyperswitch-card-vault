@@ -397,11 +397,35 @@ where
     M::InsertStrategy: KvInsertConflictStrategy<M>,
 {
     let state = store.kv_settings().await;
+    crate::logger::debug!(
+        resource = %M::ENTITY_TYPE,
+        operation = "insert",
+        kv_state = %state,
+        has_reverse_lookup_key = reverse_lookup_key.is_some(),
+        "Deciding insert storage scheme"
+    );
+
     match state {
         // KV is fully disabled, so PostgreSQL remains the source of truth for inserts.
-        KvState::Disabled => Ok(DecidedStorageScheme::PostgresOnly),
+        KvState::Disabled => {
+            crate::logger::debug!(
+                resource = %M::ENTITY_TYPE,
+                operation = "insert",
+                kv_state = %state,
+                storage_scheme = %StorageScheme::PostgresOnly,
+                "KV disabled; routing insert to PostgreSQL"
+            );
+            Ok(DecidedStorageScheme::PostgresOnly)
+        }
         KvState::Enabled => {
             let Some(kv_backend) = store.kv_backend() else {
+                crate::logger::debug!(
+                    resource = %M::ENTITY_TYPE,
+                    operation = "insert",
+                    kv_state = %state,
+                    storage_scheme = %StorageScheme::PostgresOnly,
+                    "KV enabled but backend is unavailable; routing insert to PostgreSQL"
+                );
                 return Ok(DecidedStorageScheme::PostgresOnly);
             };
 
@@ -414,10 +438,25 @@ where
             )
             .await?
             {
-                Some(decided_scheme) => Ok(decided_scheme),
+                Some(decided_scheme) => {
+                    crate::logger::debug!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        kv_state = %state,
+                        storage_scheme = %decided_scheme.storage_scheme(),
+                        "Redis state determined insert storage scheme"
+                    );
+                    Ok(decided_scheme)
+                }
                 None => {
                     // Redis is absent. Check PostgreSQL before writing to KV so records
                     // created before KV enablement still enforce their DB uniqueness.
+                    crate::logger::debug!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        kv_state = %state,
+                        "Redis has no insert state; checking PostgreSQL for conflicts"
+                    );
                     let conflict_key = match <M::InsertStrategy as KvInsertConflictStrategy<
                         M,
                     >>::storage_get_insert_conflict(
@@ -428,32 +467,86 @@ where
                     .await
                     {
                         Ok(conflict_key) => conflict_key,
-                        Err(err) => return Err(err),
+                        Err(err) => {
+                            crate::logger::warn!(
+                                resource = %M::ENTITY_TYPE,
+                                operation = "insert",
+                                kv_state = %state,
+                                error = ?err,
+                                "PostgreSQL conflict check failed for KV-enabled insert"
+                            );
+                            return Err(err);
+                        }
                     };
 
                     match conflict_key {
                         Some(conflict_key) => {
+                            crate::logger::debug!(
+                                resource = %M::ENTITY_TYPE,
+                                operation = "insert",
+                                kv_state = %state,
+                                conflict_key_type = %conflict_key.kind(),
+                                "PostgreSQL conflict found for KV-enabled insert"
+                            );
                             Err(kv_duplicate_error::<M::Error>(conflict_key.key()))
                         }
-                        None => Ok(DecidedStorageScheme::Kv(kv_backend)),
+                        None => {
+                            crate::logger::debug!(
+                                resource = %M::ENTITY_TYPE,
+                                operation = "insert",
+                                kv_state = %state,
+                                storage_scheme = %StorageScheme::RedisKv,
+                                "No PostgreSQL conflict found; routing insert to KV"
+                            );
+                            Ok(DecidedStorageScheme::Kv(kv_backend))
+                        }
                     }
                 }
             }
         }
         KvState::SoftKill => {
             let Some(kv_backend) = store.kv_backend() else {
+                crate::logger::debug!(
+                    resource = %M::ENTITY_TYPE,
+                    operation = "insert",
+                    kv_state = %state,
+                    storage_scheme = %StorageScheme::PostgresOnly,
+                    "KV soft-kill but backend is unavailable; routing insert to PostgreSQL"
+                );
                 return Ok(DecidedStorageScheme::PostgresOnly);
             };
 
             // In soft-kill, only keys already tracked by Redis stay on KV. Fully absent
             // keys move to PostgreSQL as part of draining traffic away from KV.
-            Ok(decide_insert_scheme_from_kv_state::<M>(
+            let redis_decision = decide_insert_scheme_from_kv_state::<M>(
                 kv_backend,
                 partition_key,
                 reverse_lookup_key,
             )
-            .await?
-            .unwrap_or(DecidedStorageScheme::PostgresOnly))
+            .await?;
+
+            match redis_decision {
+                Some(decided_scheme) => {
+                    crate::logger::debug!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        kv_state = %state,
+                        storage_scheme = %decided_scheme.storage_scheme(),
+                        "Redis state determined soft-kill insert storage scheme"
+                    );
+                    Ok(decided_scheme)
+                }
+                None => {
+                    crate::logger::debug!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        kv_state = %state,
+                        storage_scheme = %StorageScheme::PostgresOnly,
+                        "Redis has no insert state in soft-kill; routing insert to PostgreSQL"
+                    );
+                    Ok(DecidedStorageScheme::PostgresOnly)
+                }
+            }
         }
     }
 }
@@ -481,15 +574,49 @@ where
 {
     // Step 1: check the primary Redis key.
     let partition_key_str = partition_key.to_string();
+    crate::logger::debug!(
+        resource = %M::ENTITY_TYPE,
+        operation = "insert",
+        redis_lookup = "primary",
+        has_reverse_lookup_key = reverse_lookup_key.is_some(),
+        "Checking Redis state for insert"
+    );
+
     match kv_backend
         .find::<M::DieselEntity>(partition_key.clone())
         .await
     {
         // A live primary key means the insert is a duplicate.
-        Ok(KvFindResult::Present(_)) => Err(kv_duplicate_error::<M::Error>(&partition_key_str)),
+        Ok(KvFindResult::Present(_)) => {
+            crate::logger::debug!(
+                resource = %M::ENTITY_TYPE,
+                operation = "insert",
+                redis_lookup = "primary",
+                redis_state = "present",
+                "Primary Redis key already exists; treating insert as duplicate"
+            );
+            Err(kv_duplicate_error::<M::Error>(&partition_key_str))
+        }
         // A tombstone means a delete may still be draining; re-insert through KV.
-        Ok(KvFindResult::Deleted) => Ok(Some(DecidedStorageScheme::Kv(kv_backend))),
+        Ok(KvFindResult::Deleted) => {
+            crate::logger::debug!(
+                resource = %M::ENTITY_TYPE,
+                operation = "insert",
+                redis_lookup = "primary",
+                redis_state = "deleted",
+                storage_scheme = %StorageScheme::RedisKv,
+                "Primary Redis key is tombstoned; routing insert through KV"
+            );
+            Ok(Some(DecidedStorageScheme::Kv(kv_backend)))
+        }
         Ok(KvFindResult::Absent) => {
+            crate::logger::debug!(
+                resource = %M::ENTITY_TYPE,
+                operation = "insert",
+                redis_lookup = "primary",
+                redis_state = "absent",
+                "Primary Redis key absent for insert"
+            );
             metrics::KV_CACHE_MISS_COUNT.add(
                 1,
                 metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
@@ -498,6 +625,11 @@ where
             // Step 2: resources without a secondary uniqueness key have no more Redis
             // state to consult.
             let Some(reverse_lookup_key) = reverse_lookup_key else {
+                crate::logger::debug!(
+                    resource = %M::ENTITY_TYPE,
+                    operation = "insert",
+                    "No reverse lookup key for insert; Redis has no authoritative state"
+                );
                 return Ok(None);
             };
 
@@ -508,32 +640,83 @@ where
             };
             let reverse_lookup_key_str = reverse_lookup_partition_key.to_string();
 
+            crate::logger::debug!(
+                resource = %M::ENTITY_TYPE,
+                operation = "insert",
+                redis_lookup = "reverse_lookup",
+                "Checking reverse lookup Redis state for insert"
+            );
+
             match kv_backend
                 .find::<types::ReverseLookup>(reverse_lookup_partition_key)
                 .await
             {
                 // A live reverse lookup means another live row owns the logical key.
-                Ok(KvFindResult::Present(_)) => Err(kv_duplicate_error::<M::Error>(
-                    &reverse_lookup_key.lookup_id,
-                )),
+                Ok(KvFindResult::Present(_)) => {
+                    crate::logger::debug!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        redis_lookup = "reverse_lookup",
+                        redis_state = "present",
+                        "Reverse lookup Redis key already exists; treating insert as duplicate"
+                    );
+                    Err(kv_duplicate_error::<M::Error>(
+                        &reverse_lookup_key.lookup_id,
+                    ))
+                }
                 // A reverse-lookup tombstone is still KV-tracked and should be replaced
                 // through KV rather than bypassed via PostgreSQL.
-                Ok(KvFindResult::Deleted) => Ok(Some(DecidedStorageScheme::Kv(kv_backend))),
+                Ok(KvFindResult::Deleted) => {
+                    crate::logger::debug!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        redis_lookup = "reverse_lookup",
+                        redis_state = "deleted",
+                        storage_scheme = %StorageScheme::RedisKv,
+                        "Reverse lookup Redis key is tombstoned; routing insert through KV"
+                    );
+                    Ok(Some(DecidedStorageScheme::Kv(kv_backend)))
+                }
                 Ok(KvFindResult::Absent) => {
+                    crate::logger::debug!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        redis_lookup = "reverse_lookup",
+                        redis_state = "absent",
+                        "Reverse lookup Redis key absent for insert"
+                    );
                     metrics::KV_CACHE_MISS_COUNT.add(
                         1,
                         metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
                     );
                     Ok(None)
                 }
-                Err(e) => Err(kv_backend_error::<M::Error>(
-                    e.to_redis_failed_response(&reverse_lookup_key_str),
-                )),
+                Err(e) => {
+                    crate::logger::warn!(
+                        resource = %M::ENTITY_TYPE,
+                        operation = "insert",
+                        redis_lookup = "reverse_lookup",
+                        error = ?e,
+                        "Reverse lookup Redis state check failed for insert"
+                    );
+                    Err(kv_backend_error::<M::Error>(
+                        e.to_redis_failed_response(&reverse_lookup_key_str),
+                    ))
+                }
             }
         }
-        Err(e) => Err(kv_backend_error::<M::Error>(
-            e.to_redis_failed_response(&partition_key_str),
-        )),
+        Err(e) => {
+            crate::logger::warn!(
+                resource = %M::ENTITY_TYPE,
+                operation = "insert",
+                redis_lookup = "primary",
+                error = ?e,
+                "Primary Redis state check failed for insert"
+            );
+            Err(kv_backend_error::<M::Error>(
+                e.to_redis_failed_response(&partition_key_str),
+            ))
+        }
     }
 }
 
