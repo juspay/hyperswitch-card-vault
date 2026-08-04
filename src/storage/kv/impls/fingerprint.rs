@@ -53,6 +53,12 @@ impl KvResource for Fingerprint {
 
     type PrimaryKeyType = FingerprintPrimaryKey;
 
+    fn get_primary_key_from_new_object(new_object: &Self::DieselNew) -> Self::PrimaryKeyType {
+        FingerprintPrimaryKey {
+            fingerprint_hash: new_object.fingerprint_hash.clone(),
+        }
+    }
+
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
         new_object.updated_by = Some(scheme);
     }
@@ -85,7 +91,6 @@ impl KvResource for Fingerprint {
 
         Ok(output)
     }
-
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,

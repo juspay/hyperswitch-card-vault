@@ -132,6 +132,14 @@ impl KvResource for Locker {
 
     type PrimaryKeyType = LockerPrimaryKeyType;
 
+    fn get_primary_key_from_new_object(new_object: &Self::DieselNew) -> Self::PrimaryKeyType {
+        LockerPrimaryKeyType {
+            locker_id: new_object.locker_id.clone(),
+            merchant_id: new_object.merchant_id.clone(),
+            customer_id: new_object.customer_id.clone(),
+        }
+    }
+
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
         new_object.updated_by = Some(scheme);
     }

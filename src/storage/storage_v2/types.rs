@@ -150,4 +150,14 @@ impl VaultNewInner {
     pub fn set_updated_by(&mut self, updated_by: StorageScheme) {
         self.updated_by = Some(updated_by);
     }
+
+    #[cfg(feature = "kv")]
+    pub(crate) fn vault_id(&self) -> &Secret<String> {
+        &self.vault_id
+    }
+
+    #[cfg(feature = "kv")]
+    pub(crate) fn entity_id(&self) -> &str {
+        &self.entity_id
+    }
 }
