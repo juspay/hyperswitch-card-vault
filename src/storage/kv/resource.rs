@@ -228,6 +228,13 @@ impl InsertConflictKey {
             Self::PartitionKey(key) | Self::LookupKey(key) => key,
         }
     }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::PartitionKey(_) => "partition_key",
+            Self::LookupKey(_) => "lookup_key",
+        }
+    }
 }
 
 pub(crate) trait KvInsertConflictStrategy<M>
