@@ -243,7 +243,7 @@ where
 
 impl<M> KvInsertConflictStrategy<M> for DirectInsert
 where
-    M: KvResource<InsertStrategy = DirectInsert>,
+    M: KvResource<InsertStrategy = Self>,
 {
     async fn storage_find_insert_conflict(
         store: &Storage,
