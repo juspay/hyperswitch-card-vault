@@ -24,6 +24,11 @@ pub trait RedisErrorExt {
 
 impl RedisErrorExt for error_stack::Report<RedisError> {
     fn to_redis_failed_response(self, key: &str) -> error_stack::Report<KvError> {
+        crate::logger::error!(
+            redis_error = ?self,
+            "Converting Redis error report into KV error"
+        );
+
         match self.current_context() {
             RedisError::NotFound => self.change_context(KvError::ValueNotFound(format!(
                 "Data does not exist for key {key}",
