@@ -217,6 +217,85 @@ pub(crate) trait KvSecondaryLookupResource:
     ) -> Result<Self, ContainerError<Self::Error>>;
 }
 
+pub(crate) enum InsertConflictKey {
+    PartitionKey(String),
+    LookupKey(String),
+}
+
+impl InsertConflictKey {
+    fn key(&self) -> &str {
+        match self {
+            Self::PartitionKey(key) | Self::LookupKey(key) => key,
+        }
+    }
+}
+
+pub(crate) trait KvInsertConflictStrategy<M>
+where
+    M: KvResource,
+{
+    async fn storage_find_insert_conflict(
+        store: &Storage,
+        diesel_new: &M::DieselNew,
+        partition_key: &PartitionKey<'_>,
+    ) -> Result<Option<InsertConflictKey>, ContainerError<M::Error>>;
+}
+
+impl<M> KvInsertConflictStrategy<M> for DirectInsert
+where
+    M: KvResource<InsertStrategy = DirectInsert>,
+{
+    async fn storage_find_insert_conflict(
+        store: &Storage,
+        diesel_new: &M::DieselNew,
+        partition_key: &PartitionKey<'_>,
+    ) -> Result<Option<InsertConflictKey>, ContainerError<M::Error>> {
+        let primary_key = M::get_primary_key_from_new_object(diesel_new);
+
+        match M::storage_find(store, &primary_key).await {
+            Ok(_) => Ok(Some(InsertConflictKey::PartitionKey(
+                partition_key.to_string(),
+            ))),
+            Err(err) if err.get_inner().is_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+impl<M> KvInsertConflictStrategy<M> for ReverseLookupInsert
+where
+    M: KvSecondaryLookupResource,
+{
+    async fn storage_find_insert_conflict(
+        store: &Storage,
+        diesel_new: &M::DieselNew,
+        partition_key: &PartitionKey<'_>,
+    ) -> Result<Option<InsertConflictKey>, ContainerError<M::Error>> {
+        let primary_key = M::get_primary_key_from_new_object(diesel_new);
+
+        match M::storage_find(store, &primary_key).await {
+            Ok(_) => {
+                return Ok(Some(InsertConflictKey::PartitionKey(
+                    partition_key.to_string(),
+                )));
+            }
+            Err(err) if err.get_inner().is_not_found() => {}
+            Err(err) => return Err(err),
+        }
+
+        let lookup_key = M::get_reverse_lookup_key(diesel_new, partition_key);
+        let reverse_lookup_key = lookup_key.get_lookup_key();
+
+        match M::storage_find_by_lookup(store, &lookup_key).await {
+            Ok(_) => Ok(Some(InsertConflictKey::LookupKey(
+                reverse_lookup_key.lookup_id,
+            ))),
+            Err(err) if err.get_inner().is_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}
+
 fn kv_backend_error<E>(report: Report<KvError>) -> ContainerError<E>
 where
     E: for<'a> From<&'a KvError> + error_stack::Context,
@@ -303,8 +382,8 @@ async fn decide_storage_scheme_for_find_operation(store: &Storage) -> DecidedSto
 /// Decision summary:
 /// - `Disabled`: write directly to PostgreSQL.
 /// - `Enabled`: check Redis first. If Redis has no knowledge of the key, check PostgreSQL
-///   with `storage_find`; an existing PostgreSQL row is returned as duplicate, otherwise
-///   the insert can proceed through KV.
+///   with the resource's insert strategy; existing PostgreSQL rows are returned as
+///   duplicates, otherwise the insert can proceed through KV.
 /// - `SoftKill`: check Redis first. Tombstoned keys stay on KV to preserve drainer-delay
 ///   ordering; completely absent keys write to PostgreSQL.
 async fn decide_storage_scheme_for_insert_operation<M>(
@@ -315,6 +394,7 @@ async fn decide_storage_scheme_for_insert_operation<M>(
 ) -> Result<DecidedStorageScheme, ContainerError<M::Error>>
 where
     M: KvResource,
+    M::InsertStrategy: KvInsertConflictStrategy<M>,
 {
     let state = store.kv_settings().await;
     match state {
@@ -338,13 +418,24 @@ where
                 None => {
                     // Redis is absent. Check PostgreSQL before writing to KV so records
                     // created before KV enablement still enforce their DB uniqueness.
-                    let primary_key = M::get_primary_key_from_new_object(diesel_new);
-                    match M::storage_find(store, &primary_key).await {
-                        Ok(_) => Err(kv_duplicate_error::<M::Error>(&partition_key.to_string())),
-                        Err(err) if err.get_inner().is_not_found() => {
-                            Ok(DecidedStorageScheme::Kv(kv_backend))
+                    let conflict_key = match <M::InsertStrategy as KvInsertConflictStrategy<
+                        M,
+                    >>::storage_find_insert_conflict(
+                        store,
+                        diesel_new,
+                        partition_key,
+                    )
+                    .await
+                    {
+                        Ok(conflict_key) => conflict_key,
+                        Err(err) => return Err(err),
+                    };
+
+                    match conflict_key {
+                        Some(conflict_key) => {
+                            Err(kv_duplicate_error::<M::Error>(conflict_key.key()))
                         }
-                        Err(err) => Err(err),
+                        None => Ok(DecidedStorageScheme::Kv(kv_backend)),
                     }
                 }
             }
@@ -502,6 +593,7 @@ async fn insert_resource_inner<M, F>(
 ) -> Result<M::DieselEntity, ContainerError<M::Error>>
 where
     M: KvResource,
+    M::InsertStrategy: KvInsertConflictStrategy<M>,
     F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
 {
     let reverse_lookup_key = get_reverse_lookup_key(&diesel_new, &partition_key);
