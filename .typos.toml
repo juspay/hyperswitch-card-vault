@@ -6,6 +6,7 @@ encrypter = "encrypter"
 requestor = "requestor"
 Hashi = "Hashi"
 kms = "kms"
+9260ba2 = "9260ba2"
 
 [files]
 extend-exclude = ["loadtest/scripts/http-rs.js"]
