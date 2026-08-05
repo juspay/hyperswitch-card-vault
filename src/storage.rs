@@ -13,6 +13,7 @@ pub mod types;
 pub mod utils;
 
 use std::{
+    fmt::Debug,
     future::Future,
     sync::{
         Arc,
@@ -698,6 +699,7 @@ async fn record_db_query<T, Fut, R, E>(
 where
     T: diesel::associations::HasTable<Table = T>,
     Fut: Future<Output = Result<R, E>>,
+    E: Debug,
 {
     let table_name = std::any::type_name::<T>()
         .rsplit("::")
@@ -728,6 +730,17 @@ where
         ),
     );
 
+    if let Err(error) = &result {
+        crate::logger::error!(
+            table = table_name,
+            operation = ?operation,
+            pool = ?pool,
+            duration_ms = duration.as_millis(),
+            error_message = ?error,
+            "Database query failed"
+        );
+    }
+
     result
 }
 
@@ -740,6 +753,7 @@ async fn record_db_query_optional<T, Fut, R, E>(
 where
     T: diesel::associations::HasTable<Table = T>,
     Fut: Future<Output = Result<Option<R>, E>>,
+    E: Debug,
 {
     let table_name = std::any::type_name::<T>()
         .rsplit("::")
@@ -774,6 +788,17 @@ where
         ),
     );
 
+    if let Err(error) = &result {
+        crate::logger::error!(
+            table = table_name,
+            operation = ?operation,
+            pool = ?pool,
+            duration_ms = duration.as_millis(),
+            error_message = ?error,
+            "Database optional query failed"
+        );
+    }
+
     result
 }
 
@@ -785,6 +810,7 @@ async fn record_db_query_rows<T, Fut, E>(
 where
     T: diesel::associations::HasTable<Table = T>,
     Fut: Future<Output = Result<usize, E>>,
+    E: Debug,
 {
     let table_name = std::any::type_name::<T>()
         .rsplit("::")
@@ -818,6 +844,17 @@ where
             ("outcome", outcome),
         ),
     );
+
+    if let Err(error) = &result {
+        crate::logger::error!(
+            table = table_name,
+            operation = ?operation,
+            pool = ?pool,
+            duration_ms = duration.as_millis(),
+            error_message = ?error,
+            "Database rows query failed"
+        );
+    }
 
     result
 }
