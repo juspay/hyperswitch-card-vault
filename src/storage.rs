@@ -13,7 +13,7 @@ pub mod types;
 pub mod utils;
 
 use std::{
-    fmt::Display,
+    fmt::Debug,
     future::Future,
     sync::{
         Arc,
@@ -699,7 +699,7 @@ async fn record_db_query<T, Fut, R, E>(
 where
     T: diesel::associations::HasTable<Table = T>,
     Fut: Future<Output = Result<R, E>>,
-    E: Display,
+    E: Debug,
 {
     let table_name = std::any::type_name::<T>()
         .rsplit("::")
@@ -736,7 +736,7 @@ where
             operation = ?operation,
             pool = ?pool,
             duration_ms = duration.as_millis(),
-            error_message = %error,
+            error_message = ?error,
             "Database query failed"
         );
     }
@@ -753,7 +753,7 @@ async fn record_db_query_optional<T, Fut, R, E>(
 where
     T: diesel::associations::HasTable<Table = T>,
     Fut: Future<Output = Result<Option<R>, E>>,
-    E: Display,
+    E: Debug,
 {
     let table_name = std::any::type_name::<T>()
         .rsplit("::")
@@ -794,7 +794,7 @@ where
             operation = ?operation,
             pool = ?pool,
             duration_ms = duration.as_millis(),
-            error_message = %error,
+            error_message = ?error,
             "Database optional query failed"
         );
     }
@@ -810,7 +810,7 @@ async fn record_db_query_rows<T, Fut, E>(
 where
     T: diesel::associations::HasTable<Table = T>,
     Fut: Future<Output = Result<usize, E>>,
-    E: Display,
+    E: Debug,
 {
     let table_name = std::any::type_name::<T>()
         .rsplit("::")
@@ -851,7 +851,7 @@ where
             operation = ?operation,
             pool = ?pool,
             duration_ms = duration.as_millis(),
-            error_message = %error,
+            error_message = ?error,
             "Database rows query failed"
         );
     }
