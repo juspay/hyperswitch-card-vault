@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     error::{
-        ContainerError, StorageErrorExt,
+        ContainerError, ReverseLookupDBError, StorageErrorExt,
         kv::{KvError, RedisErrorExt},
     },
     observability::metrics,
@@ -89,6 +89,9 @@ pub(crate) trait KvResource:
     /// This may be a composite key. It must produce the partition key used by
     /// Redis for primary-key based insert, find, update, and delete operations.
     type PrimaryKeyType: GetPartitionKey;
+
+    /// Reconstruct the primary key from the insert payload for insert-time conflict checks.
+    fn get_primary_key_from_new_object(new_object: &Self::DieselNew) -> Self::PrimaryKeyType;
 
     /// Mark a new record with the storage scheme selected for the insert.
     fn set_storage_scheme(diesel_new: &mut Self::DieselNew, scheme: StorageScheme);
@@ -231,6 +234,24 @@ where
     }))
 }
 
+fn reverse_lookup_insert_error_to_resource_error<E>(
+    lookup_id: &str,
+    err: ContainerError<ReverseLookupDBError>,
+) -> ContainerError<E>
+where
+    E: for<'a> From<&'a KvError> + error_stack::Context,
+{
+    let kv_error = if err.get_inner().is_duplicate() {
+        KvError::DuplicateValue {
+            key: lookup_id.to_string(),
+        }
+    } else {
+        KvError::Backend
+    };
+
+    kv_backend_error::<E>(err.error.change_context(kv_error))
+}
+
 #[derive(Clone, Default)]
 pub(crate) enum DecidedStorageScheme {
     #[default]
@@ -272,14 +293,156 @@ async fn decide_storage_scheme_for_find_operation(store: &Storage) -> DecidedSto
     }
 }
 
-async fn decide_storage_scheme_for_insert_operation(store: &Storage) -> DecidedStorageScheme {
+/// Decide where an insert should be written for the current KV runtime state.
+///
+/// The insert path is more conservative than reads because accepting a Redis write for a
+/// row that already exists only in PostgreSQL would bypass PostgreSQL's unique constraints
+/// until drainer replay. This is especially important during KV enablement, when older
+/// records may not have Redis entries yet.
+///
+/// Decision summary:
+/// - `Disabled`: write directly to PostgreSQL.
+/// - `Enabled`: check Redis first. If Redis has no knowledge of the key, check PostgreSQL
+///   with `storage_find`; an existing PostgreSQL row is returned as duplicate, otherwise
+///   the insert can proceed through KV.
+/// - `SoftKill`: check Redis first. Tombstoned keys stay on KV to preserve drainer-delay
+///   ordering; completely absent keys write to PostgreSQL.
+async fn decide_storage_scheme_for_insert_operation<M>(
+    store: &Storage,
+    diesel_new: &M::DieselNew,
+    partition_key: &PartitionKey<'_>,
+    reverse_lookup_key: Option<&ReverseLookupKey>,
+) -> Result<DecidedStorageScheme, ContainerError<M::Error>>
+where
+    M: KvResource,
+{
     let state = store.kv_settings().await;
     match state {
-        // in disabled and softkill mode, always push new inserts to PG
-        KvState::Disabled | KvState::SoftKill => DecidedStorageScheme::PostgresOnly,
-        KvState::Enabled => store
-            .kv_backend()
-            .map_or(DecidedStorageScheme::PostgresOnly, DecidedStorageScheme::Kv),
+        // KV is fully disabled, so PostgreSQL remains the source of truth for inserts.
+        KvState::Disabled => Ok(DecidedStorageScheme::PostgresOnly),
+        KvState::Enabled => {
+            let Some(kv_backend) = store.kv_backend() else {
+                return Ok(DecidedStorageScheme::PostgresOnly);
+            };
+
+            // First honor any existing Redis state: present keys are duplicates and
+            // tombstoned keys must remain on KV so pending deletes can drain safely.
+            match decide_insert_scheme_from_kv_state::<M>(
+                kv_backend.clone(),
+                partition_key,
+                reverse_lookup_key,
+            )
+            .await?
+            {
+                Some(decided_scheme) => Ok(decided_scheme),
+                None => {
+                    // Redis is absent. Check PostgreSQL before writing to KV so records
+                    // created before KV enablement still enforce their DB uniqueness.
+                    let primary_key = M::get_primary_key_from_new_object(diesel_new);
+                    match M::storage_find(store, &primary_key).await {
+                        Ok(_) => Err(kv_duplicate_error::<M::Error>(&partition_key.to_string())),
+                        Err(err) if err.get_inner().is_not_found() => {
+                            Ok(DecidedStorageScheme::Kv(kv_backend))
+                        }
+                        Err(err) => Err(err),
+                    }
+                }
+            }
+        }
+        KvState::SoftKill => {
+            let Some(kv_backend) = store.kv_backend() else {
+                return Ok(DecidedStorageScheme::PostgresOnly);
+            };
+
+            // In soft-kill, only keys already tracked by Redis stay on KV. Fully absent
+            // keys move to PostgreSQL as part of draining traffic away from KV.
+            Ok(decide_insert_scheme_from_kv_state::<M>(
+                kv_backend,
+                partition_key,
+                reverse_lookup_key,
+            )
+            .await?
+            .unwrap_or(DecidedStorageScheme::PostgresOnly))
+        }
+    }
+}
+
+/// Inspect Redis state for an insert key and return a forced decision when Redis is
+/// authoritative for the key.
+///
+/// Return values:
+/// - `Ok(Some(Kv(_)))`: Redis contains a tombstone, so re-insert through KV and let the
+///   drainer serialize the pending delete/insert effects.
+/// - `Err(Duplicate)`: Redis contains a live primary or reverse-lookup record, so a new
+///   insert would violate uniqueness.
+/// - `Ok(None)`: both the primary key and optional reverse lookup key are absent from
+///   Redis; the caller must decide whether to check PostgreSQL or write there directly.
+///
+/// Backend errors are propagated because treating Redis failures as misses could route
+/// duplicate or tombstoned records to PostgreSQL incorrectly.
+async fn decide_insert_scheme_from_kv_state<M>(
+    kv_backend: KvBackend,
+    partition_key: &PartitionKey<'_>,
+    reverse_lookup_key: Option<&ReverseLookupKey>,
+) -> Result<Option<DecidedStorageScheme>, ContainerError<M::Error>>
+where
+    M: KvResource,
+{
+    // Step 1: check the primary Redis key.
+    let partition_key_str = partition_key.to_string();
+    match kv_backend
+        .find::<M::DieselEntity>(partition_key.clone())
+        .await
+    {
+        // A live primary key means the insert is a duplicate.
+        Ok(KvFindResult::Present(_)) => Err(kv_duplicate_error::<M::Error>(&partition_key_str)),
+        // A tombstone means a delete may still be draining; re-insert through KV.
+        Ok(KvFindResult::Deleted) => Ok(Some(DecidedStorageScheme::Kv(kv_backend))),
+        Ok(KvFindResult::Absent) => {
+            metrics::KV_CACHE_MISS_COUNT.add(
+                1,
+                metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+            );
+
+            // Step 2: resources without a secondary uniqueness key have no more Redis
+            // state to consult.
+            let Some(reverse_lookup_key) = reverse_lookup_key else {
+                return Ok(None);
+            };
+
+            // Step 3: check the reverse lookup key for resources whose logical insert
+            // uniqueness is represented by a secondary Redis key.
+            let reverse_lookup_partition_key = PartitionKey::ReverseLookup {
+                lookup_id: &reverse_lookup_key.lookup_id,
+            };
+            let reverse_lookup_key_str = reverse_lookup_partition_key.to_string();
+
+            match kv_backend
+                .find::<types::ReverseLookup>(reverse_lookup_partition_key)
+                .await
+            {
+                // A live reverse lookup means another live row owns the logical key.
+                Ok(KvFindResult::Present(_)) => Err(kv_duplicate_error::<M::Error>(
+                    &reverse_lookup_key.lookup_id,
+                )),
+                // A reverse-lookup tombstone is still KV-tracked and should be replaced
+                // through KV rather than bypassed via PostgreSQL.
+                Ok(KvFindResult::Deleted) => Ok(Some(DecidedStorageScheme::Kv(kv_backend))),
+                Ok(KvFindResult::Absent) => {
+                    metrics::KV_CACHE_MISS_COUNT.add(
+                        1,
+                        metrics_utils::metric_attributes![("resource", M::ENTITY_TYPE)],
+                    );
+                    Ok(None)
+                }
+                Err(e) => Err(kv_backend_error::<M::Error>(
+                    e.to_redis_failed_response(&reverse_lookup_key_str),
+                )),
+            }
+        }
+        Err(e) => Err(kv_backend_error::<M::Error>(
+            e.to_redis_failed_response(&partition_key_str),
+        )),
     }
 }
 
@@ -341,7 +504,14 @@ where
     M: KvResource,
     F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
 {
-    let decided_scheme = decide_storage_scheme_for_insert_operation(store).await;
+    let reverse_lookup_key = get_reverse_lookup_key(&diesel_new, &partition_key);
+    let decided_scheme = decide_storage_scheme_for_insert_operation::<M>(
+        store,
+        &diesel_new,
+        &partition_key,
+        reverse_lookup_key.as_ref(),
+    )
+    .await?;
     log_storage_scheme_decision(M::ENTITY_TYPE, "insert", &decided_scheme);
     let scheme = decided_scheme.storage_scheme();
     M::set_storage_scheme(&mut diesel_new, scheme);
@@ -353,10 +523,11 @@ where
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let partition_key_str = partition_key.to_string();
-            if let Some(reverse_lookup_key) = get_reverse_lookup_key(&diesel_new, &partition_key) {
+            if let Some(reverse_lookup_key) = reverse_lookup_key {
+                let lookup_id = reverse_lookup_key.lookup_id.clone();
                 store
                     .insert_reverse_lookup(types::ReverseLookupNew {
-                        lookup_id: reverse_lookup_key.lookup_id.clone(),
+                        lookup_id: lookup_id.clone(),
                         secondary_key: partition_key_str.clone(),
                         partition_key: partition_key_str.clone(),
                         source: M::ENTITY_TYPE.to_string(),
@@ -364,11 +535,7 @@ where
                     })
                     .await
                     .map_err(|err| {
-                        kv_backend_error::<M::Error>(
-                            Report::new(KvError::Backend).attach_printable(format!(
-                                "failed to insert reverse lookup record: {err}"
-                            )),
-                        )
+                        reverse_lookup_insert_error_to_resource_error::<M::Error>(&lookup_id, err)
                     })?;
             }
 

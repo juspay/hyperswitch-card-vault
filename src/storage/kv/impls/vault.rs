@@ -1,5 +1,6 @@
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::RunQueryDsl;
+use hyperswitch_masking::PeekInterface;
 
 use crate::{
     error::{ContainerError, VaultDBError},
@@ -65,6 +66,13 @@ impl KvResource for Vault {
 
     type PrimaryKeyType = VaultPrimaryKey;
 
+    fn get_primary_key_from_new_object(new_object: &Self::DieselNew) -> Self::PrimaryKeyType {
+        VaultPrimaryKey {
+            entity_id: new_object.entity_id().to_string(),
+            vault_id: new_object.vault_id().peek().clone(),
+        }
+    }
+
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
         new_object.set_updated_by(scheme);
     }
@@ -95,7 +103,6 @@ impl KvResource for Vault {
         .await?;
         Ok(output)
     }
-
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,

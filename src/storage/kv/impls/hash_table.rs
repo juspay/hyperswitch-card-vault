@@ -50,6 +50,12 @@ impl KvResource for HashTable {
 
     type PrimaryKeyType = HashTablePrimaryKey;
 
+    fn get_primary_key_from_new_object(new_object: &Self::DieselNew) -> Self::PrimaryKeyType {
+        HashTablePrimaryKey {
+            data_hash: new_object.data_hash.clone(),
+        }
+    }
+
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
         new_object.updated_by = Some(scheme);
     }
@@ -81,7 +87,6 @@ impl KvResource for HashTable {
 
         Ok(output)
     }
-
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,

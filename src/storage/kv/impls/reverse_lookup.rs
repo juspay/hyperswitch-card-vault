@@ -52,6 +52,12 @@ impl KvResource for ReverseLookup {
 
     type PrimaryKeyType = ReverseLookupPrimaryKey;
 
+    fn get_primary_key_from_new_object(new_object: &Self::DieselNew) -> Self::PrimaryKeyType {
+        ReverseLookupPrimaryKey {
+            lookup_id: new_object.lookup_id.clone(),
+        }
+    }
+
     fn set_storage_scheme(new_object: &mut Self::DieselNew, scheme: StorageScheme) {
         new_object.updated_by = scheme.to_string();
     }
@@ -84,7 +90,6 @@ impl KvResource for ReverseLookup {
         .await?;
         Ok(reverse_lookup)
     }
-
     async fn storage_find(
         store: &Storage,
         pk: &Self::PrimaryKeyType,
