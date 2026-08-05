@@ -234,7 +234,7 @@ pub(crate) trait KvInsertConflictStrategy<M>
 where
     M: KvResource,
 {
-    async fn storage_find_insert_conflict(
+    async fn storage_get_insert_conflict(
         store: &Storage,
         diesel_new: &M::DieselNew,
         partition_key: &PartitionKey<'_>,
@@ -245,7 +245,7 @@ impl<M> KvInsertConflictStrategy<M> for DirectInsert
 where
     M: KvResource<InsertStrategy = Self>,
 {
-    async fn storage_find_insert_conflict(
+    async fn storage_get_insert_conflict(
         store: &Storage,
         diesel_new: &M::DieselNew,
         partition_key: &PartitionKey<'_>,
@@ -266,7 +266,7 @@ impl<M> KvInsertConflictStrategy<M> for ReverseLookupInsert
 where
     M: KvSecondaryLookupResource,
 {
-    async fn storage_find_insert_conflict(
+    async fn storage_get_insert_conflict(
         store: &Storage,
         diesel_new: &M::DieselNew,
         partition_key: &PartitionKey<'_>,
@@ -420,7 +420,7 @@ where
                     // created before KV enablement still enforce their DB uniqueness.
                     let conflict_key = match <M::InsertStrategy as KvInsertConflictStrategy<
                         M,
-                    >>::storage_find_insert_conflict(
+                    >>::storage_get_insert_conflict(
                         store,
                         diesel_new,
                         partition_key,
