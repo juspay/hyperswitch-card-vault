@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     error::{
-        ContainerError, StorageErrorExt,
+        ContainerError, ReverseLookupDBError, StorageErrorExt,
         kv::{KvError, RedisErrorExt},
     },
     observability::metrics,
@@ -232,6 +232,24 @@ where
     kv_backend_error::<E>(Report::new(KvError::DuplicateValue {
         key: key.to_string(),
     }))
+}
+
+fn reverse_lookup_insert_error_to_resource_error<E>(
+    lookup_id: &str,
+    err: ContainerError<ReverseLookupDBError>,
+) -> ContainerError<E>
+where
+    E: for<'a> From<&'a KvError> + error_stack::Context,
+{
+    let kv_error = if err.get_inner().is_duplicate() {
+        KvError::DuplicateValue {
+            key: lookup_id.to_string(),
+        }
+    } else {
+        KvError::Backend
+    };
+
+    kv_backend_error::<E>(err.error.change_context(kv_error))
 }
 
 #[derive(Clone, Default)]
@@ -507,7 +525,7 @@ where
             let partition_key_str = partition_key.to_string();
             if let Some(reverse_lookup_key) = reverse_lookup_key {
                 let lookup_id = reverse_lookup_key.lookup_id.clone();
-                if let Err(err) = store
+                store
                     .insert_reverse_lookup(types::ReverseLookupNew {
                         lookup_id: lookup_id.clone(),
                         secondary_key: partition_key_str.clone(),
@@ -516,17 +534,9 @@ where
                         updated_by: scheme.to_string(),
                     })
                     .await
-                {
-                    return Err(if err.get_inner().is_duplicate() {
-                        kv_duplicate_error::<M::Error>(&lookup_id)
-                    } else {
-                        kv_backend_error::<M::Error>(
-                            Report::new(KvError::Backend).attach_printable(format!(
-                                "failed to insert reverse lookup record: {err}"
-                            )),
-                        )
-                    });
-                }
+                    .map_err(|err| {
+                        reverse_lookup_insert_error_to_resource_error::<M::Error>(&lookup_id, err)
+                    })?;
             }
 
             let diesel_entity = diesel_new.into();
