@@ -243,10 +243,7 @@ pub(crate) trait KvSecondaryLookupResource:
     /// The returned key is persisted as a reverse lookup record during Redis KV
     /// inserts, allowing later reads by secondary key to resolve the primary
     /// partition key.
-    fn get_reverse_lookup_key(
-        new_object: &Self::DieselNew,
-        partition_key: &PartitionKey<'_>,
-    ) -> Self::LookupKeyType;
+    fn get_reverse_lookup_key(new_object: &Self::DieselNew) -> Self::LookupKeyType;
 
     /// Find a record by secondary key through the backing storage implementation.
     ///
@@ -336,7 +333,7 @@ where
             Err(err) => return Err(err),
         }
 
-        let lookup_key = M::get_reverse_lookup_key(diesel_new, partition_key);
+        let lookup_key = M::get_reverse_lookup_key(diesel_new);
         let reverse_lookup_key = lookup_key.get_lookup_key();
         let reverse_lookup_partition_key_str = reverse_lookup_key.get_partition_key().to_string();
         let reverse_lookup_secondary_key_str = reverse_lookup_key.get_secondary_key().to_string();
@@ -849,12 +846,12 @@ async fn insert_resource_inner<M, F>(
 where
     M: KvResource,
     M::InsertStrategy: KvInsertConflictStrategy<M>,
-    F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
+    F: FnOnce(&M::DieselNew) -> Option<ReverseLookupKey>,
 {
     let primary_key = M::get_primary_key_from_new_object(&diesel_new);
     let partition_key = primary_key.get_partition_key();
     let secondary_key = primary_key.get_secondary_key();
-    let reverse_lookup_key = get_reverse_lookup_key(&diesel_new, &partition_key);
+    let reverse_lookup_key = get_reverse_lookup_key(&diesel_new);
     let decided_scheme = decide_storage_scheme_for_insert_operation::<M>(
         store,
         &diesel_new,
@@ -930,7 +927,7 @@ pub(crate) async fn insert_resource<M>(
 where
     M: KvResource<InsertStrategy = DirectInsert>,
 {
-    insert_resource_inner::<M, _>(store, diesel_new, |_, _| None)
+    insert_resource_inner::<M, _>(store, diesel_new, |_| None)
         .await
         .map(Into::into)
 }
@@ -943,8 +940,8 @@ pub(crate) async fn insert_resource_with_reverse_lookup<M>(
 where
     M: KvSecondaryLookupResource,
 {
-    insert_resource_inner::<M, _>(store, diesel_new, |new_object, partition_key| {
-        Some(M::get_reverse_lookup_key(new_object, partition_key).get_lookup_key())
+    insert_resource_inner::<M, _>(store, diesel_new, |new_object| {
+        Some(M::get_reverse_lookup_key(new_object).get_lookup_key())
     })
     .await
     .map(Into::into)

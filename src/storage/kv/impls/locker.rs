@@ -81,10 +81,7 @@ impl GetLookupKey for LockerHashLookupKey {
 impl KvSecondaryLookupResource for Locker {
     type LookupKeyType = LockerHashLookupKey;
 
-    fn get_reverse_lookup_key(
-        new_object: &Self::DieselNew,
-        _partition_key: &PartitionKey<'_>,
-    ) -> Self::LookupKeyType {
+    fn get_reverse_lookup_key(new_object: &Self::DieselNew) -> Self::LookupKeyType {
         LockerHashLookupKey {
             hash_id: new_object.hash_id.clone(),
             customer_id: new_object.customer_id.clone(),
