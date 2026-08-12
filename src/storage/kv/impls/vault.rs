@@ -11,8 +11,8 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                DirectInsert, GetPartitionKey, KvDeletableResource, KvDeleteWithoutLookup,
-                KvResource, KvUpdatableResource,
+                DirectInsert, GetPartitionKey, GetSecondaryKey, KvDeletableResource,
+                KvDeleteWithoutLookup, KvResource, KvUpdatableResource, SecondaryKey,
             },
             serializable_query::{
                 SerializableQuery, generate_delete_query, generate_insert_query,
@@ -52,6 +52,12 @@ impl GetPartitionKey for VaultPrimaryKey {
             entity_id: self.entity_id.as_str(),
             vault_id: self.vault_id.as_str(),
         }
+    }
+}
+
+impl GetSecondaryKey for VaultPrimaryKey {
+    fn get_secondary_key(&self) -> SecondaryKey {
+        SecondaryKey::new(self.get_partition_key().to_string())
     }
 }
 

@@ -9,10 +9,12 @@ use crate::{
         kv::{
             StorageScheme,
             entity::EntityType,
+            impls::reverse_lookup::ReverseLookupPrimaryKey,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                GetLookupKey, GetPartitionKey, KvDeletableResource, KvDeletableWithLookup,
-                KvResource, KvSecondaryLookupResource, ReverseLookupInsert, ReverseLookupKey,
+                GetPartitionKey, GetReverseLookupPrimaryKey, GetSecondaryKey, KvDeletableResource,
+                KvDeletableWithLookup, KvResource, KvSecondaryLookupResource, ReverseLookupInsert,
+                SecondaryKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
@@ -48,8 +50,13 @@ impl GetPartitionKey for LockerPrimaryKeyType {
         PartitionKey::Locker {
             merchant_id: &self.merchant_id,
             customer_id: &self.customer_id,
-            locker_id: self.locker_id.peek(),
         }
+    }
+}
+
+impl GetSecondaryKey for LockerPrimaryKeyType {
+    fn get_secondary_key(&self) -> SecondaryKey {
+        SecondaryKey::new(self.locker_id.peek().clone())
     }
 }
 
@@ -59,14 +66,14 @@ pub(crate) struct LockerHashLookupKey {
     pub customer_id: String,
 }
 
-impl GetLookupKey for LockerHashLookupKey {
-    fn get_lookup_key(&self) -> ReverseLookupKey {
+impl GetReverseLookupPrimaryKey for LockerHashLookupKey {
+    fn get_reverse_lookup_primary_key(&self) -> ReverseLookupPrimaryKey {
         let Self {
             hash_id,
             merchant_id,
             customer_id,
         } = self;
-        ReverseLookupKey {
+        ReverseLookupPrimaryKey {
             lookup_id: format!("locker_{merchant_id}_{customer_id}_{hash_id}"),
         }
     }
@@ -75,14 +82,19 @@ impl GetLookupKey for LockerHashLookupKey {
 impl KvSecondaryLookupResource for Locker {
     type LookupKeyType = LockerHashLookupKey;
 
-    fn get_reverse_lookup_key(
-        new_object: &Self::DieselNew,
-        _partition_key: &PartitionKey<'_>,
-    ) -> Self::LookupKeyType {
+    fn get_reverse_lookup_key(new_object: &Self::DieselNew) -> Self::LookupKeyType {
         LockerHashLookupKey {
             hash_id: new_object.hash_id.clone(),
             customer_id: new_object.customer_id.clone(),
             merchant_id: new_object.merchant_id.clone(),
+        }
+    }
+
+    fn get_reverse_lookup_key_from_resource(resource: &Self) -> Self::LookupKeyType {
+        LockerHashLookupKey {
+            hash_id: resource.hash_id.clone(),
+            customer_id: resource.customer_id.clone(),
+            merchant_id: resource.merchant_id.clone(),
         }
     }
 
@@ -250,13 +262,4 @@ impl KvDeletableResource for Locker {
     }
 }
 
-impl KvDeletableWithLookup for Locker {
-    fn get_reverse_lookup_key_from_resource(resource: &Self) -> ReverseLookupKey {
-        ReverseLookupKey {
-            lookup_id: format!(
-                "locker_{}_{}_{}",
-                resource.merchant_id, resource.customer_id, resource.hash_id
-            ),
-        }
-    }
-}
+impl KvDeletableWithLookup for Locker {}
