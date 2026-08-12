@@ -10,7 +10,7 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
-            resource::{DirectInsert, GetPartitionKey, KvResource},
+            resource::{DirectInsert, GetPartitionKey, GetSecondaryKey, KvResource, SecondaryKey},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
         types::{HashTable, HashTableNew},
@@ -36,6 +36,12 @@ impl GetPartitionKey for HashTablePrimaryKey {
         PartitionKey::HashTable {
             data_hash: &self.data_hash,
         }
+    }
+}
+
+impl GetSecondaryKey for HashTablePrimaryKey {
+    fn get_secondary_key(&self) -> SecondaryKey {
+        SecondaryKey::new(self.get_partition_key().to_string())
     }
 }
 

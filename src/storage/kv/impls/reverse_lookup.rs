@@ -10,7 +10,8 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                self as kv_resource, KvDeletableResource, KvDeleteWithoutLookup, KvResource,
+                self as kv_resource, GetPartitionKey, KvDeletableResource, KvDeleteWithoutLookup,
+                KvResource, SecondaryKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
@@ -38,6 +39,12 @@ impl crate::storage::kv::resource::GetPartitionKey for ReverseLookupPrimaryKey {
         PartitionKey::ReverseLookup {
             lookup_id: &self.lookup_id,
         }
+    }
+}
+
+impl crate::storage::kv::resource::GetSecondaryKey for ReverseLookupPrimaryKey {
+    fn get_secondary_key(&self) -> SecondaryKey {
+        SecondaryKey::new(self.get_partition_key().to_string())
     }
 }
 

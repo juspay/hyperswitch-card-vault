@@ -15,7 +15,6 @@ pub(crate) enum PartitionKey<'a> {
     Locker {
         merchant_id: &'a str,
         customer_id: &'a str,
-        locker_id: &'a str,
     },
     ReverseLookup {
         lookup_id: &'a str,
@@ -43,8 +42,7 @@ impl std::fmt::Display for PartitionKey<'_> {
             Self::Locker {
                 merchant_id,
                 customer_id,
-                locker_id,
-            } => write!(f, "locker_{merchant_id}_{customer_id}_{locker_id}"),
+            } => write!(f, "locker_{merchant_id}_{customer_id}"),
             Self::ReverseLookup { lookup_id } => write!(f, "reverse_lookup_{lookup_id}"),
         }
     }

@@ -27,8 +27,37 @@ pub(crate) struct ReverseLookupKey {
     pub lookup_id: String,
 }
 
+/// Trait for retrieving the partition key of a KV resource.
+///
+/// This is used to determine which partition a KV resource belongs to.
+///
+/// For redis kv, this would be used to determine the redis stream partition.
 pub(crate) trait GetPartitionKey {
     fn get_partition_key(&self) -> PartitionKey<'_>;
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SecondaryKey(String);
+
+impl SecondaryKey {
+    pub(crate) fn new(key: String) -> Self {
+        Self(key)
+    }
+}
+
+impl std::fmt::Display for SecondaryKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Trait for retrieving the secondary key of a KV resource.
+///
+/// This is used to determine which secondary partition a KV resource belongs to.
+///
+/// For redis kv, this would be the hash field key value.
+pub(crate) trait GetSecondaryKey {
+    fn get_secondary_key(&self) -> SecondaryKey;
 }
 
 pub(crate) trait GetLookupKey {
@@ -66,7 +95,7 @@ pub(crate) trait KvResource:
     ///
     /// Use `DirectInsert` when the primary key alone is sufficient for all KV
     /// lookups. Use `ReverseLookupInsert` when inserts must also create a
-    /// secondary-key to primary-key mapping.
+    /// reverse-lookup-key to primary-key mapping.
     type InsertStrategy;
 
     /// Diesel insertable/new-record type used for both Postgres inserts and
@@ -88,7 +117,7 @@ pub(crate) trait KvResource:
     ///
     /// This may be a composite key. It must produce the partition key used by
     /// Redis for primary-key based insert, find, update, and delete operations.
-    type PrimaryKeyType: GetPartitionKey;
+    type PrimaryKeyType: GetPartitionKey + GetSecondaryKey;
 
     /// Reconstruct the primary key from the insert payload for insert-time conflict checks.
     fn get_primary_key_from_new_object(new_object: &Self::DieselNew) -> Self::PrimaryKeyType;
@@ -807,10 +836,13 @@ where
             let partition_key_str = partition_key.to_string();
             if let Some(reverse_lookup_key) = reverse_lookup_key {
                 let lookup_id = reverse_lookup_key.lookup_id.clone();
+                let secondary_key_str = M::get_primary_key_from_new_object(&diesel_new)
+                    .get_secondary_key()
+                    .to_string();
                 store
                     .insert_reverse_lookup(types::ReverseLookupNew {
                         lookup_id: lookup_id.clone(),
-                        secondary_key: partition_key_str.clone(),
+                        secondary_key: secondary_key_str,
                         partition_key: partition_key_str.clone(),
                         source: M::ENTITY_TYPE.to_string(),
                         updated_by: scheme.to_string(),

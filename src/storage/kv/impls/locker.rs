@@ -11,8 +11,9 @@ use crate::{
             entity::EntityType,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                GetLookupKey, GetPartitionKey, KvDeletableResource, KvDeletableWithLookup,
-                KvResource, KvSecondaryLookupResource, ReverseLookupInsert, ReverseLookupKey,
+                GetLookupKey, GetPartitionKey, GetSecondaryKey, KvDeletableResource,
+                KvDeletableWithLookup, KvResource, KvSecondaryLookupResource, ReverseLookupInsert,
+                ReverseLookupKey, SecondaryKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
@@ -48,8 +49,13 @@ impl GetPartitionKey for LockerPrimaryKeyType {
         PartitionKey::Locker {
             merchant_id: &self.merchant_id,
             customer_id: &self.customer_id,
-            locker_id: self.locker_id.peek(),
         }
+    }
+}
+
+impl GetSecondaryKey for LockerPrimaryKeyType {
+    fn get_secondary_key(&self) -> SecondaryKey {
+        SecondaryKey::new(self.locker_id.peek().clone())
     }
 }
 

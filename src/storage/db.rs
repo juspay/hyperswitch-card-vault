@@ -4,8 +4,6 @@ use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 #[cfg(not(feature = "kv"))]
 use hyperswitch_masking::ExposeInterface;
-#[cfg(feature = "kv")]
-use hyperswitch_masking::PeekInterface;
 use hyperswitch_masking::Secret;
 
 use super::{
@@ -130,13 +128,11 @@ impl super::LockerInterface for Storage {
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let locker_id = new.locker_id.peek().clone();
             let merchant_id = new.merchant_id.clone();
             let customer_id = new.customer_id.clone();
             let partition_key = super::kv::PartitionKey::Locker {
                 merchant_id: &merchant_id,
                 customer_id: &customer_id,
-                locker_id: &locker_id,
             };
 
             return super::kv::insert_resource_with_reverse_lookup::<types::Locker>(

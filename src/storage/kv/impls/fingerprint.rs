@@ -12,7 +12,7 @@ use crate::{
             PartitionKey, StorageScheme,
             entity::EntityType,
             partition_key::KvStorePartition,
-            resource::{DirectInsert, GetPartitionKey, KvResource},
+            resource::{DirectInsert, GetPartitionKey, GetSecondaryKey, KvResource, SecondaryKey},
             serializable_query::{SerializableQuery, generate_insert_query},
         },
         types::{Fingerprint, FingerprintTableNew},
@@ -39,6 +39,12 @@ impl GetPartitionKey for FingerprintPrimaryKey {
         PartitionKey::Fingerprint {
             fingerprint_hash: &self.fingerprint_hash,
         }
+    }
+}
+
+impl GetSecondaryKey for FingerprintPrimaryKey {
+    fn get_secondary_key(&self) -> SecondaryKey {
+        SecondaryKey::new(self.get_partition_key().to_string())
     }
 }
 
