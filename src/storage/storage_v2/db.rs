@@ -29,8 +29,7 @@ impl VaultInterface for Storage {
         #[cfg(feature = "kv")]
         {
             let new_inner = types::VaultNewInner::from(new);
-            return crate::storage::kv::insert_resource::<types::Vault>(self, new_inner)
-            .await;
+            return crate::storage::kv::insert_resource::<types::Vault>(self, new_inner).await;
         }
 
         #[cfg(not(feature = "kv"))]

@@ -344,7 +344,11 @@ impl KvBehaviour for KvBackend {
         V: serde::Serialize + Debug + KvStorePartition + Sync,
     {
         match self {
-            Self::Redis(redis) => redis.insert(partition_key, secondary_key, value, query).await,
+            Self::Redis(redis) => {
+                redis
+                    .insert(partition_key, secondary_key, value, query)
+                    .await
+            }
         }
     }
 
@@ -372,7 +376,11 @@ impl KvBehaviour for KvBackend {
         V: serde::Serialize + Debug + KvStorePartition + Sync,
     {
         match self {
-            Self::Redis(redis) => redis.update(partition_key, secondary_key, value, query).await,
+            Self::Redis(redis) => {
+                redis
+                    .update(partition_key, secondary_key, value, query)
+                    .await
+            }
         }
     }
 

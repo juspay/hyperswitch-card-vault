@@ -129,7 +129,7 @@ impl super::LockerInterface for Storage {
         #[cfg(feature = "kv")]
         {
             return super::kv::insert_resource_with_reverse_lookup::<types::Locker>(self, new)
-            .await;
+                .await;
         }
 
         #[cfg(not(feature = "kv"))]
@@ -362,8 +362,7 @@ impl super::HashInterface for Storage {
                 created_at: crate::utils::date_time::now(),
                 updated_by: Some(StorageScheme::PostgresOnly),
             };
-            return super::kv::insert_resource::<types::HashTable>(self, hash_table_new)
-            .await;
+            return super::kv::insert_resource::<types::HashTable>(self, hash_table_new).await;
         }
 
         #[cfg(not(feature = "kv"))]
@@ -521,8 +520,7 @@ impl super::FingerprintInterface for Storage {
                 fingerprint_id,
                 updated_by: Some(StorageScheme::PostgresOnly),
             };
-            return super::kv::insert_resource::<types::Fingerprint>(self, finger_print_new)
-            .await;
+            return super::kv::insert_resource::<types::Fingerprint>(self, finger_print_new).await;
         }
 
         #[cfg(not(feature = "kv"))]
@@ -624,7 +622,9 @@ impl super::ReverseLookupInterface for Storage {
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(self, new))
+            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(
+                self, new,
+            ))
             .await;
         }
 
