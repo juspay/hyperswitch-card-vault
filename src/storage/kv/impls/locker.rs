@@ -12,9 +12,9 @@ use crate::{
             impls::reverse_lookup::ReverseLookupPrimaryKey,
             partition_key::{KvStorePartition, PartitionKey},
             resource::{
-                GetPartitionKey, GetReverseLookupPrimaryKey, GetSecondaryKey,
-                KvDeletableResource, KvDeletableWithLookup, KvResource,
-                KvSecondaryLookupResource, ReverseLookupInsert, SecondaryKey,
+                GetPartitionKey, GetReverseLookupPrimaryKey, GetSecondaryKey, KvDeletableResource,
+                KvDeletableWithLookup, KvResource, KvSecondaryLookupResource, ReverseLookupInsert,
+                SecondaryKey,
             },
             serializable_query::{SerializableQuery, generate_delete_query, generate_insert_query},
         },
