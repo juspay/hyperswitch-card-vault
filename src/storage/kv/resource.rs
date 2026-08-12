@@ -256,21 +256,34 @@ pub(crate) trait KvSecondaryLookupResource:
 }
 
 pub(crate) enum InsertConflictKey {
-    PartitionKey(String),
-    LookupKey(String),
+    PartitionKey {
+        partition_key: String,
+        secondary_key: String,
+    },
+    LookupKey {
+        partition_key: String,
+        secondary_key: String,
+    },
 }
 
 impl InsertConflictKey {
-    fn key(&self) -> &str {
+    fn key(&self) -> String {
         match self {
-            Self::PartitionKey(key) | Self::LookupKey(key) => key,
+            Self::PartitionKey {
+                partition_key,
+                secondary_key,
+            }
+            | Self::LookupKey {
+                partition_key,
+                secondary_key,
+            } => kv_key_context(partition_key, secondary_key),
         }
     }
 
     fn kind(&self) -> &'static str {
         match self {
-            Self::PartitionKey(_) => "partition_key",
-            Self::LookupKey(_) => "lookup_key",
+            Self::PartitionKey { .. } => "partition_key",
+            Self::LookupKey { .. } => "lookup_key",
         }
     }
 }
@@ -300,10 +313,10 @@ where
         let primary_key = M::get_primary_key_from_new_object(diesel_new);
 
         match M::storage_find(store, &primary_key).await {
-            Ok(_) => Ok(Some(InsertConflictKey::PartitionKey(kv_key_context(
-                &partition_key.to_string(),
-                &secondary_key.to_string(),
-            )))),
+            Ok(_) => Ok(Some(InsertConflictKey::PartitionKey {
+                partition_key: partition_key.to_string(),
+                secondary_key: secondary_key.to_string(),
+            })),
             Err(err) if err.get_inner().is_not_found() => Ok(None),
             Err(err) => Err(err),
         }
@@ -324,10 +337,10 @@ where
 
         match M::storage_find(store, &primary_key).await {
             Ok(_) => {
-                return Ok(Some(InsertConflictKey::PartitionKey(kv_key_context(
-                    &partition_key.to_string(),
-                    &secondary_key.to_string(),
-                ))));
+                return Ok(Some(InsertConflictKey::PartitionKey {
+                    partition_key: partition_key.to_string(),
+                    secondary_key: secondary_key.to_string(),
+                }));
             }
             Err(err) if err.get_inner().is_not_found() => {}
             Err(err) => return Err(err),
@@ -339,10 +352,10 @@ where
         let reverse_lookup_secondary_key_str = reverse_lookup_key.get_secondary_key().to_string();
 
         match M::storage_find_by_lookup(store, &lookup_key).await {
-            Ok(_) => Ok(Some(InsertConflictKey::LookupKey(kv_key_context(
-                &reverse_lookup_partition_key_str,
-                &reverse_lookup_secondary_key_str,
-            )))),
+            Ok(_) => Ok(Some(InsertConflictKey::LookupKey {
+                partition_key: reverse_lookup_partition_key_str,
+                secondary_key: reverse_lookup_secondary_key_str,
+            })),
             Err(err) if err.get_inner().is_not_found() => Ok(None),
             Err(err) => Err(err),
         }
@@ -548,7 +561,7 @@ where
                                 conflict_key_type = %conflict_key.kind(),
                                 "PostgreSQL conflict found for KV-enabled insert"
                             );
-                            Err(kv_duplicate_error::<M::Error>(conflict_key.key()))
+                            Err(kv_duplicate_error::<M::Error>(&conflict_key.key()))
                         }
                         None => {
                             crate::logger::debug!(
