@@ -807,7 +807,6 @@ where
 async fn insert_resource_inner<M, F>(
     store: &Storage,
     mut diesel_new: M::DieselNew,
-    partition_key: PartitionKey<'_>,
     get_reverse_lookup_key: F,
 ) -> Result<M::DieselEntity, ContainerError<M::Error>>
 where
@@ -815,6 +814,8 @@ where
     M::InsertStrategy: KvInsertConflictStrategy<M>,
     F: FnOnce(&M::DieselNew, &PartitionKey<'_>) -> Option<ReverseLookupKey>,
 {
+    let primary_key = M::get_primary_key_from_new_object(&diesel_new);
+    let partition_key = primary_key.get_partition_key();
     let reverse_lookup_key = get_reverse_lookup_key(&diesel_new, &partition_key);
     let decided_scheme = decide_storage_scheme_for_insert_operation::<M>(
         store,
@@ -836,9 +837,7 @@ where
             let partition_key_str = partition_key.to_string();
             if let Some(reverse_lookup_key) = reverse_lookup_key {
                 let lookup_id = reverse_lookup_key.lookup_id.clone();
-                let secondary_key_str = M::get_primary_key_from_new_object(&diesel_new)
-                    .get_secondary_key()
-                    .to_string();
+                let secondary_key_str = primary_key.get_secondary_key().to_string();
                 store
                     .insert_reverse_lookup(types::ReverseLookupNew {
                         lookup_id: lookup_id.clone(),
@@ -874,25 +873,23 @@ where
 /// Insert via KV backend. `AlreadyExists` → `Duplicate`. `PostgresOnly` → `storage_insert`.
 /// On the RedisKv path the model's serial `id` is unresolved (e.g. `0`); the drainer
 /// assigns it on PG replay. Callers only see the business id (`fingerprint_id`).
-#[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
+#[instrument(skip(store, diesel_new), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn insert_resource<M>(
     store: &Storage,
     diesel_new: M::DieselNew,
-    partition_key: PartitionKey<'_>,
 ) -> Result<M, ContainerError<M::Error>>
 where
     M: KvResource<InsertStrategy = DirectInsert>,
 {
-    insert_resource_inner::<M, _>(store, diesel_new, partition_key, |_, _| None)
+    insert_resource_inner::<M, _>(store, diesel_new, |_, _| None)
         .await
         .map(Into::into)
 }
 
-#[instrument(skip(store, diesel_new, partition_key), fields(resource = M::ENTITY_TYPE))]
+#[instrument(skip(store, diesel_new), fields(resource = M::ENTITY_TYPE))]
 pub(crate) async fn insert_resource_with_reverse_lookup<M>(
     store: &Storage,
     diesel_new: M::DieselNew,
-    partition_key: PartitionKey<'_>,
 ) -> Result<M, ContainerError<M::Error>>
 where
     M: KvSecondaryLookupResource,
@@ -900,7 +897,6 @@ where
     insert_resource_inner::<M, _>(
         store,
         diesel_new,
-        partition_key,
         |new_object, partition_key| {
             Some(M::get_reverse_lookup_key(new_object, partition_key).get_lookup_key())
         },

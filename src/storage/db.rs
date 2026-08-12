@@ -128,18 +128,7 @@ impl super::LockerInterface for Storage {
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let merchant_id = new.merchant_id.clone();
-            let customer_id = new.customer_id.clone();
-            let partition_key = super::kv::PartitionKey::Locker {
-                merchant_id: &merchant_id,
-                customer_id: &customer_id,
-            };
-
-            return super::kv::insert_resource_with_reverse_lookup::<types::Locker>(
-                self,
-                new,
-                partition_key,
-            )
+            return super::kv::insert_resource_with_reverse_lookup::<types::Locker>(self, new)
             .await;
         }
 
@@ -373,16 +362,7 @@ impl super::HashInterface for Storage {
                 created_at: crate::utils::date_time::now(),
                 updated_by: Some(StorageScheme::PostgresOnly),
             };
-            let data_hash = hash_table_new.data_hash.clone();
-            let partition_key = super::kv::PartitionKey::HashTable {
-                data_hash: &data_hash,
-            };
-
-            return super::kv::insert_resource::<types::HashTable>(
-                self,
-                hash_table_new,
-                partition_key,
-            )
+            return super::kv::insert_resource::<types::HashTable>(self, hash_table_new)
             .await;
         }
 
@@ -541,15 +521,7 @@ impl super::FingerprintInterface for Storage {
                 fingerprint_id,
                 updated_by: Some(StorageScheme::PostgresOnly),
             };
-            let partition_key = super::kv::PartitionKey::Fingerprint {
-                fingerprint_hash: &fingerprint_hash,
-            };
-
-            return super::kv::insert_resource::<types::Fingerprint>(
-                self,
-                finger_print_new,
-                partition_key,
-            )
+            return super::kv::insert_resource::<types::Fingerprint>(self, finger_print_new)
             .await;
         }
 
@@ -652,16 +624,7 @@ impl super::ReverseLookupInterface for Storage {
     ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let lookup_id = new.lookup_id.clone();
-            let partition_key = super::kv::PartitionKey::ReverseLookup {
-                lookup_id: &lookup_id,
-            };
-
-            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(
-                self,
-                new,
-                partition_key,
-            ))
+            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(self, new))
             .await;
         }
 

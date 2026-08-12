@@ -28,18 +28,8 @@ impl VaultInterface for Storage {
     ) -> Result<types::Vault, ContainerError<Self::Error>> {
         #[cfg(feature = "kv")]
         {
-            let vault_id = new.vault_id.peek().clone();
-            let entity_id = new.entity_id.clone();
-            let partition_key = crate::storage::kv::PartitionKey::Vault {
-                entity_id: &entity_id,
-                vault_id: &vault_id,
-            };
             let new_inner = types::VaultNewInner::from(new);
-            return crate::storage::kv::insert_resource::<types::Vault>(
-                self,
-                new_inner,
-                partition_key,
-            )
+            return crate::storage::kv::insert_resource::<types::Vault>(self, new_inner)
             .await;
         }
 
