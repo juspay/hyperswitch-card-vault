@@ -8,6 +8,7 @@ use tracing::instrument;
 use super::{
     StorageScheme,
     entity::EntityType,
+    impls::reverse_lookup::ReverseLookupPrimaryKey,
     partition_key::{KvStorePartition, PartitionKey},
     scheme::KvState,
     serializable_query::SerializableQuery,
@@ -21,23 +22,6 @@ use crate::{
     observability::metrics,
     storage::{ReverseLookupInterface, Storage, types},
 };
-
-/// Secondary-to-primary mapping metadata emitted by a KV resource.
-pub(crate) struct ReverseLookupKey {
-    pub lookup_id: String,
-}
-
-impl ReverseLookupKey {
-    fn get_partition_key(&self) -> PartitionKey<'_> {
-        PartitionKey::ReverseLookup {
-            lookup_id: &self.lookup_id,
-        }
-    }
-
-    fn get_secondary_key(&self) -> SecondaryKey {
-        SecondaryKey::new(self.get_partition_key().to_string())
-    }
-}
 
 /// Trait for retrieving the partition key of a KV resource.
 ///
@@ -72,8 +56,8 @@ pub(crate) trait GetSecondaryKey {
     fn get_secondary_key(&self) -> SecondaryKey;
 }
 
-pub(crate) trait GetLookupKey {
-    fn get_lookup_key(&self) -> ReverseLookupKey;
+pub(crate) trait GetReverseLookupPrimaryKey {
+    fn get_reverse_lookup_primary_key(&self) -> ReverseLookupPrimaryKey;
 }
 
 pub(crate) struct DirectInsert;
@@ -186,8 +170,9 @@ pub(crate) trait KvDeletableResource: KvResource {
 
 pub(crate) trait KvDeleteWithoutLookup: KvDeletableResource {}
 
-pub(crate) trait KvDeletableWithLookup: KvDeletableResource {
-    fn get_reverse_lookup_key_from_resource(resource: &Self) -> ReverseLookupKey;
+pub(crate) trait KvDeletableWithLookup:
+    KvDeletableResource + KvSecondaryLookupResource
+{
 }
 
 /// Extension of `KvResource` for resources that support updates by primary key.
@@ -236,7 +221,7 @@ pub(crate) trait KvSecondaryLookupResource:
     KvResource<InsertStrategy = ReverseLookupInsert>
 {
     /// Secondary-key representation used to build and query reverse lookup ids.
-    type LookupKeyType: GetLookupKey;
+    type LookupKeyType: GetReverseLookupPrimaryKey;
 
     /// Derive the secondary lookup key for a newly inserted record.
     ///
@@ -244,6 +229,12 @@ pub(crate) trait KvSecondaryLookupResource:
     /// inserts, allowing later reads by secondary key to resolve the primary
     /// partition key.
     fn get_reverse_lookup_key(new_object: &Self::DieselNew) -> Self::LookupKeyType;
+
+    /// Derive the secondary lookup key from an existing resource.
+    ///
+    /// This is used during deletes to resolve and remove the corresponding
+    /// reverse lookup record.
+    fn get_reverse_lookup_key_from_resource(resource: &Self) -> Self::LookupKeyType;
 
     /// Find a record by secondary key through the backing storage implementation.
     ///
@@ -347,7 +338,7 @@ where
         }
 
         let lookup_key = M::get_reverse_lookup_key(diesel_new);
-        let reverse_lookup_key = lookup_key.get_lookup_key();
+        let reverse_lookup_key = lookup_key.get_reverse_lookup_primary_key();
         let reverse_lookup_partition_key_str = reverse_lookup_key.get_partition_key().to_string();
         let reverse_lookup_secondary_key_str = reverse_lookup_key.get_secondary_key().to_string();
 
@@ -461,7 +452,7 @@ async fn decide_storage_scheme_for_insert_operation<M>(
     diesel_new: &M::DieselNew,
     partition_key: &PartitionKey<'_>,
     secondary_key: &SecondaryKey,
-    reverse_lookup_key: Option<&ReverseLookupKey>,
+    reverse_lookup_key: Option<&ReverseLookupPrimaryKey>,
 ) -> Result<DecidedStorageScheme, ContainerError<M::Error>>
 where
     M: KvResource,
@@ -642,7 +633,7 @@ async fn decide_insert_scheme_from_kv_state<M>(
     kv_backend: KvBackend,
     partition_key: &PartitionKey<'_>,
     secondary_key: &SecondaryKey,
-    reverse_lookup_key: Option<&ReverseLookupKey>,
+    reverse_lookup_key: Option<&ReverseLookupPrimaryKey>,
 ) -> Result<Option<DecidedStorageScheme>, ContainerError<M::Error>>
 where
     M: KvResource,
@@ -859,7 +850,7 @@ async fn insert_resource_inner<M, F>(
 where
     M: KvResource,
     M::InsertStrategy: KvInsertConflictStrategy<M>,
-    F: FnOnce(&M::DieselNew) -> Option<ReverseLookupKey>,
+    F: FnOnce(&M::DieselNew) -> Option<ReverseLookupPrimaryKey>,
 {
     let primary_key = M::get_primary_key_from_new_object(&diesel_new);
     let partition_key = primary_key.get_partition_key();
@@ -888,8 +879,8 @@ where
             let key_context = kv_key_context(&partition_key_str, &secondary_key_str);
             if let Some(reverse_lookup_key) = reverse_lookup_key {
                 let lookup_id = reverse_lookup_key.lookup_id.clone();
-                let reverse_lookup_partition_key = reverse_lookup_key.get_partition_key();
-                let reverse_lookup_partition_key_str = reverse_lookup_partition_key.to_string();
+                let reverse_lookup_partition_key_str =
+                    reverse_lookup_key.get_partition_key().to_string();
                 let reverse_lookup_secondary_key_str =
                     reverse_lookup_key.get_secondary_key().to_string();
                 let reverse_lookup_key_context = kv_key_context(
@@ -954,7 +945,7 @@ where
     M: KvSecondaryLookupResource,
 {
     insert_resource_inner::<M, _>(store, diesel_new, |new_object| {
-        Some(M::get_reverse_lookup_key(new_object).get_lookup_key())
+        Some(M::get_reverse_lookup_key(new_object).get_reverse_lookup_primary_key())
     })
     .await
     .map(Into::into)
@@ -1033,7 +1024,7 @@ where
 {
     let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
     log_storage_scheme_decision(M::ENTITY_TYPE, "find_by_lookup", &decided_scheme);
-    let lookup_id = lookup_key.get_lookup_key();
+    let lookup_id = lookup_key.get_reverse_lookup_primary_key();
     match decided_scheme {
         DecidedStorageScheme::PostgresOnly => M::storage_find_by_lookup(store, &lookup_key).await,
         DecidedStorageScheme::Kv(kv_backend) => {
@@ -1232,7 +1223,9 @@ where
 {
     let reverse_lookup_key = find_optional_resource_by_id::<M>(store, primary_key.clone())
         .await?
-        .map(|resource| M::get_reverse_lookup_key_from_resource(&resource));
+        .map(|resource| {
+            M::get_reverse_lookup_key_from_resource(&resource).get_reverse_lookup_primary_key()
+        });
 
     let deleted_rows = delete_resource_by_id_inner::<M>(store, primary_key).await?;
 
