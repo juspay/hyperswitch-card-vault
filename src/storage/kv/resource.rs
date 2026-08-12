@@ -426,6 +426,7 @@ async fn decide_storage_scheme_for_insert_operation<M>(
     store: &Storage,
     diesel_new: &M::DieselNew,
     partition_key: &PartitionKey<'_>,
+    secondary_key: &SecondaryKey,
     reverse_lookup_key: Option<&ReverseLookupKey>,
 ) -> Result<DecidedStorageScheme, ContainerError<M::Error>>
 where
@@ -470,6 +471,7 @@ where
             match decide_insert_scheme_from_kv_state::<M>(
                 kv_backend.clone(),
                 partition_key,
+                secondary_key,
                 reverse_lookup_key,
             )
             .await?
@@ -557,6 +559,7 @@ where
             let redis_decision = decide_insert_scheme_from_kv_state::<M>(
                 kv_backend,
                 partition_key,
+                secondary_key,
                 reverse_lookup_key,
             )
             .await?;
@@ -603,6 +606,7 @@ where
 async fn decide_insert_scheme_from_kv_state<M>(
     kv_backend: KvBackend,
     partition_key: &PartitionKey<'_>,
+    secondary_key: &SecondaryKey,
     reverse_lookup_key: Option<&ReverseLookupKey>,
 ) -> Result<Option<DecidedStorageScheme>, ContainerError<M::Error>>
 where
@@ -619,7 +623,7 @@ where
     );
 
     match kv_backend
-        .find::<M::DieselEntity>(partition_key.clone())
+        .find::<M::DieselEntity>(partition_key.clone(), secondary_key.clone())
         .await
     {
         // A live primary key means the insert is a duplicate.
@@ -675,6 +679,7 @@ where
                 lookup_id: &reverse_lookup_key.lookup_id,
             };
             let reverse_lookup_key_str = reverse_lookup_partition_key.to_string();
+            let reverse_lookup_secondary_key = SecondaryKey::new(reverse_lookup_key_str.clone());
 
             crate::logger::debug!(
                 resource = %M::ENTITY_TYPE,
@@ -684,7 +689,10 @@ where
             );
 
             match kv_backend
-                .find::<types::ReverseLookup>(reverse_lookup_partition_key)
+                .find::<types::ReverseLookup>(
+                    reverse_lookup_partition_key,
+                    reverse_lookup_secondary_key,
+                )
                 .await
             {
                 // A live reverse lookup means another live row owns the logical key.
@@ -760,6 +768,7 @@ where
 async fn decide_storage_scheme_for_mutate_operation<M>(
     store: &Storage,
     partition_key: &PartitionKey<'_>,
+    secondary_key: &SecondaryKey,
 ) -> Result<(DecidedStorageScheme, Option<M::DieselEntity>), ContainerError<M::Error>>
 where
     M: KvResource,
@@ -781,7 +790,7 @@ where
             // With this implementation, Hot keys may never recover out of KV.
             let partition_key_str = partition_key.to_string();
             let result = kv_backend
-                .find::<M::DieselEntity>(partition_key.clone())
+                .find::<M::DieselEntity>(partition_key.clone(), secondary_key.clone())
                 .await;
 
             match result {
@@ -816,11 +825,13 @@ where
 {
     let primary_key = M::get_primary_key_from_new_object(&diesel_new);
     let partition_key = primary_key.get_partition_key();
+    let secondary_key = primary_key.get_secondary_key();
     let reverse_lookup_key = get_reverse_lookup_key(&diesel_new, &partition_key);
     let decided_scheme = decide_storage_scheme_for_insert_operation::<M>(
         store,
         &diesel_new,
         &partition_key,
+        &secondary_key,
         reverse_lookup_key.as_ref(),
     )
     .await?;
@@ -837,7 +848,7 @@ where
             let partition_key_str = partition_key.to_string();
             if let Some(reverse_lookup_key) = reverse_lookup_key {
                 let lookup_id = reverse_lookup_key.lookup_id.clone();
-                let secondary_key_str = primary_key.get_secondary_key().to_string();
+                let secondary_key_str = secondary_key.to_string();
                 store
                     .insert_reverse_lookup(types::ReverseLookupNew {
                         lookup_id: lookup_id.clone(),
@@ -854,7 +865,7 @@ where
 
             let diesel_entity = diesel_new.into();
             let reply = kv_backend
-                .insert(partition_key, &diesel_entity, drainer_query)
+                .insert(partition_key, secondary_key, &diesel_entity, drainer_query)
                 .await
                 .map_err(|e| {
                     kv_backend_error::<M::Error>(e.to_redis_failed_response(&partition_key_str))
@@ -894,13 +905,9 @@ pub(crate) async fn insert_resource_with_reverse_lookup<M>(
 where
     M: KvSecondaryLookupResource,
 {
-    insert_resource_inner::<M, _>(
-        store,
-        diesel_new,
-        |new_object, partition_key| {
-            Some(M::get_reverse_lookup_key(new_object, partition_key).get_lookup_key())
-        },
-    )
+    insert_resource_inner::<M, _>(store, diesel_new, |new_object, partition_key| {
+        Some(M::get_reverse_lookup_key(new_object, partition_key).get_lookup_key())
+    })
     .await
     .map(Into::into)
 }
@@ -916,6 +923,7 @@ where
     M: KvResource,
 {
     let key = primary_key.get_partition_key();
+    let secondary_key = primary_key.get_secondary_key();
     let decided_scheme = decide_storage_scheme_for_find_operation(store).await;
     log_storage_scheme_decision(M::ENTITY_TYPE, "find", &decided_scheme);
 
@@ -923,7 +931,9 @@ where
         DecidedStorageScheme::PostgresOnly => M::storage_find(store, &primary_key).await,
         DecidedStorageScheme::Kv(kv_backend) => {
             let key_str = key.to_string();
-            let result = kv_backend.find::<M::DieselEntity>(key.clone()).await;
+            let result = kv_backend
+                .find::<M::DieselEntity>(key.clone(), secondary_key)
+                .await;
 
             match result {
                 Ok(KvFindResult::Present(v)) => Ok(v),
@@ -981,11 +991,17 @@ where
                 lookup_id: &lookup_id.lookup_id,
             };
             let reverse_lookup_key_str = reverse_lookup_partition_key.to_string();
-            let key_str = match kv_backend
-                .find::<types::ReverseLookup>(reverse_lookup_partition_key)
+            let reverse_lookup_secondary_key = SecondaryKey::new(reverse_lookup_key_str.clone());
+            let (partition_key_str, secondary_key_str) = match kv_backend
+                .find::<types::ReverseLookup>(
+                    reverse_lookup_partition_key,
+                    reverse_lookup_secondary_key,
+                )
                 .await
             {
-                Ok(KvFindResult::Present(lookup)) => lookup.get_partition_key().to_string(),
+                Ok(KvFindResult::Present(lookup)) => {
+                    (lookup.get_partition_key().to_string(), lookup.secondary_key)
+                }
                 Ok(KvFindResult::Absent) => {
                     metrics::KV_CACHE_MISS_COUNT.add(
                         1,
@@ -1007,11 +1023,13 @@ where
                     ));
                 }
             };
-
             let result = kv_backend
-                .find::<M::DieselEntity>(PartitionKey::CombinationKey {
-                    combination: &key_str,
-                })
+                .find::<M::DieselEntity>(
+                    PartitionKey::CombinationKey {
+                        combination: &partition_key_str,
+                    },
+                    SecondaryKey::new(secondary_key_str),
+                )
                 .await;
 
             match result {
@@ -1026,10 +1044,10 @@ where
                     M::storage_find_by_lookup(store, &lookup_key).await
                 }
                 Ok(KvFindResult::Deleted) => Err(kv_backend_error::<M::Error>(Report::new(
-                    KvError::ValueNotFound(format!("Data was deleted for key {key_str}")),
+                    KvError::ValueNotFound(format!("Data was deleted for key {partition_key_str}")),
                 ))),
                 Err(e) => Err(kv_backend_error::<M::Error>(
-                    e.to_redis_failed_response(&key_str),
+                    e.to_redis_failed_response(&partition_key_str),
                 )),
             }
         }
@@ -1064,7 +1082,8 @@ where
 {
     let (decided_scheme, cached) = {
         let key = primary_key.get_partition_key();
-        decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
+        let secondary_key = primary_key.get_secondary_key();
+        decide_storage_scheme_for_mutate_operation::<M>(store, &key, &secondary_key).await?
     };
     log_storage_scheme_decision(M::ENTITY_TYPE, "update", &decided_scheme);
     let scheme = decided_scheme.storage_scheme();
@@ -1074,6 +1093,7 @@ where
         DecidedStorageScheme::PostgresOnly => M::storage_update(store, update, primary_key).await,
         DecidedStorageScheme::Kv(kv_backend) => {
             let key = primary_key.get_partition_key();
+            let secondary_key = primary_key.get_secondary_key();
             let current = match cached {
                 Some(resource) => resource,
                 None => find_resource_by_id_inner::<M>(store, primary_key.clone()).await?,
@@ -1085,7 +1105,7 @@ where
 
             let key_str = key.to_string();
             kv_backend
-                .update(key.clone(), &updated_model, update_query)
+                .update(key.clone(), secondary_key, &updated_model, update_query)
                 .await
                 .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))?;
 
@@ -1104,7 +1124,8 @@ where
 {
     let (decided_scheme, _) = {
         let key = primary_key.get_partition_key();
-        decide_storage_scheme_for_mutate_operation::<M>(store, &key).await?
+        let secondary_key = primary_key.get_secondary_key();
+        decide_storage_scheme_for_mutate_operation::<M>(store, &key, &secondary_key).await?
     };
     log_storage_scheme_decision(M::ENTITY_TYPE, "delete", &decided_scheme);
 
@@ -1112,12 +1133,13 @@ where
         DecidedStorageScheme::PostgresOnly => M::storage_delete(store, primary_key).await,
         DecidedStorageScheme::Kv(kv_backend) => {
             let key = primary_key.get_partition_key();
+            let secondary_key = primary_key.get_secondary_key();
             let delete_query = M::generate_delete_drainer_query(&primary_key)
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let key_str = key.to_string();
             kv_backend
-                .delete::<M::DieselEntity>(key.clone(), delete_query)
+                .delete::<M::DieselEntity>(key.clone(), secondary_key, delete_query)
                 .await
                 .map_err(|e| kv_backend_error::<M::Error>(e.to_redis_failed_response(&key_str)))
         }
