@@ -1,6 +1,6 @@
 use hyperswitch_masking::{PeekInterface, Secret};
 
-/// Partition key for Redis hash-slot routing and drainer stream derivation.
+/// Partition key for Redis data-key routing and drainer stream derivation.
 #[derive(Clone, Debug)]
 pub(crate) enum PartitionKey<'a> {
     CombinationKey {
@@ -56,5 +56,54 @@ pub(crate) trait KvStorePartition {
 
     fn shard_key(key: PartitionKey<'_>, num_partitions: u8) -> String {
         format!("shard_{}", Self::partition_number(key, num_partitions))
+    }
+
+    fn data_key(key: PartitionKey<'_>, num_partitions: u8) -> String {
+        let partition_key = key.to_string();
+        let shard_key = Self::shard_key(key, num_partitions);
+        format!("{{{shard_key}}}:{partition_key}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fred::util::redis_keyslot;
+
+    use super::{KvStorePartition, PartitionKey};
+    use crate::config::KvConfig;
+
+    struct TestResource;
+
+    impl KvStorePartition for TestResource {}
+
+    #[test]
+    fn data_key_preserves_partition_key_and_adds_hash_tag() {
+        let key = PartitionKey::CombinationKey {
+            combination: "locker_merchant_customer",
+        };
+        let shard_key = TestResource::shard_key(key.clone(), 16);
+
+        assert_eq!(
+            TestResource::data_key(key, 16),
+            format!("{{{shard_key}}}:locker_merchant_customer")
+        );
+    }
+
+    #[test]
+    fn data_key_and_drainer_stream_use_same_redis_cluster_slot() {
+        let key = PartitionKey::CombinationKey {
+            combination: "locker_merchant_customer",
+        };
+        let shard_key = TestResource::shard_key(key.clone(), 16);
+        let data_key = format!("public:{}", TestResource::data_key(key, 16));
+        let stream_name = format!(
+            "public:{}",
+            KvConfig::default().drainer_stream_name(&shard_key)
+        );
+
+        assert_eq!(
+            redis_keyslot(data_key.as_bytes()),
+            redis_keyslot(stream_name.as_bytes())
+        );
     }
 }

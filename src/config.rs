@@ -387,22 +387,25 @@ impl GlobalConfig {
         Ok(())
     }
 
-    /// Require non-empty, unique `redis_key_prefix` per tenant when kv + redis + multi-tenant.
+    /// Validate `redis_key_prefix` when kv + redis is enabled.
     #[cfg(feature = "kv")]
     fn validate_kv_tenant_prefixes(&self) -> Result<(), error::ConfigurationError> {
         #[cfg(feature = "redis")]
-        if self.redis.is_none() || self.tenant_secrets.len() <= 1 {
+        if self.redis.is_none() {
             return Ok(());
         }
 
         let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for (tenant_id, secrets) in self.tenant_secrets.iter() {
             let prefix = secrets.redis_key_prefix.trim();
+            if prefix.contains('{') || prefix.contains('}') {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!("tenant `{tenant_id}`: redis_key_prefix must not contain `{{` or `}}`"),
+                ));
+            }
             if prefix.is_empty() {
                 return Err(error::ConfigurationError::InvalidConfigurationValueError(
-                    format!(
-                        "tenant `{tenant_id}`: redis_key_prefix required with kv + multi-tenant"
-                    ),
+                    format!("tenant `{tenant_id}`: redis_key_prefix required with kv"),
                 ));
             }
             if !seen.insert(prefix) {
@@ -457,7 +460,8 @@ impl Default for KvConfig {
 
 #[cfg(feature = "kv")]
 impl KvConfig {
-    /// Format: `{shard_key}_{suffix}`.
+    /// Format: `{shard_key}_{suffix}`. The braces are a Redis Cluster hash tag
+    /// and must match the KV data-key hash tag.
     pub fn drainer_stream_name(&self, shard_key: &str) -> String {
         format!("{{{}}}_{}", shard_key, self.drainer_stream_suffix)
     }

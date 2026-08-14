@@ -133,7 +133,7 @@ pub(crate) trait KvBehaviour {
         secondary_key: SecondaryKey,
     ) -> error_stack::Result<KvFindResult<V>, Self::Error>
     where
-        V: de::DeserializeOwned;
+        V: de::DeserializeOwned + KvStorePartition;
 
     async fn update<V>(
         &self,
@@ -358,7 +358,7 @@ impl KvBehaviour for KvBackend {
         secondary_key: SecondaryKey,
     ) -> error_stack::Result<KvFindResult<V>, Self::Error>
     where
-        V: de::DeserializeOwned,
+        V: de::DeserializeOwned + KvStorePartition,
     {
         match self {
             Self::Redis(redis) => redis.find(partition_key, secondary_key).await,
@@ -412,7 +412,7 @@ impl KvBehaviour for RedisBackend {
         V: serde::Serialize + Debug + KvStorePartition + Sync,
     {
         with_kv_metrics(KvOperationKind::Insert, async move {
-            let key = partition_key.to_string();
+            let key = V::data_key(partition_key.clone(), self.config.drainer_num_partitions);
             let field = secondary_key.to_string();
             let resource = query.entity_type();
             let serialized = serde_json::to_string(&KvStoredValue::Value(value))
@@ -442,11 +442,11 @@ impl KvBehaviour for RedisBackend {
         secondary_key: SecondaryKey,
     ) -> error_stack::Result<KvFindResult<V>, Self::Error>
     where
-        V: de::DeserializeOwned,
+        V: de::DeserializeOwned + KvStorePartition,
     {
         with_kv_metrics(KvOperationKind::Find, async move {
             let redis_conn = self.get_redis_conn();
-            let key = partition_key.to_string();
+            let key = V::data_key(partition_key, self.config.drainer_num_partitions);
             let field = secondary_key.to_string();
             let redis_key = key.clone().into();
 
@@ -484,7 +484,7 @@ impl KvBehaviour for RedisBackend {
     {
         with_kv_metrics(KvOperationKind::Update, async move {
             let redis_conn = self.get_redis_conn();
-            let key = partition_key.to_string();
+            let key = V::data_key(partition_key.clone(), self.config.drainer_num_partitions);
             let field = secondary_key.to_string();
             let redis_key = key.clone().into();
             let serialized = serde_json::to_string(&KvStoredValue::Value(value))
@@ -516,7 +516,7 @@ impl KvBehaviour for RedisBackend {
     {
         with_kv_metrics(KvOperationKind::Delete, async move {
             let redis_conn = self.get_redis_conn();
-            let key = partition_key.to_string();
+            let key = V::data_key(partition_key.clone(), self.config.drainer_num_partitions);
             let field = secondary_key.to_string();
             let redis_key = key.clone().into();
             let tombstone =
