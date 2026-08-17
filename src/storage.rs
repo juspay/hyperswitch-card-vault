@@ -213,8 +213,11 @@ pub struct Storage {
 }
 
 type PgPool = bb8::Pool<async_bb8_diesel::ConnectionManager<PgConnection>>;
-type PgPooledConn<'a> =
-    bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>;
+
+// The `Deref` target of a checked-out `bb8::PooledConnection`, not the pooled-connection guard
+// itself — the guard borrows the pool it came from (to return the connection on drop), so naming
+// it directly would force that lifetime onto every alias user.
+type PgPooledConn = async_bb8_diesel::Connection<PgConnection>;
 
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
@@ -237,12 +240,15 @@ enum DbOperation {
 crate::impl_metric_value_from!(DbPool, DbOperation);
 
 pub struct DbConnection<'a> {
-    conn: PgPooledConn<'a>,
+    conn: bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>,
     pool: DbPool,
 }
 
 impl<'a> DbConnection<'a> {
-    fn new(conn: PgPooledConn<'a>, pool: DbPool) -> Self {
+    fn new(
+        conn: bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>,
+        pool: DbPool,
+    ) -> Self {
         Self { conn, pool }
     }
 
@@ -253,7 +259,7 @@ impl<'a> DbConnection<'a> {
     // async-bb8-diesel executes queries through `&Connection<PgConnection>` (shared
     // reference, internally mutex-guarded and dispatched to a blocking thread), not
     // through `&mut`, hence the explicit deref instead of a `get_mut`-style accessor.
-    fn get(&self) -> &async_bb8_diesel::Connection<PgConnection> {
+    fn get(&self) -> &PgPooledConn {
         &self.conn
     }
 }
