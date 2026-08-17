@@ -14,6 +14,7 @@ use super::{
 use crate::{
     crypto::encryption_manager::managers::aes,
     error::{self, ContainerError, ResultContainerExt},
+    logger,
     storage::scheme::StorageScheme,
 };
 
@@ -406,11 +407,15 @@ impl super::TestInterface for Storage {
         // `async_bb8_diesel::AsyncConnection` — its `TestTransaction` customizer instead
         // pins a whole pool into test-isolation mode at build time, which doesn't fit a
         // runtime health probe. A plain transaction is behaviorally equivalent here since
-        // the row inserted below is deleted again before commit.
+        // the row inserted below is deleted again before commit. Per-step error mapping
+        // (read/write/delete) matches hyperswitch's own async-bb8-diesel health check.
         conn.get()
             .transaction_async(|conn| async move {
                 let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
-                let _x: i32 = query.get_result_async(&conn).await?;
+                let _x: i32 = query.get_result_async(&conn).await.map_err(|err| {
+                    logger::error!(read_err=?err, "Error while reading element in the database");
+                    error::TestDBError::DBReadError
+                })?;
 
                 diesel::insert_into(types::HashTable::table())
                     .values(types::HashTableNew {
@@ -421,19 +426,26 @@ impl super::TestInterface for Storage {
                         updated_by: Some(StorageScheme::PostgresOnly),
                     })
                     .execute_async(&conn)
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        logger::error!(write_err=?err, "Error while writing to database");
+                        error::TestDBError::DBWriteError
+                    })?;
 
                 diesel::delete(
                     types::HashTable::table()
                         .filter(schema::hash_table::hash_id.eq("test".to_string())),
                 )
                 .execute_async(&conn)
-                .await?;
+                .await
+                .map_err(|err| {
+                    logger::error!(delete_err=?err, "Error while deleting element in the database");
+                    error::TestDBError::DBDeleteError
+                })?;
 
-                Ok::<(), diesel::result::Error>(())
+                Ok::<(), error::TestDBError>(())
             })
-            .await
-            .change_error(error::StorageError::FindError)?;
+            .await?;
 
         Ok(())
     }

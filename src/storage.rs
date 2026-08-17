@@ -254,7 +254,7 @@ impl<'a> DbConnection<'a> {
     // reference, internally mutex-guarded and dispatched to a blocking thread), not
     // through `&mut`, hence the explicit deref instead of a `get_mut`-style accessor.
     fn get(&self) -> &async_bb8_diesel::Connection<PgConnection> {
-        &*self.conn
+        &self.conn
     }
 }
 
@@ -403,41 +403,16 @@ impl Storage {
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
         use crate::observability::metrics::{DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE};
 
-        fn to_u64(value: usize, field: &'static str, pool: DbPool, tenant_id: &str) -> Option<u64> {
-            match u64::try_from(value) {
-                Ok(v) => Some(v),
-                Err(_) => {
-                    tracing::warn!(
-                        field,
-                        pool = %<&'static str>::from(pool),
-                        tenant_id,
-                        value,
-                        "Database pool metric value overflows u64, skipping"
-                    );
-                    None
-                }
-            }
-        }
-
-        // bb8::State only reports `connections`/`idle_connections`; unlike deadpool it does not
-        // expose a count of tasks waiting for a connection, so DATABASE_POOL_WAITING is no longer
-        // populated after this migration.
+        // bb8::State reports `connections`/`idle_connections` as `u32`, which always fits `u64`.
+        // Unlike deadpool it does not expose a count of tasks waiting for a connection, so
+        // DATABASE_POOL_WAITING is no longer populated after this migration.
         let primary = self.primary_pg_pool.state();
         let pool = DbPool::Primary;
         let attrs =
             metrics_utils::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
 
-        if let Some(size) = to_u64(primary.connections as usize, "size", pool, tenant_id) {
-            DATABASE_POOL_SIZE.record(size, attrs);
-        }
-        if let Some(available) = to_u64(
-            primary.idle_connections as usize,
-            "available",
-            pool,
-            tenant_id,
-        ) {
-            DATABASE_POOL_AVAILABLE.record(available, attrs);
-        }
+        DATABASE_POOL_SIZE.record(u64::from(primary.connections), attrs);
+        DATABASE_POOL_AVAILABLE.record(u64::from(primary.idle_connections), attrs);
 
         if let Some(replica) = &self.replica_pg_pool {
             let replica = replica.state();
@@ -447,17 +422,8 @@ impl Storage {
                 ("tenant_id", tenant_id.to_owned())
             );
 
-            if let Some(size) = to_u64(replica.connections as usize, "size", pool, tenant_id) {
-                DATABASE_POOL_SIZE.record(size, attrs);
-            }
-            if let Some(available) = to_u64(
-                replica.idle_connections as usize,
-                "available",
-                pool,
-                tenant_id,
-            ) {
-                DATABASE_POOL_AVAILABLE.record(available, attrs);
-            }
+            DATABASE_POOL_SIZE.record(u64::from(replica.connections), attrs);
+            DATABASE_POOL_AVAILABLE.record(u64::from(replica.idle_connections), attrs);
         }
     }
 }

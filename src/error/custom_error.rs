@@ -70,6 +70,19 @@ pub enum TestDBError {
     DBReplicaNotConfigured,
 }
 
+// Required by `async_bb8_diesel::AsyncConnection::transaction_async`'s `E: From<DieselError>`
+// bound, for errors raised by transaction management itself (begin/commit/rollback) rather than
+// by a query inside the closure — those are mapped per-step via `.map_err` instead, matching
+// hyperswitch's `HealthCheckDBError` (crates/storage_impl/src/errors.rs).
+impl From<diesel::result::Error> for TestDBError {
+    fn from(err: diesel::result::Error) -> Self {
+        match err {
+            diesel::result::Error::DatabaseError(_, _) => Self::DBError,
+            _ => Self::UnknownError,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum FingerprintDBError {
     #[error("Error while connecting to database")]
