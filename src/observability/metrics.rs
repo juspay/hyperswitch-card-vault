@@ -257,6 +257,8 @@ gauge_metric!(
     name: "database.pool.available",
     description: "Number of available connections in the database pool",
 );
+// Left registered but never recorded: bb8's `State` (unlike deadpool's `Status`) doesn't expose a
+// count of callers waiting for a connection, so this series is permanently absent from scrapes.
 gauge_metric!(
     pub(crate) DATABASE_POOL_WAITING, CARD_VAULT_METER,
     name: "database.pool.waiting",
