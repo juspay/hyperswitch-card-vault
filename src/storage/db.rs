@@ -1,7 +1,7 @@
 #[cfg(not(feature = "kv"))]
 use diesel::{BoolExpressionMethods, OptionalExtension};
 use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use async_bb8_diesel::{AsyncConnection, AsyncRunQueryDsl};
 #[cfg(not(feature = "kv"))]
 use hyperswitch_masking::ExposeInterface;
 use hyperswitch_masking::Secret;
@@ -27,12 +27,12 @@ impl MerchantInterface for Storage {
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
         // Reads are routed to the read replica when enabled.
-        let mut conn = self.route_conn().await?;
+        let conn = self.route_conn().await?;
 
         // Single SELECT; a missing row surfaces (via `?`) as `MerchantDBError::NotFoundError`.
         // Decryption of the stored DEK is the merchant-specific envelope.
-        let query =
-            types::MerchantInner::table().filter(schema::merchant::merchant_id.eq(merchant_id));
+        let query = types::MerchantInner::table()
+            .filter(schema::merchant::merchant_id.eq(merchant_id.to_owned()));
 
         let pool = conn.pool();
         let operation = DbOperation::FindOne;
@@ -42,7 +42,7 @@ impl MerchantInterface for Storage {
 
         let inner: types::MerchantInner =
             super::record_db_query::<<types::MerchantInner as HasTable>::Table, _, _, _>(
-                query.get_result(conn.get_mut()),
+                query.get_result_async(conn.get()),
                 operation,
                 pool,
             )
@@ -56,7 +56,7 @@ impl MerchantInterface for Storage {
         new: types::MerchantNew<'_>,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
         let query = diesel::insert_into(types::MerchantInner::table()).values(new.encrypt(key)?);
 
@@ -68,7 +68,7 @@ impl MerchantInterface for Storage {
 
         let inner: types::MerchantInner =
             super::record_db_query::<<types::MerchantInner as HasTable>::Table, _, _, _>(
-                query.get_result(conn.get_mut()),
+                query.get_result_async(conn.get()),
                 operation,
                 pool,
             )
@@ -83,7 +83,7 @@ impl MerchantInterface for Storage {
         key: &Self::Algorithm,
         limit: i64,
     ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
-        let mut conn = self.route_conn().await?;
+        let conn = self.route_conn().await?;
 
         let query = schema::merchant::table
             .filter(
@@ -100,7 +100,7 @@ impl MerchantInterface for Storage {
 
         let result: Result<Vec<types::MerchantInner>, ContainerError<Self::Error>> =
             super::record_db_query::<<types::MerchantInner as HasTable>::Table, _, _, _>(
-                query.load::<types::MerchantInner>(conn.get_mut()),
+                query.load_async::<types::MerchantInner>(conn.get()),
                 operation,
                 pool,
             )
@@ -134,7 +134,7 @@ impl super::LockerInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             let query = diesel::insert_into(types::LockerInner::table()).values(new);
 
@@ -146,7 +146,7 @@ impl super::LockerInterface for Storage {
 
             let output: types::LockerInner =
                 super::record_db_query::<<types::LockerInner as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
+                    query.get_result_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -174,14 +174,14 @@ impl super::LockerInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
             let query = types::LockerInner::table().filter(
                 schema::locker::locker_id
                     .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
+                    .and(schema::locker::merchant_id.eq(merchant_id.to_owned()))
+                    .and(schema::locker::customer_id.eq(customer_id.to_owned())),
             );
 
             let pool = conn.pool();
@@ -192,7 +192,7 @@ impl super::LockerInterface for Storage {
 
             let output: types::LockerInner =
                 super::record_db_query::<<types::LockerInner as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
+                    query.get_result_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -224,13 +224,13 @@ impl super::LockerInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             let query = types::LockerInner::table().filter(
                 schema::locker::hash_id
-                    .eq(hash_id)
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
+                    .eq(hash_id.to_owned())
+                    .and(schema::locker::merchant_id.eq(merchant_id.to_owned()))
+                    .and(schema::locker::customer_id.eq(customer_id.to_owned())),
             );
 
             let pool = conn.pool();
@@ -247,7 +247,7 @@ impl super::LockerInterface for Storage {
             >(
                 async {
                     query
-                        .get_result::<types::LockerInner>(conn.get_mut())
+                        .get_result_async::<types::LockerInner>(conn.get())
                         .await
                         .optional()
                 },
@@ -280,12 +280,12 @@ impl super::LockerInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
             let query = diesel::delete(types::LockerInner::table()).filter(
                 schema::locker::locker_id
                     .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
+                    .and(schema::locker::merchant_id.eq(merchant_id.to_owned()))
+                    .and(schema::locker::customer_id.eq(customer_id.to_owned())),
             );
 
             let pool = conn.pool();
@@ -296,7 +296,7 @@ impl super::LockerInterface for Storage {
 
             let output =
                 super::record_db_query_rows::<<types::LockerInner as HasTable>::Table, _, _>(
-                    query.execute(conn.get_mut()),
+                    query.execute_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -322,7 +322,7 @@ impl super::HashInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             let query = types::HashTable::table()
                 .filter(schema::hash_table::data_hash.eq(data_hash.expose()));
@@ -337,7 +337,7 @@ impl super::HashInterface for Storage {
                 super::record_db_query_optional::<<types::HashTable as HasTable>::Table, _, _, _>(
                     async {
                         query
-                            .get_result::<types::HashTable>(conn.get_mut())
+                            .get_result_async::<types::HashTable>(conn.get())
                             .await
                             .optional()
                     },
@@ -367,7 +367,7 @@ impl super::HashInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             let query =
                 diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
@@ -385,7 +385,7 @@ impl super::HashInterface for Storage {
 
             let output: types::HashTable =
                 super::record_db_query::<<types::HashTable as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
+                    query.get_result_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -400,53 +400,51 @@ impl super::TestInterface for Storage {
     type Error = error::TestDBError;
 
     async fn test(&self) -> Result<(), ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
-        let _data = conn
-            .get_mut()
-            .test_transaction(|x| {
-                Box::pin(async {
-                    let query =
-                        diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
-                    let _x: i32 = query
-                        .get_result(x)
-                        .await
-                        .change_error(error::StorageError::FindError)?;
+        // diesel_async's `test_transaction` (always-rollback) has no equivalent on
+        // `async_bb8_diesel::AsyncConnection` — its `TestTransaction` customizer instead
+        // pins a whole pool into test-isolation mode at build time, which doesn't fit a
+        // runtime health probe. A plain transaction is behaviorally equivalent here since
+        // the row inserted below is deleted again before commit.
+        conn.get()
+            .transaction_async(|conn| async move {
+                let query =
+                    diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+                let _x: i32 = query.get_result_async(&conn).await?;
 
-                    diesel::insert_into(types::HashTable::table())
-                        .values(types::HashTableNew {
-                            hash_id: "test".to_string(),
-                            data_hash: Secret::new(b"0".to_vec()),
-                            created_at: crate::utils::date_time::now(),
-                            // Test-only — always PostgresOnly.
-                            updated_by: Some(StorageScheme::PostgresOnly),
-                        })
-                        .execute(x)
-                        .await
-                        .change_error(error::StorageError::InsertError)?;
+                diesel::insert_into(types::HashTable::table())
+                    .values(types::HashTableNew {
+                        hash_id: "test".to_string(),
+                        data_hash: Secret::new(b"0".to_vec()),
+                        created_at: crate::utils::date_time::now(),
+                        // Test-only — always PostgresOnly.
+                        updated_by: Some(StorageScheme::PostgresOnly),
+                    })
+                    .execute_async(&conn)
+                    .await?;
 
-                    diesel::delete(
-                        types::HashTable::table()
-                            .filter(schema::hash_table::hash_id.eq("test".to_string())),
-                    )
-                    .execute(x)
-                    .await
-                    .change_error(error::StorageError::DeleteError)?;
+                diesel::delete(
+                    types::HashTable::table()
+                        .filter(schema::hash_table::hash_id.eq("test".to_string())),
+                )
+                .execute_async(&conn)
+                .await?;
 
-                    Ok::<_, ContainerError<Self::Error>>(())
-                })
+                Ok::<(), diesel::result::Error>(())
             })
-            .await;
+            .await
+            .change_error(error::StorageError::FindError)?;
 
         Ok(())
     }
 
     async fn test_replica(&self) -> Result<(), ContainerError<Self::Error>> {
-        let mut conn = self.get_replica_conn().await?;
+        let conn = self.get_replica_conn().await?;
 
         let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
         let _x: i32 = query
-            .get_result(conn.get_mut())
+            .get_result_async(conn.get())
             .await
             .change_error(error::StorageError::FindError)?;
 
@@ -473,7 +471,7 @@ impl super::FingerprintInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             let query = types::Fingerprint::table()
                 .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash.expose()));
@@ -492,7 +490,7 @@ impl super::FingerprintInterface for Storage {
             >(
                 async {
                     query
-                        .get_result::<types::Fingerprint>(conn.get_mut())
+                        .get_result_async::<types::Fingerprint>(conn.get())
                         .await
                         .optional()
                 },
@@ -525,7 +523,7 @@ impl super::FingerprintInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             let query = diesel::insert_into(types::Fingerprint::table()).values(
                 types::FingerprintTableNew {
@@ -543,7 +541,7 @@ impl super::FingerprintInterface for Storage {
 
             let output: types::Fingerprint =
                 super::record_db_query::<<types::Fingerprint as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
+                    query.get_result_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -563,12 +561,12 @@ impl super::EntityInterface for Storage {
         entity_id: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
         // Reads are routed to the read replica when enabled.
-        let mut conn = self.route_conn().await?;
+        let conn = self.route_conn().await?;
 
         // A missing row surfaces as `EntityDBError::NotFoundError` (see the `From<diesel>`
         // classifier), which `find_or_create_entity` in the key manager checks via
         // `is_not_found()`.
-        let query = types::Entity::table().filter(schema::entity::entity_id.eq(entity_id));
+        let query = types::Entity::table().filter(schema::entity::entity_id.eq(entity_id.to_owned()));
 
         let pool = conn.pool();
         let operation = DbOperation::FindOne;
@@ -579,7 +577,7 @@ impl super::EntityInterface for Storage {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
 
         Ok(output)
@@ -590,7 +588,7 @@ impl super::EntityInterface for Storage {
         entity_id: &str,
         identifier: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
         let query = diesel::insert_into(types::Entity::table()).values(types::EntityTableNew {
             entity_id: entity_id.into(),
@@ -606,7 +604,7 @@ impl super::EntityInterface for Storage {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
 
         Ok(output)
@@ -630,7 +628,7 @@ impl super::ReverseLookupInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
 
             let query = diesel::insert_into(types::ReverseLookup::table()).values(new);
 
@@ -645,7 +643,7 @@ impl super::ReverseLookupInterface for Storage {
                 _,
                 _,
                 _,
-            >(query.get_result(conn.get_mut()), operation, pool)
+            >(query.get_result_async(conn.get()), operation, pool)
             .await?;
             Ok(reverse_lookup)
         }
@@ -668,9 +666,9 @@ impl super::ReverseLookupInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
             let query = diesel::delete(types::ReverseLookup::table())
-                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id));
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id.to_owned()));
 
             let pool = conn.pool();
             let operation = DbOperation::Delete;
@@ -682,7 +680,7 @@ impl super::ReverseLookupInterface for Storage {
                 <types::ReverseLookup as HasTable>::Table,
                 _,
                 _,
-            >(query.execute(conn.get_mut()), operation, pool)
+            >(query.execute_async(conn.get()), operation, pool)
             .await?;
             Ok(output)
         }

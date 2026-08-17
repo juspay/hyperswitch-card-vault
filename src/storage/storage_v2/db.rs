@@ -1,7 +1,7 @@
 #[cfg(not(feature = "kv"))]
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 #[cfg(not(feature = "kv"))]
-use diesel_async::RunQueryDsl;
+use async_bb8_diesel::AsyncRunQueryDsl;
 #[cfg(not(feature = "kv"))]
 use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "kv")]
@@ -34,7 +34,7 @@ impl VaultInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
             logger::info!("performing insert operation on vault data");
             let query = diesel::insert_into(types::VaultInner::table()).values(new);
 
@@ -46,7 +46,7 @@ impl VaultInterface for Storage {
 
             let output: types::VaultInner =
                 crate::storage::record_db_query::<<types::VaultInner as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
+                    query.get_result_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -75,13 +75,13 @@ impl VaultInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
             logger::info!("performing retrieve operation on vault data");
             // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
             let query = types::VaultInner::table().filter(
                 schema::vault::vault_id
                     .eq(vault_id.expose())
-                    .and(schema::vault::entity_id.eq(entity_id)),
+                    .and(schema::vault::entity_id.eq(entity_id.to_owned())),
             );
 
             let pool = conn.pool();
@@ -92,7 +92,7 @@ impl VaultInterface for Storage {
 
             let output: types::VaultInner =
                 crate::storage::record_db_query::<<types::VaultInner as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
+                    query.get_result_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -124,14 +124,14 @@ impl VaultInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
             logger::info!("performing update operation on vault data");
 
             let query = diesel::update(types::VaultInner::table())
                 .filter(
                     schema::vault::vault_id
                         .eq(vault_id.expose())
-                        .and(schema::vault::entity_id.eq(&entity_id)),
+                        .and(schema::vault::entity_id.eq(entity_id)),
                 )
                 .set(update);
 
@@ -143,7 +143,7 @@ impl VaultInterface for Storage {
 
             let output: types::VaultInner =
                 crate::storage::record_db_query::<<types::VaultInner as HasTable>::Table, _, _, _>(
-                    query.get_result(conn.get_mut()),
+                    query.get_result_async(conn.get()),
                     operation,
                     pool,
                 )
@@ -170,12 +170,12 @@ impl VaultInterface for Storage {
 
         #[cfg(not(feature = "kv"))]
         {
-            let mut conn = self.get_conn().await?;
+            let conn = self.get_conn().await?;
             logger::info!("performing delete operation on vault data");
             let query = diesel::delete(types::VaultInner::table()).filter(
                 schema::vault::vault_id
                     .eq(vault_id.expose())
-                    .and(schema::vault::entity_id.eq(entity_id)),
+                    .and(schema::vault::entity_id.eq(entity_id.to_owned())),
             );
 
             let pool = conn.pool();
@@ -188,7 +188,7 @@ impl VaultInterface for Storage {
                 <types::VaultInner as HasTable>::Table,
                 _,
                 _,
-            >(query.execute(conn.get_mut()), operation, pool)
+            >(query.execute_async(conn.get()), operation, pool)
             .await?;
 
             Ok(output)

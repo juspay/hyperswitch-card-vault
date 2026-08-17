@@ -1,5 +1,5 @@
 use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::RunQueryDsl;
+use async_bb8_diesel::AsyncRunQueryDsl;
 
 use crate::{
     error::{ContainerError, ReverseLookupDBError, kv::KvError},
@@ -81,7 +81,7 @@ impl KvResource for ReverseLookup {
         new_object: Self::DieselNew,
         store: &Storage,
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
 
         let query = diesel::insert_into(Self::table()).values(new_object);
 
@@ -90,7 +90,7 @@ impl KvResource for ReverseLookup {
         storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
         let reverse_lookup = storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
-            query.get_result(conn.get_mut()),
+            query.get_result_async(conn.get()),
             operation,
             pool,
         )
@@ -101,16 +101,16 @@ impl KvResource for ReverseLookup {
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<ReverseLookupDBError>> {
-        let mut conn = store.route_conn().await?;
+        let conn = store.route_conn().await?;
         let query =
-            Self::table().filter(schema::reverse_lookup::lookup_id.eq(pk.lookup_id.as_str()));
+            Self::table().filter(schema::reverse_lookup::lookup_id.eq(pk.lookup_id.clone()));
 
         let pool = conn.pool();
         let operation = storage::DbOperation::FindOne;
         storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
         let output: Self = storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
-            query.get_result(conn.get_mut()),
+            query.get_result_async(conn.get()),
             operation,
             pool,
         )
@@ -133,7 +133,7 @@ impl KvDeletableResource for ReverseLookup {
         store: &Storage,
         pk: Self::PrimaryKeyType,
     ) -> Result<usize, ContainerError<ReverseLookupDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
 
         let query = diesel::delete(Self::table())
             .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id));
@@ -143,7 +143,7 @@ impl KvDeletableResource for ReverseLookup {
         crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
         let output = crate::storage::record_db_query_rows::<<Self as HasTable>::Table, _, _>(
-            query.execute(conn.get_mut()),
+            query.execute_async(conn.get()),
             operation,
             pool,
         )
