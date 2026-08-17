@@ -213,7 +213,8 @@ pub struct Storage {
 }
 
 type PgPool = bb8::Pool<async_bb8_diesel::ConnectionManager<PgConnection>>;
-type PgPooledConn<'a> = bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>;
+type PgPooledConn<'a> =
+    bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>;
 
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
@@ -301,9 +302,8 @@ impl Storage {
         global_store: Arc<GlobalStore>,
         #[cfg(feature = "redis")] redis: Option<redis_store::TenantAwareRedisStore>,
     ) -> error_stack::Result<Self, error::StorageError> {
-        let pg_pool = Arc::new(
-            Self::create_database_connection_pool(primary_config, schema).await?,
-        );
+        let pg_pool =
+            Arc::new(Self::create_database_connection_pool(primary_config, schema).await?);
 
         let replica_pool = match replica_config {
             Some(config) => Some(Arc::new(
@@ -377,7 +377,9 @@ impl Storage {
 
     /// Returns a connection from the replica pool when the runtime config enables it,
     /// otherwise returns a primary pool connection.
-    pub async fn route_conn(&self) -> Result<DbConnection<'_>, ContainerError<error::StorageError>> {
+    pub async fn route_conn(
+        &self,
+    ) -> Result<DbConnection<'_>, ContainerError<error::StorageError>> {
         if self.should_use_replica() {
             crate::logger::debug!("Routing to read replica");
             self.get_replica_conn().await
@@ -428,9 +430,12 @@ impl Storage {
         if let Some(size) = to_u64(primary.connections as usize, "size", pool, tenant_id) {
             DATABASE_POOL_SIZE.record(size, attrs);
         }
-        if let Some(available) =
-            to_u64(primary.idle_connections as usize, "available", pool, tenant_id)
-        {
+        if let Some(available) = to_u64(
+            primary.idle_connections as usize,
+            "available",
+            pool,
+            tenant_id,
+        ) {
             DATABASE_POOL_AVAILABLE.record(available, attrs);
         }
 
@@ -445,9 +450,12 @@ impl Storage {
             if let Some(size) = to_u64(replica.connections as usize, "size", pool, tenant_id) {
                 DATABASE_POOL_SIZE.record(size, attrs);
             }
-            if let Some(available) =
-                to_u64(replica.idle_connections as usize, "available", pool, tenant_id)
-            {
+            if let Some(available) = to_u64(
+                replica.idle_connections as usize,
+                "available",
+                pool,
+                tenant_id,
+            ) {
                 DATABASE_POOL_AVAILABLE.record(available, attrs);
             }
         }

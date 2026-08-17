@@ -1,7 +1,7 @@
 #[cfg(not(feature = "kv"))]
-use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
-#[cfg(not(feature = "kv"))]
 use async_bb8_diesel::AsyncRunQueryDsl;
+#[cfg(not(feature = "kv"))]
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 #[cfg(not(feature = "kv"))]
 use hyperswitch_masking::ExposeInterface;
 #[cfg(feature = "kv")]

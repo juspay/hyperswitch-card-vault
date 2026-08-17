@@ -1,7 +1,7 @@
+use async_bb8_diesel::{AsyncConnection, AsyncRunQueryDsl};
 #[cfg(not(feature = "kv"))]
 use diesel::{BoolExpressionMethods, OptionalExtension};
 use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
-use async_bb8_diesel::{AsyncConnection, AsyncRunQueryDsl};
 #[cfg(not(feature = "kv"))]
 use hyperswitch_masking::ExposeInterface;
 use hyperswitch_masking::Secret;
@@ -409,8 +409,7 @@ impl super::TestInterface for Storage {
         // the row inserted below is deleted again before commit.
         conn.get()
             .transaction_async(|conn| async move {
-                let query =
-                    diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+                let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
                 let _x: i32 = query.get_result_async(&conn).await?;
 
                 diesel::insert_into(types::HashTable::table())
@@ -566,7 +565,8 @@ impl super::EntityInterface for Storage {
         // A missing row surfaces as `EntityDBError::NotFoundError` (see the `From<diesel>`
         // classifier), which `find_or_create_entity` in the key manager checks via
         // `is_not_found()`.
-        let query = types::Entity::table().filter(schema::entity::entity_id.eq(entity_id.to_owned()));
+        let query =
+            types::Entity::table().filter(schema::entity::entity_id.eq(entity_id.to_owned()));
 
         let pool = conn.pool();
         let operation = DbOperation::FindOne;

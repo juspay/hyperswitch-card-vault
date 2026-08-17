@@ -1,5 +1,5 @@
-use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use async_bb8_diesel::AsyncRunQueryDsl;
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
 use hyperswitch_masking::PeekInterface;
 
 use crate::{

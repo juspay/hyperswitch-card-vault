@@ -1,5 +1,5 @@
-use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use async_bb8_diesel::AsyncRunQueryDsl;
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 
 use crate::{
     error::{ContainerError, ReverseLookupDBError, kv::KvError},
