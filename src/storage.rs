@@ -219,6 +219,11 @@ type PgPool = bb8::Pool<async_bb8_diesel::ConnectionManager<PgConnection>>;
 // it directly would force that lifetime onto every alias user.
 type PgPooledConn = async_bb8_diesel::Connection<PgConnection>;
 
+// The pooled-connection guard itself, unlike deadpool's `Object<M>` this does borrow the pool
+// it was checked out from, hence the lifetime.
+type PgPooledConnGuard<'a> =
+    bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>;
+
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 enum DbPool {
@@ -240,15 +245,12 @@ enum DbOperation {
 crate::impl_metric_value_from!(DbPool, DbOperation);
 
 pub struct DbConnection<'a> {
-    conn: bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>,
+    conn: PgPooledConnGuard<'a>,
     pool: DbPool,
 }
 
 impl<'a> DbConnection<'a> {
-    fn new(
-        conn: bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>,
-        pool: DbPool,
-    ) -> Self {
+    fn new(conn: PgPooledConnGuard<'a>, pool: DbPool) -> Self {
         Self { conn, pool }
     }
 
