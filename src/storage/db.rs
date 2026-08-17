@@ -407,8 +407,7 @@ impl super::TestInterface for Storage {
         // `async_bb8_diesel::AsyncConnection` — its `TestTransaction` customizer instead
         // pins a whole pool into test-isolation mode at build time, which doesn't fit a
         // runtime health probe. A plain transaction is behaviorally equivalent here since
-        // the row inserted below is deleted again before commit. Per-step error mapping
-        // (read/write/delete) matches hyperswitch's own async-bb8-diesel health check.
+        // the row inserted below is deleted again before commit.
         conn.get()
             .transaction_async(|conn| async move {
                 let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
