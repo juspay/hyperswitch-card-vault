@@ -25,6 +25,10 @@ pub const REDIS_HEALTH_CHECK_VALUE: &str = "1";
 #[cfg(feature = "redis")]
 pub const REDIS_HEALTH_CHECK_EXPIRY: i64 = 5;
 
+/// Default maximum lifetime (seconds) of a pooled DB connection when `database.max_lifetime`
+/// is unset
+pub const DEFAULT_DB_POOL_MAX_LIFETIME_SECS: u64 = 120;
+
 /// Header Constants
 pub mod headers {
     pub const CONTENT_TYPE: &str = "Content-Type";

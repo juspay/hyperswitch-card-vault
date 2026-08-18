@@ -22,6 +22,8 @@ password = "damn"  # password of the database
 host = "localhost" # the host where the database is hosted on
 port = 5432        # the port of the database
 dbname = "locker"  # the name of the database where the cards are stored
+# pool_size = 10    # optional: pool size for the database connection pool
+# max_lifetime = 120 # optional: max lifetime (in secs) of a pooled connection before it's recycled; defaults to 120
 
 # Optional read replica
 # [read_replica]
@@ -31,6 +33,7 @@ dbname = "locker"  # the name of the database where the cards are stored
 # port = 5432        # the port of the read replica database
 # dbname = "locker"  # the name of the read replica database
 # pool_size = 10     # optional: pool size for the read replica connection pool
+# max_lifetime = 120 # optional: max lifetime (in secs) of a pooled connection before it's recycled; defaults to 120
 
 [secrets]
 locker_private_key = "" # the locker private key to used used and the private key present with the tenant

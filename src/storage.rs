@@ -19,6 +19,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    time::Duration,
 };
 
 use diesel::PgConnection;
@@ -295,6 +296,11 @@ impl Storage {
                 .attach_printable("pool_size does not fit in u32")?;
             pool = pool.max_size(max_size);
         }
+
+        let max_lifetime = database_config
+            .max_lifetime
+            .unwrap_or(consts::DEFAULT_DB_POOL_MAX_LIFETIME_SECS);
+        pool = pool.max_lifetime(Duration::from_secs(max_lifetime));
 
         pool.build(manager)
             .await
