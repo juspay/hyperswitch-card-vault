@@ -4,6 +4,21 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## Unreleased
+
+### Breaking Changes
+
+- **runtime-config:** Replace HTTP polling with per-tenant Postgres + Redis store (no polling). The runtime config source of truth is now the `configs` table in each tenant schema (migration `2026-08-17-120000_create_configs_table`), read-through a per-tenant Redis cache. All TOML `runtime_config.endpoint.*` config keys are replaced by a single `runtime_config.admin_api_key` (env: `LOCKER__RUNTIME_CONFIG__ADMIN_API_KEY`).
+- **runtime-config:** On startup, if `configs` row is missing, seed `{ "use_replica": false, "enable_kv": "disabled" }` and apply the resulting KV / replica transitions. Subsequent changes go through a new authenticated admin endpoint:
+  ```
+  POST /runtime-config
+  Headers: x-tenant-id: <tenant>, x-internal-api-key: <admin_api_key>
+  Body:    {"value": {"use_replica": true, "enable_kv": "enabled"}}
+  ```
+  The endpoint upserts Postgres (the source of truth), invalidates the tenant's Redis cache entry (`DEL` — the TTL bounds staleness on failure), and applies KV / replica state transitions. `GET /health/runtime-config` remains the read-only check.
+
+- - -
+
 ## 0.9.0 (2026-07-31)
 
 ### Features

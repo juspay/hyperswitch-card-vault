@@ -1,33 +1,15 @@
-use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
+use std::time::Instant;
 
-use error_stack::ResultExt;
-use hyperswitch_masking::{PeekInterface, Secret};
-use tokio::sync::RwLock;
-use tracing::Instrument;
+use hyperswitch_masking::PeekInterface;
 
-use crate::{config::RuntimeConfig, error};
+use crate::{
+    config::RuntimeConfig,
+    error::{self, ContainerError},
+    storage::{self, ConfigInterface, consts},
+};
 
-const API_KEY_HEADER_NAME: &str = "X-Internal-Api-Key";
-
-/// Endpoint envelope: `{"key": "...", "value": "<config json string>"}`. Only `value` is used —
-/// it's a JSON string holding the flat config object (`{"enable_kv": "...", ...}`).
-#[derive(serde::Deserialize)]
-struct RuntimeConfigResponse {
-    value: String,
-}
-
-enum RuntimeConfigState {
-    Disabled,
-    Enabled {
-        endpoint_url: String,
-        endpoint_path: String,
-        api_key: Secret<String>,
-        client: reqwest::Client,
-        refresh_interval: Duration,
-        /// Last-known-good config body; `None` until the first successful fetch.
-        cache: RwLock<Option<String>>,
-    },
-}
+/// The key identifying the runtime config in both Postgres and Redis.
+const CONFIG_KEY: &str = consts::RUNTIME_CONFIG_KEY;
 
 #[derive(Debug, serde::Serialize)]
 pub struct RuntimeConfigStatus {
@@ -40,92 +22,81 @@ pub struct RuntimeConfigStatus {
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeConfigStatusKind {
     Disabled,
-    NotFetched,
+    NotConfigured,
     Available,
     Invalid,
 }
 
-/// Fetches the runtime-config endpoint on a schedule and serves the last-known-good body.
+/// Manages runtime configuration (`use_replica`, `enable_kv`) backed by the per-tenant
+/// `configs` Postgres table with a read-through per-tenant Redis cache.
+///
+/// No polling: every `get()` fetches the latest value from Redis (or Postgres on a cache
+/// miss). `update()` upserts to Postgres and invalidates the Redis cache entry.
 pub struct RuntimeConfigManager {
-    state: RuntimeConfigState,
+    admin_api_key: hyperswitch_masking::Secret<String>,
 }
 
 impl RuntimeConfigManager {
-    fn build_header_map(
-        headers: &HashMap<String, Secret<String>>,
-    ) -> error_stack::Result<reqwest::header::HeaderMap, error::ConfigurationError> {
-        headers
-            .iter()
-            .map(|(name, value)| {
-                let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                        format!("invalid runtime_config header name `{name}`"),
-                    ))?;
-                let mut header_value = reqwest::header::HeaderValue::from_str(value.peek())
-                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                        format!("invalid runtime_config header value for `{name}`"),
-                    ))?;
-                header_value.set_sensitive(true);
-                Ok((header_name, header_value))
-            })
-            .collect()
+    /// Construct a runtime config manager from the global `RuntimeConfig` settings.
+    /// Returns `None` when runtime config is disabled — a manager only exists when the
+    /// feature is enabled, so its `admin_api_key` is always present. The owning tenant's
+    /// `Storage` is passed to each method — the manager holds no storage handle of its own.
+    pub fn new(config: &RuntimeConfig) -> Option<Self> {
+        match config {
+            RuntimeConfig::Enabled { admin_api_key } => Some(Self {
+                admin_api_key: admin_api_key.clone(),
+            }),
+            RuntimeConfig::Disabled => None,
+        }
     }
 
-    /// Construct a new runtime config manager.
-    pub fn new(
-        config: &RuntimeConfig,
-        client_idle_timeout: u64,
-        pool_max_idle_per_host: usize,
-    ) -> error_stack::Result<Self, error::ConfigurationError> {
-        Ok(match config {
-            RuntimeConfig::Disabled => Self {
-                state: RuntimeConfigState::Disabled,
-            },
-            RuntimeConfig::Enabled {
-                endpoint,
-                refresh_interval_seconds,
-            } => {
-                let client = reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .pool_idle_timeout(Duration::from_secs(client_idle_timeout))
-                    .pool_max_idle_per_host(pool_max_idle_per_host)
-                    .default_headers(Self::build_header_map(&endpoint.headers)?)
-                    .build()
-                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                        "Failed to build HTTP client for runtime config endpoint".into(),
-                    ))?;
-
-                Self {
-                    state: RuntimeConfigState::Enabled {
-                        endpoint_url: endpoint.base_url.clone(),
-                        endpoint_path: endpoint.path.clone(),
-                        api_key: endpoint.api_key.clone(),
-                        client,
-                        refresh_interval: Duration::from_secs(*refresh_interval_seconds),
-                        cache: RwLock::new(None),
-                    },
-                }
-            }
-        })
-    }
-
-    /// Deserialize the last-known-good config body into `T`.
+    /// Bootstrap: ensure a `configs` row exists (seed the safe default if missing) and
+    /// warm the Redis cache.
     ///
-    /// Returns `None` when the manager is disabled, no config has been fetched yet, or the
-    /// cached payload cannot be deserialized into `T`.
-    pub async fn get<T: serde::de::DeserializeOwned>(&self) -> Option<T> {
-        let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
-            crate::logger::debug!("Runtime config disabled");
-            return None;
-        };
+    /// Fails when the seed read or upsert errors — the tenant must not start serving
+    /// with no runtime-config row. The Redis warm is best-effort only: a failed warm
+    /// self-heals on the next read (read-through populate, TTL-bounded).
+    pub async fn init(
+        &self,
+        store: &storage::Storage,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        let existing = store.find_config(CONFIG_KEY).await.inspect_err(|err| {
+            crate::logger::error!(
+                ?err,
+                "Failed to read runtime config from Postgres during init"
+            );
+        })?;
 
-        let guard = cache.read().await;
-        let Some(raw) = guard.as_deref() else {
-            crate::logger::debug!("Runtime config not fetched yet");
-            return None;
-        };
+        match existing {
+            Some(_) => {
+                crate::logger::debug!("Runtime config already present in Postgres");
+            }
+            None => {
+                let default = storage::RuntimeConfigValues::default();
+                let value = serde_json::to_value(&default).map_err(|err| {
+                    ContainerError::from(error::RuntimeConfigError::InvalidValue(err.to_string()))
+                })?;
+                store.upsert_config(CONFIG_KEY, value).await.inspect(|_| {
+                    crate::logger::info!("Seeded default runtime config into Postgres");
+                })?;
+            }
+        }
 
-        match serde_json::from_str::<T>(raw) {
+        // Warm the Redis cache (read-through populates Redis on a miss).
+        let _ = self.get::<serde_json::Value>(store).await;
+        Ok(())
+    }
+
+    /// Deserialize the latest runtime config into `T`.
+    ///
+    /// Read-through: Redis GET → on hit, return immediately; on miss/error, fall back to
+    /// Postgres SELECT and best-effort populate Redis. Returns `None` when no config row
+    /// exists or both stores are unavailable (fail-closed: callers treat `None` as
+    /// KV-disabled / replica-off).
+    pub async fn get<T: serde::de::DeserializeOwned>(&self, store: &storage::Storage) -> Option<T> {
+        let raw = self.get_raw(store).await?;
+
+        match serde_json::from_str::<T>(&raw) {
             Ok(val) => Some(val),
             Err(error) => {
                 crate::logger::error!(?error, raw, "Failed to deserialize runtime config");
@@ -134,187 +105,203 @@ impl RuntimeConfigManager {
         }
     }
 
-    /// Returns the current cached runtime-config status without fetching from the endpoint.
-    pub async fn status(&self) -> RuntimeConfigStatus {
-        let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
-            return RuntimeConfigStatus {
-                status: RuntimeConfigStatusKind::Disabled,
-                config: None,
-            };
+    /// Fetch the raw JSON string, going through the read-through Redis cache.
+    async fn get_raw(&self, store: &storage::Storage) -> Option<String> {
+        let start = Instant::now();
+        let fetch_from_pg = || async {
+            store
+                .find_config(CONFIG_KEY)
+                .await
+                .inspect_err(|err| {
+                    crate::logger::error!(?err, "Failed to read runtime config from Postgres");
+                })
+                .ok()
+                .flatten()
+                .map(|value| value.to_string())
         };
 
-        let guard = cache.read().await;
-        let Some(raw) = guard.as_deref() else {
-            return RuntimeConfigStatus {
-                status: RuntimeConfigStatusKind::NotFetched,
-                config: None,
-            };
-        };
-
-        match serde_json::from_str(raw) {
-            Ok(config) => RuntimeConfigStatus {
-                status: RuntimeConfigStatusKind::Available,
-                config: Some(config),
-            },
-            Err(error) => {
-                crate::logger::error!(?error, raw, "Cached runtime config is invalid");
-                RuntimeConfigStatus {
-                    status: RuntimeConfigStatusKind::Invalid,
-                    config: None,
-                }
+        #[cfg(feature = "redis")]
+        let (source, result) = match store.get_redis_store() {
+            Some(redis) => {
+                let result = redis
+                    .get_or_populate(
+                        CONFIG_KEY,
+                        consts::RUNTIME_CONFIG_REDIS_TTL_SECS,
+                        fetch_from_pg,
+                    )
+                    .await;
+                ("redis", result)
             }
-        }
-    }
-
-    /// Spawn a background task that refreshes the config on an interval. Returns `None` when disabled.
-    pub fn spawn_prefetch_task<F, Fut>(
-        self: &Arc<Self>,
-        on_successful_fetch: F,
-    ) -> Option<tokio::task::JoinHandle<()>>
-    where
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
-        let refresh_interval = match &self.state {
-            RuntimeConfigState::Disabled => return None,
-            RuntimeConfigState::Enabled {
-                refresh_interval, ..
-            } => *refresh_interval,
+            None => {
+                crate::logger::debug!("Redis not configured, reading runtime config from Postgres");
+                ("postgres", fetch_from_pg().await)
+            }
         };
 
-        let manager = Arc::clone(self);
-        crate::logger::info!(
-            refresh_interval_secs = refresh_interval.as_secs(),
-            "Spawning runtime config prefetch task"
+        #[cfg(not(feature = "redis"))]
+        let (source, result) = ("postgres", fetch_from_pg().await);
+
+        crate::observability::metrics::RUNTIME_CONFIG_FETCH_DURATION.record(
+            start.elapsed().as_secs_f64(),
+            metrics_utils::metric_attributes!(
+                ("source", source),
+                (
+                    "outcome",
+                    if result.is_some() { "success" } else { "error" }
+                )
+            ),
         );
 
-        Some(tokio::spawn(
-            async move {
-                if manager.prefetch().await {
-                    on_successful_fetch().await;
-                }
+        result
+    }
 
-                let mut ticker = tokio::time::interval(refresh_interval);
-                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    /// Update the runtime config: validate → check transition → PG upsert → Redis invalidate.
+    ///
+    /// The requested KV state transition is validated against the currently persisted
+    /// state (Postgres/Redis cache) — there is no in-process KV state to consult.
+    /// The Redis `DEL` failure is logged as a warning (not propagated) because the
+    /// Redis TTL bounds staleness — the next read will eventually repopulate from PG.
+    pub async fn update(
+        &self,
+        store: &storage::Storage,
+        value: serde_json::Value,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        // Validate by parsing into RuntimeConfigValues (fails closed on unknown fields).
+        let requested = serde_json::from_value::<storage::RuntimeConfigValues>(value.clone())
+            .map_err(|err| {
+                ContainerError::from(error::RuntimeConfigError::InvalidValue(err.to_string()))
+            })?;
 
-                loop {
-                    ticker.tick().await;
-                    if manager.prefetch().await {
-                        on_successful_fetch().await;
-                    }
-                }
-            }
-            .in_current_span(),
+        #[cfg(feature = "kv")]
+        self.validate_kv_transition(store, requested.enable_kv)
+            .await?;
+
+        self.validate_replica_enablement(store, requested.use_replica)
+            .await?;
+
+        store.upsert_config(CONFIG_KEY, value).await?;
+
+        #[cfg(feature = "redis")]
+        if let Some(redis) = store.get_redis_store() {
+            redis.invalidate(CONFIG_KEY).await;
+        }
+
+        Ok(())
+    }
+
+    /// Reject illegal KV state transitions against the currently persisted state.
+    ///
+    /// `Disabled → Enabled` additionally requires a reachable Redis backend, since KV
+    /// writes go through Redis.
+    #[cfg(feature = "kv")]
+    async fn validate_kv_transition(
+        &self,
+        store: &storage::Storage,
+        requested: storage::kv::KvState,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        use storage::kv::KvState;
+
+        let current = self
+            .get::<storage::RuntimeConfigValues>(store)
+            .await
+            .map(|values| values.enable_kv)
+            .unwrap_or(KvState::Disabled);
+
+        let can_enable_kv = match store.get_redis_store() {
+            Some(redis) => redis
+                .test()
+                .await
+                .inspect_err(|err| {
+                    crate::logger::error!(
+                        ?err,
+                        "Redis health check failed while validating KV enablement"
+                    );
+                })
+                .is_ok(),
+            None => false,
+        };
+
+        if current.is_valid_transition(requested, can_enable_kv) {
+            return Ok(());
+        }
+
+        crate::logger::warn!(
+            current = %current,
+            requested = %requested,
+            "KV state transition rejected"
+        );
+        Err(ContainerError::from(
+            error::RuntimeConfigError::InvalidStateTransition(format!("{current} -> {requested}")),
         ))
     }
 
-    async fn prefetch(&self) -> bool {
-        let RuntimeConfigState::Enabled {
-            endpoint_url,
-            endpoint_path,
-            api_key,
-            client,
-            cache,
-            ..
-        } = &self.state
-        else {
-            return false;
-        };
-
-        match Self::fetch_config(endpoint_url, endpoint_path, api_key, client).await {
-            Ok(body) => {
-                crate::logger::info!(config = %body, "Runtime config fetched");
-                *cache.write().await = Some(body);
-                true
-            }
-            Err(e) => {
-                crate::logger::warn!(
-                    error = ?e,
-                    "Failed to prefetch runtime config, keeping last-known-good"
-                );
-                false
-            }
+    /// Reject enabling replica reads when no replica pool is configured or the replica
+    /// is unreachable. Mirrors the previous global-state refresh behaviour, enforced at
+    /// the only write path now (no in-process state to consult).
+    async fn validate_replica_enablement(
+        &self,
+        store: &storage::Storage,
+        requested_use_replica: bool,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        if !requested_use_replica {
+            return Ok(());
         }
-    }
 
-    /// Fetch the config endpoint and return the inner config JSON string (the envelope's `value`).
-    /// Validated as JSON so a malformed 2xx response can't overwrite the last-known-good entry.
-    async fn fetch_config(
-        endpoint_url: &str,
-        endpoint_path: &str,
-        api_key: &Secret<String>,
-        client: &reqwest::Client,
-    ) -> error_stack::Result<String, error::ConfigurationError> {
-        let url = format!(
-            "{}/{}",
-            endpoint_url.trim_end_matches('/'),
-            endpoint_path.trim_start_matches('/')
-        );
-
-        crate::logger::debug!(url = %url, "Fetching runtime config");
-
-        let request = client.get(&url).header(API_KEY_HEADER_NAME, api_key.peek());
-        let response = record_runtime_config_fetch_duration(request)
-            .await
-            .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                "Failed to send runtime config request".into(),
-            ))?;
-
-        if !response.status().is_success() {
-            return Err(error_stack::report!(
-                error::ConfigurationError::InvalidConfigurationValueError(format!(
-                    "Runtime config request returned non-success status ({})",
-                    response.status()
-                ))
+        if !store.has_replica() {
+            return Err(ContainerError::from(
+                error::RuntimeConfigError::NoReplicaConfigured,
             ));
         }
 
-        let RuntimeConfigResponse { value } = response.json().await.change_context(
-            error::ConfigurationError::InvalidConfigurationValueError(
-                "Failed to parse runtime config response envelope".into(),
-            ),
-        )?;
+        store.get_replica_conn().await.map(|_| ()).map_err(|err| {
+            crate::logger::error!(
+                ?err,
+                "Replica health check failed while validating use_replica"
+            );
+            ContainerError::from(error::RuntimeConfigError::ReplicaUnreachable)
+        })
+    }
 
-        serde_json::from_str::<serde_json::Value>(&value).change_context(
-            error::ConfigurationError::InvalidConfigurationValueError(
-                "Runtime config value is not valid JSON".into(),
-            ),
-        )?;
+    /// Returns the current runtime-config status without side effects.
+    pub async fn status(&self, store: &storage::Storage) -> RuntimeConfigStatus {
+        let raw = self.get_raw(store).await;
 
-        Ok(value)
+        match raw {
+            None => RuntimeConfigStatus {
+                status: RuntimeConfigStatusKind::NotConfigured,
+                config: None,
+            },
+            Some(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+                Ok(config) => RuntimeConfigStatus {
+                    status: RuntimeConfigStatusKind::Available,
+                    config: Some(config),
+                },
+                Err(error) => {
+                    crate::logger::error!(?error, raw, "Runtime config is invalid");
+                    RuntimeConfigStatus {
+                        status: RuntimeConfigStatusKind::Invalid,
+                        config: None,
+                    }
+                }
+            },
+        }
+    }
+
+    /// Constant-time comparison of a candidate API key against the configured admin key.
+    pub fn verify_admin_api_key(&self, candidate: &str) -> bool {
+        let expected_bytes = self.admin_api_key.peek().as_bytes();
+        let candidate_bytes = candidate.as_bytes();
+        constant_time_eq(expected_bytes, candidate_bytes)
     }
 }
 
-async fn record_runtime_config_fetch_duration(
-    request: reqwest::RequestBuilder,
-) -> Result<reqwest::Response, reqwest::Error> {
-    let start = std::time::Instant::now();
-    let result = request.send().await;
-    let duration = start.elapsed();
-
-    let (outcome, status_code) = match result.as_ref() {
-        Ok(resp) => {
-            let status = resp.status();
-            let outcome = match status.as_u16() {
-                200..=299 => "success",
-                300..=399 => "redirect",
-                400..=499 => "client_error",
-                500..=599 => "server_error",
-                _ => "unknown",
-            };
-            (outcome, Some(status.as_u16()))
-        }
-        Err(_) => ("transport_error", None),
-    };
-
-    let status_code = status_code
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "UNKNOWN".to_string());
-
-    crate::observability::metrics::RUNTIME_CONFIG_FETCH_DURATION.record(
-        duration.as_secs_f64(),
-        metrics_utils::metric_attributes!(("outcome", outcome), ("status_code", status_code)),
-    );
-
-    result
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }

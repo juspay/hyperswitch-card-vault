@@ -7,10 +7,12 @@ pub(crate) mod impls;
 pub(crate) mod partition_key;
 #[cfg(feature = "kv")]
 pub(crate) mod resource;
-pub(crate) mod scheme;
+pub mod scheme;
 pub(crate) mod serializable_query;
 pub(crate) mod wrapper;
 
+pub use self::scheme::KvState;
+pub(crate) use self::wrapper::KvBackend;
 #[cfg(feature = "kv")]
 pub(crate) use self::{
     partition_key::PartitionKey,
@@ -20,5 +22,4 @@ pub(crate) use self::{
         insert_resource, insert_resource_with_reverse_lookup, update_resource_by_id,
     },
 };
-pub(crate) use self::{scheme::KvState, wrapper::KvBackend};
 pub(crate) use super::scheme::StorageScheme;

@@ -55,31 +55,39 @@ impl TenantAppState {
         tenant_config: TenantConfig,
         api_client: ApiClient,
         #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
-        runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
-        global_store: Arc<storage::GlobalStore>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
         #[cfg(feature = "redis")]
         let tenant_redis = shared_redis
             .map(|store| store.clone_with_prefix(tenant_config.redis_key_prefix.trim()));
 
-        #[allow(clippy::map_identity)]
-        let db = storage::Storage::new(
+        let raw_storage = storage::Storage::new(
             &global_config.database,
             global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
-            runtime_config_manager,
-            global_store,
+            #[cfg(feature = "kv")]
+            &global_config.kv,
             #[cfg(feature = "redis")]
             tenant_redis.clone(),
+            #[cfg(feature = "redis")]
+            &global_config.runtime_config,
         )
         .await
-        .map(
-            #[cfg(feature = "caching")]
-            Caching::implement_cache(&global_config.cache),
-            #[cfg(not(feature = "caching"))]
-            std::convert::identity,
-        )
         .change_context(error::ConfigurationError::DatabaseError)?;
+
+        // Seed the configs table with a default row if missing and warm the Redis cache.
+        // A seeding failure is fatal: runtime-config reads would fail closed forever.
+        #[cfg(feature = "redis")]
+        if let Some(manager) = raw_storage.runtime_config_manager() {
+            manager
+                .init(&raw_storage)
+                .await
+                .change_context(error::ConfigurationError::DatabaseError)?;
+        }
+
+        #[cfg(feature = "caching")]
+        let db = Caching::implement_cache(&global_config.cache)(raw_storage);
+        #[cfg(not(feature = "caching"))]
+        let db = raw_storage;
 
         Ok(Self {
             db,
@@ -152,16 +160,6 @@ pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
     metrics_handle: observability::MetricsHandle,
 ) -> Result<(), error::ConfigurationError> {
-    // Warm + periodically refresh the runtime-config cache. No-op when disabled.
-    let runtime_config_manager = global_app_state.runtime_config_manager.clone();
-    let state_for_prefetch = global_app_state.clone();
-    let _prefetch_handle = runtime_config_manager.spawn_prefetch_task(move || {
-        let state_for_prefetch = state_for_prefetch.clone();
-        async move {
-            state_for_prefetch.apply_runtime_config_updates().await;
-        }
-    });
-
     let socket_addr = std::net::SocketAddr::new(
         global_app_state.global_config.server.host.parse()?,
         global_app_state.global_config.server.port,
@@ -213,6 +211,16 @@ pub async fn server_builder(
             global_app_state.clone(),
             custom_middleware::middleware,
         ));
+    }
+
+    // Everything below is added *after* the JWE middleware layer, so these routes are
+    // plain JSON: internal admin APIs and health checks are never JWE-encrypted.
+    #[cfg(feature = "redis")]
+    {
+        router = router.route(
+            "/runtime-config",
+            post(routes::runtime_config::update_runtime_config),
+        );
     }
 
     #[cfg(feature = "external_key_manager")]
