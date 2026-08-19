@@ -129,8 +129,11 @@ ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 
 # Per-tenant `redis_key_prefix` (under `[tenant_secrets.<id>]`) MUST be non-empty
 # and unique across tenants whenever KV is enabled, otherwise the service fails to
-# start.  The drainer must consume the prefixed
-# `{prefix}:{shard_N}_DRAINER_STREAM` for each tenant.
+# start. It must not contain `{` or `}` because KV data keys and drainer streams
+# use `{shard_N}` as the Redis Cluster hash tag. The drainer must consume the
+# prefixed `{prefix}:{shard_N}_DRAINER_STREAM` for each tenant; KV data for that
+# shard is stored under `{prefix}:{shard_N}:<partition-key>` so both keys route to
+# the same Redis Cluster slot.
 
 # Metrics configuration: export metrics for monitoring.
 # - disabled: no metrics exported
