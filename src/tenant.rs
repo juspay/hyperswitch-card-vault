@@ -7,10 +7,9 @@ use tokio::sync::RwLock;
 use crate::config::TenantConfig;
 #[cfg(feature = "key_custodian")]
 use crate::routes::key_custodian::CustodianKeyState;
-use crate::{
-    api_client::ApiClient, app::TenantAppState, config::GlobalConfig, error::ApiError, logger,
-    runtime_config::RuntimeConfigManager,
-};
+#[cfg(feature = "redis")]
+use crate::runtime_config::RuntimeConfigManager;
+use crate::{api_client::ApiClient, app::TenantAppState, config::GlobalConfig, error::ApiError};
 
 pub struct GlobalAppState {
     pub tenants_app_state: RwLock<FxHashMap<String, Arc<TenantAppState>>>,
@@ -21,8 +20,6 @@ pub struct GlobalAppState {
     pub global_config: GlobalConfig,
     #[cfg(feature = "redis")]
     pub redis_store: Option<crate::storage::redis::RedisStore>,
-    pub storage_global_store: Arc<crate::storage::GlobalStore>,
-    pub runtime_config_manager: Arc<RuntimeConfigManager>,
 }
 
 impl GlobalAppState {
@@ -66,21 +63,6 @@ impl GlobalAppState {
             None => None,
         };
 
-        #[allow(clippy::expect_used)]
-        let runtime_config_manager = Arc::new(
-            RuntimeConfigManager::new(
-                &global_config.runtime_config,
-                global_config.api_client.client_idle_timeout,
-                global_config.api_client.pool_max_idle_per_host,
-            )
-            .expect("Failed to create runtime config manager"),
-        );
-
-        let storage_global_store = Arc::new(crate::storage::GlobalStore::new(
-            #[cfg(feature = "kv")]
-            global_config.kv.clone(),
-        ));
-
         let tenants_app_state = {
             #[cfg(feature = "key_custodian")]
             {
@@ -99,8 +81,6 @@ impl GlobalAppState {
                         api_client.clone(),
                         #[cfg(feature = "redis")]
                         redis_store.as_ref(),
-                        runtime_config_manager.clone(),
-                        storage_global_store.clone(),
                     )
                     .await
                     .expect("Failed while configuring AppState for tenants");
@@ -119,8 +99,6 @@ impl GlobalAppState {
             global_config,
             #[cfg(feature = "redis")]
             redis_store,
-            storage_global_store,
-            runtime_config_manager,
         })
     }
 
@@ -148,36 +126,17 @@ impl GlobalAppState {
         write_guard.insert(state.config.tenant_id.clone(), Arc::new(state));
     }
 
-    pub async fn apply_runtime_config_updates(&self) {
-        #[cfg(feature = "kv")]
-        {
-            self.storage_global_store
-                .refresh_kv_state_from_runtime_config(
-                    &self.runtime_config_manager,
-                    self.redis_store.as_ref(),
-                )
-                .await;
-        }
-
-        self.storage_global_store
-            .refresh_replica_state_from_runtime_config(&self.runtime_config_manager, || async {
-                // `use_replica` is global, but replica availability is verified through a
-                // tenant `Storage` because the replica pool is owned there. The health check is
-                // evaluated lazily only when runtime config tries to enable replica reads.
-                let tenant_app_state = self.tenants_app_state.read().await.values().next().cloned();
-                match tenant_app_state {
-                    Some(tenant_app_state) => tenant_app_state
-                        .db
-                        .get_replica_conn()
-                        .await
-                        .inspect_err(|err| {
-                            logger::error!("Error while checking read replica connection: {}", err)
-                        })
-                        .is_ok(),
-                    None => false,
-                }
-            })
-            .await;
+    /// Fetch the runtime config manager for a given tenant, if the tenant is known.
+    #[cfg(feature = "redis")]
+    pub async fn get_runtime_config_manager(
+        &self,
+        tenant_id: &str,
+    ) -> Option<Arc<RuntimeConfigManager>> {
+        self.tenants_app_state
+            .read()
+            .await
+            .get(tenant_id)
+            .and_then(|state| state.db.runtime_config_manager().cloned())
     }
 
     #[cfg(feature = "key_custodian")]

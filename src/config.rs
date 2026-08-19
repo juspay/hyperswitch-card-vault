@@ -5,7 +5,9 @@ use std::{
 };
 
 use error_stack::ResultExt;
-use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret};
+#[cfg(feature = "redis")]
+use hyperswitch_masking::PeekInterface;
+use hyperswitch_masking::{ExposeInterface, Secret};
 #[cfg(feature = "redis")]
 use hyperswitch_redis_interface::RedisSettings;
 
@@ -42,6 +44,7 @@ pub struct GlobalConfig {
     pub external_key_manager: ExternalKeyManagerConfig,
     #[cfg(feature = "redis")]
     pub redis: Option<RedisSettings>,
+    #[cfg(feature = "redis")]
     #[serde(default)]
     pub runtime_config: RuntimeConfig,
     #[cfg(feature = "kv")]
@@ -321,15 +324,16 @@ impl GlobalConfig {
                 ))?;
         }
 
+        #[cfg(feature = "redis")]
         if let RuntimeConfig::Enabled {
-            ref mut endpoint, ..
+            ref mut admin_api_key,
         } = self.runtime_config
         {
-            endpoint.api_key = secret_management_client
-                .get_secret(endpoint.api_key.clone())
+            *admin_api_key = secret_management_client
+                .get_secret(admin_api_key.clone())
                 .await
                 .change_context(error::ConfigurationError::KmsDecryptError(
-                    "runtime_config api_key",
+                    "runtime_config admin_api_key",
                 ))?;
         }
 
@@ -370,7 +374,11 @@ impl GlobalConfig {
 
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
-        self.runtime_config.validate()?;
+        #[cfg(feature = "redis")]
+        {
+            self.runtime_config.validate()?;
+            self.validate_runtime_config_redis()?;
+        }
         #[cfg(feature = "kv")]
         {
             self.kv.validate()?;
@@ -384,6 +392,18 @@ impl GlobalConfig {
         }
         self.metrics.validate()?;
 
+        Ok(())
+    }
+
+    /// Runtime config is read-through a per-tenant Redis cache — it cannot operate
+    /// without Redis configured.
+    #[cfg(feature = "redis")]
+    fn validate_runtime_config_redis(&self) -> Result<(), error::ConfigurationError> {
+        if self.runtime_config.is_enabled() && self.redis.is_none() {
+            return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                "runtime_config is enabled but `[redis]` is not configured".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -509,57 +529,39 @@ impl std::fmt::Display for Env {
     }
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct RuntimeConfigEndpoint {
-    pub base_url: String,
-    pub api_key: hyperswitch_masking::Secret<String>,
-    #[serde(default)]
-    pub headers: std::collections::HashMap<String, hyperswitch_masking::Secret<String>>,
-    #[serde(default)]
-    pub path: String,
-}
-
 /// Runtime configuration source.
+///
+/// When enabled, the runtime config (`use_replica`, `enable_kv`) is stored in the
+/// per-tenant `configs` Postgres table and read-through a per-tenant Redis cache.
+/// The `admin_api_key` guards the `POST /runtime-config` update endpoint.
+/// Only available with the `redis` feature — runtime config never operates without
+/// its Redis read-through cache.
+#[cfg(feature = "redis")]
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum RuntimeConfig {
     #[default]
     Disabled,
     Enabled {
-        endpoint: RuntimeConfigEndpoint,
-        #[serde(default = "default_runtime_config_refresh_interval_seconds")]
-        refresh_interval_seconds: u64,
+        admin_api_key: hyperswitch_masking::Secret<String>,
     },
 }
 
-fn default_runtime_config_refresh_interval_seconds() -> u64 {
-    30
-}
-
+#[cfg(feature = "redis")]
 impl RuntimeConfig {
     pub fn is_enabled(&self) -> bool {
         matches!(self, Self::Enabled { .. })
     }
 
     pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
-        if let Self::Enabled { endpoint, .. } = self {
-            if endpoint.base_url.trim().is_empty() {
-                return Err(
-                    crate::error::ConfigurationError::InvalidConfigurationValueError(
-                        r#"runtime_config.endpoint.base_url is required when mode is "enabled""#
-                            .into(),
-                    ),
-                );
-            }
-
-            if endpoint.api_key.peek().trim().is_empty() {
-                return Err(
-                    crate::error::ConfigurationError::InvalidConfigurationValueError(
-                        r#"runtime_config.endpoint.api_key is required when mode is "enabled""#
-                            .into(),
-                    ),
-                );
-            }
+        if let Self::Enabled { admin_api_key } = self
+            && admin_api_key.peek().trim().is_empty()
+        {
+            return Err(
+                crate::error::ConfigurationError::InvalidConfigurationValueError(
+                    r#"runtime_config.admin_api_key is required when mode is "enabled""#.into(),
+                ),
+            );
         }
 
         Ok(())

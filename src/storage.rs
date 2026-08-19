@@ -12,14 +12,7 @@ pub mod storage_v2;
 pub mod types;
 pub mod utils;
 
-use std::{
-    fmt::Debug,
-    future::Future,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{fmt::Debug, future::Future, sync::Arc};
 
 use diesel_async::{
     AsyncPgConnection,
@@ -30,8 +23,6 @@ use diesel_async::{
 };
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
-#[cfg(feature = "kv")]
-use tokio::sync::RwLock;
 
 pub use self::scheme::StorageScheme;
 #[cfg(feature = "redis")]
@@ -44,21 +35,24 @@ use crate::{
 
 /// All runtime configs, deserialized directly from the config endpoint's JSON body. Field names
 /// match the keys the endpoint returns; each `#[serde(default)]` field fails closed when absent.
-#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[cfg(feature = "redis")]
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct RuntimeConfigValues {
     #[cfg(feature = "kv")]
     #[serde(default)]
-    enable_kv: kv::KvState,
+    pub enable_kv: kv::KvState,
     #[serde(default)]
-    use_replica: bool,
+    pub use_replica: bool,
 }
 
+#[cfg(feature = "redis")]
 #[derive(Debug, serde::Serialize)]
 pub struct StorageRuntimeConfigStatus {
     pub runtime_config: crate::runtime_config::RuntimeConfigStatus,
     pub storage: StorageRuntimeConfigState,
 }
 
+#[cfg(feature = "redis")]
 #[derive(Debug, serde::Serialize)]
 pub struct StorageRuntimeConfigState {
     pub use_replica: bool,
@@ -66,156 +60,21 @@ pub struct StorageRuntimeConfigState {
     pub kv_state: String,
 }
 
-pub struct GlobalStore {
-    use_replica: AtomicBool,
-    #[cfg(feature = "kv")]
-    config: crate::config::KvConfig,
-    #[cfg(feature = "kv")]
-    kv_state: RwLock<kv::KvState>,
-}
-
-impl GlobalStore {
-    pub fn new(#[cfg(feature = "kv")] config: crate::config::KvConfig) -> Self {
-        Self {
-            use_replica: AtomicBool::new(false),
-            #[cfg(feature = "kv")]
-            config,
-            #[cfg(feature = "kv")]
-            kv_state: RwLock::new(kv::KvState::Disabled),
-        }
-    }
-
-    fn use_replica(&self) -> bool {
-        self.use_replica.load(Ordering::Acquire)
-    }
-
-    fn enable_replica(&self) {
-        self.use_replica.store(true, Ordering::Release);
-    }
-
-    fn disable_replica(&self) {
-        self.use_replica.store(false, Ordering::Release);
-    }
-
-    /// Apply runtime-config replica read transitions after the runtime config cache is refreshed.
-    pub(crate) async fn refresh_replica_state_from_runtime_config<F, Fut>(
-        &self,
-        runtime_config_manager: &crate::runtime_config::RuntimeConfigManager,
-        replica_health_check: F,
-    ) where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = bool>,
-    {
-        let requested_use_replica = runtime_config_manager
-            .get::<RuntimeConfigValues>()
-            .await
-            .is_some_and(|runtime_conf| runtime_conf.use_replica);
-
-        let current_use_replica = self.use_replica();
-        match (current_use_replica, requested_use_replica) {
-            (false, true) => {
-                if replica_health_check().await {
-                    self.enable_replica();
-                    crate::logger::info!(
-                        storage_runtime_config = "state_refresh",
-                        "Read replica enabled"
-                    );
-                } else {
-                    crate::logger::warn!(
-                        storage_runtime_config = "state_refresh",
-                        "Read replica unavailable"
-                    );
-                }
-            }
-            (true, false) => {
-                self.disable_replica();
-                crate::logger::info!(
-                    storage_runtime_config = "state_refresh",
-                    "Read replica disabled"
-                );
-            }
-            _ => {}
-        }
-    }
-
-    #[cfg(feature = "kv")]
-    async fn kv_state(&self) -> kv::KvState {
-        *self.kv_state.read().await
-    }
-
-    /// Apply runtime-config KV state transitions after the runtime config cache is refreshed.
-    #[cfg(feature = "kv")]
-    pub(crate) async fn refresh_kv_state_from_runtime_config(
-        &self,
-        runtime_config_manager: &crate::runtime_config::RuntimeConfigManager,
-        redis: Option<&redis_store::RedisStore>,
-    ) {
-        let requested_state = runtime_config_manager
-            .get::<RuntimeConfigValues>()
-            .await
-            .map(|runtime_config_values| runtime_config_values.enable_kv)
-            .unwrap_or(kv::KvState::Disabled);
-
-        let current_state = self.kv_state().await;
-        let can_enable_kv = if matches!(
-            (current_state, requested_state),
-            (kv::KvState::Disabled, kv::KvState::Enabled)
-        ) {
-            match redis {
-                Some(redis) => redis
-                    .test()
-                    .await
-                    .inspect_err(|err| {
-                        crate::logger::error!(
-                            storage_runtime_config = "state_refresh",
-                            "error while checking redis connection, Error message: {err:?}",
-                        );
-                    })
-                    .is_ok(),
-                None => {
-                    crate::logger::error!(
-                        storage_runtime_config = "state_refresh",
-                        "Redis connection unavailable"
-                    );
-                    false
-                }
-            }
-        } else {
-            false
-        };
-
-        let mut current_state = self.kv_state.write().await;
-        let next_state = current_state.apply_transition(requested_state, can_enable_kv);
-        if next_state != *current_state {
-            crate::logger::info!(
-                storage_runtime_config = "state_refresh",
-                from = %*current_state,
-                to = %next_state,
-                "KV mode transition accepted"
-            );
-            *current_state = next_state;
-        } else if requested_state != *current_state {
-            crate::logger::warn!(
-                storage_runtime_config = "state_refresh",
-                current = %*current_state,
-                requested = %requested_state,
-                "KV mode transition ignored"
-            );
-        }
-    }
-}
-
 /// Storage State that is to be passed though the application
 #[derive(Clone)]
 pub struct Storage {
     primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
     replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
-    runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
-    global_store: Arc<GlobalStore>,
-    #[cfg(feature = "redis")]
-    redis: Option<redis_store::TenantAwareRedisStore>,
     #[cfg(feature = "kv")]
     kv_backend: Option<kv::KvBackend>,
+    /// Per-tenant Redis store paired with the runtime-config manager. The manager is
+    /// present only when runtime config is enabled — and it can never exist without
+    /// its Redis read-through cache (enforced in `Storage::new`).
+    #[cfg(feature = "redis")]
+    redis: Option<(
+        redis_store::TenantAwareRedisStore,
+        Option<Arc<crate::runtime_config::RuntimeConfigManager>>,
+    )>,
 }
 
 type DeadPoolConnType = Object<AsyncPgConnection>;
@@ -262,7 +121,18 @@ impl DbConnection {
 impl Storage {
     #[cfg(feature = "redis")]
     pub fn get_redis_store(&self) -> Option<redis_store::TenantAwareRedisStore> {
-        self.redis.clone()
+        self.redis.as_ref().map(|(redis, _)| redis.clone())
+    }
+
+    /// The tenant's runtime-config manager — present only when runtime config is
+    /// enabled (and thereby Redis-configured; see `Storage::new`).
+    #[cfg(feature = "redis")]
+    pub fn runtime_config_manager(
+        &self,
+    ) -> Option<&Arc<crate::runtime_config::RuntimeConfigManager>> {
+        self.redis
+            .as_ref()
+            .and_then(|(_, manager)| manager.as_ref())
     }
     fn create_database_connection_pool(
         database_config: &Database,
@@ -292,14 +162,17 @@ impl Storage {
             .change_context(error::StorageError::DBPoolError)
     }
 
-    /// Create a new storage interface from configuration
+    /// Create a new storage interface from configuration.
+    ///
+    /// Fails when runtime config is enabled but Redis is not configured — the runtime
+    /// config manager is never operated without its Redis read-through cache.
     pub async fn new(
         primary_config: &Database,
         replica_config: Option<&Database>,
         schema: &str,
-        runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
-        global_store: Arc<GlobalStore>,
+        #[cfg(feature = "kv")] kv_config: &crate::config::KvConfig,
         #[cfg(feature = "redis")] redis: Option<redis_store::TenantAwareRedisStore>,
+        #[cfg(feature = "redis")] runtime_config: &crate::config::RuntimeConfig,
     ) -> error_stack::Result<Self, error::StorageError> {
         let pg_pool = Arc::new(Self::create_database_connection_pool(
             primary_config,
@@ -313,15 +186,32 @@ impl Storage {
             None => None,
         };
 
+        #[cfg(feature = "redis")]
+        let redis = match redis {
+            Some(redis) => Some((
+                redis,
+                crate::runtime_config::RuntimeConfigManager::new(runtime_config).map(Arc::new),
+            )),
+            None => {
+                if runtime_config.is_enabled() {
+                    return Err(error::StorageError::InitializationError(
+                        "runtime_config is enabled but Redis is not configured",
+                    )
+                    .into());
+                }
+                None
+            }
+        };
+
         Ok(Self {
             primary_pg_pool: pg_pool,
             replica_pg_pool: replica_pool,
-            runtime_config_manager,
-            global_store: global_store.clone(),
-            #[cfg(feature = "redis")]
-            redis: redis.clone(),
             #[cfg(feature = "kv")]
-            kv_backend: redis.map(|redis| kv::KvBackend::redis(redis, global_store.config.clone())),
+            kv_backend: redis
+                .clone()
+                .map(|(redis, _)| kv::KvBackend::redis(redis, kv_config.clone())),
+            #[cfg(feature = "redis")]
+            redis,
         })
     }
 
@@ -360,26 +250,49 @@ impl Storage {
         self.replica_pg_pool.is_some()
     }
 
+    #[cfg(feature = "redis")]
     pub async fn runtime_config_status(&self) -> StorageRuntimeConfigStatus {
+        let runtime_config = match self.runtime_config_manager() {
+            Some(manager) => manager.status(self).await,
+            None => crate::runtime_config::RuntimeConfigStatus {
+                status: crate::runtime_config::RuntimeConfigStatusKind::Disabled,
+                config: None,
+            },
+        };
+
         StorageRuntimeConfigStatus {
-            runtime_config: self.runtime_config_manager.status().await,
+            runtime_config,
             storage: StorageRuntimeConfigState {
-                use_replica: self.global_store.use_replica(),
+                use_replica: self.should_use_replica().await,
                 #[cfg(feature = "kv")]
-                kv_state: self.global_store.kv_state().await.to_string(),
+                kv_state: self.kv_settings().await.to_string(),
             },
         }
     }
 
-    /// Returns `true` when runtime config allows replica reads.
-    fn should_use_replica(&self) -> bool {
-        self.has_replica() && self.global_store.use_replica()
+    /// Returns `true` when the tenant's runtime config enables replica reads and a
+    /// replica pool is configured. Read per-operation from Postgres (`configs` row,
+    /// Redis-cached) — never held in-process. Fails closed (`false`) when the config
+    /// cannot be read.
+    #[cfg(feature = "redis")]
+    async fn should_use_replica(&self) -> bool {
+        self.has_replica()
+            && self
+                .runtime_config_values()
+                .await
+                .is_some_and(|values| values.use_replica)
+    }
+
+    /// Without Redis there is no runtime config at all — replica reads stay off.
+    #[cfg(not(feature = "redis"))]
+    async fn should_use_replica(&self) -> bool {
+        false
     }
 
     /// Returns a connection from the replica pool when the runtime config enables it,
     /// otherwise returns a primary pool connection.
     pub async fn route_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
-        if self.should_use_replica() {
+        if self.should_use_replica().await {
             crate::logger::debug!("Routing to read replica");
             self.get_replica_conn().await
         } else {
@@ -388,10 +301,29 @@ impl Storage {
         }
     }
 
-    /// Return the current KV state cached by the runtime-config poller.
+    /// Read the KV state from the tenant's runtime config (`configs` Postgres row,
+    /// read-through the tenant's Redis cache). Fails closed to `Disabled` when the
+    /// config cannot be read.
     #[cfg(feature = "kv")]
     pub(crate) async fn kv_settings(&self) -> kv::KvState {
-        self.global_store.kv_state().await
+        self.runtime_config_values()
+            .await
+            .map(|values| values.enable_kv)
+            .unwrap_or(kv::KvState::Disabled)
+    }
+
+    /// Fetch the tenant's runtime-config values via the runtime-config manager
+    /// (`configs` Postgres row, read-through the tenant's Redis cache).
+    ///
+    /// **No fetch happens when runtime config is disabled** — there is no manager, so
+    /// `None` is returned and callers fail closed (`use_replica: false`, KV `Disabled`)
+    /// without touching Postgres or Redis.
+    #[cfg(feature = "redis")]
+    pub(crate) async fn runtime_config_values(&self) -> Option<RuntimeConfigValues> {
+        match self.runtime_config_manager() {
+            Some(manager) => manager.get::<RuntimeConfigValues>(self).await,
+            None => None,
+        }
     }
 
     #[cfg(feature = "kv")]
@@ -633,6 +565,29 @@ pub(crate) trait ReverseLookupInterface {
 }
 
 ///
+/// ConfigInterface:
+///
+/// Interface for interacting with the `configs` database table — the source of
+/// truth for runtime configuration (`use_replica`, `enable_kv`).
+#[cfg(feature = "redis")]
+pub(crate) trait ConfigInterface {
+    type Error;
+
+    /// Read a config row by its primary key. Returns `None` when the row is absent.
+    async fn find_config(
+        &self,
+        key: &str,
+    ) -> Result<Option<serde_json::Value>, ContainerError<Self::Error>>;
+
+    /// Upsert a config row (`INSERT … ON CONFLICT (key) DO UPDATE`).
+    async fn upsert_config(
+        &self,
+        key: &str,
+        value: serde_json::Value,
+    ) -> Result<(), ContainerError<Self::Error>>;
+}
+
+///
 /// EntityInterface:
 ///
 /// Interface providing functionality to interface with the entity table in database
@@ -744,7 +699,6 @@ where
     result
 }
 
-#[cfg_attr(feature = "kv", expect(dead_code))]
 async fn record_db_query_optional<T, Fut, R, E>(
     future: Fut,
     operation: DbOperation,

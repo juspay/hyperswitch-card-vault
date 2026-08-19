@@ -1,6 +1,6 @@
 use base64::Engine;
 use diesel::{
-    AsExpression, Identifiable, Insertable, Queryable,
+    AsChangeset, AsExpression, Identifiable, Insertable, Queryable,
     backend::Backend,
     deserialize::{self, FromSql},
     serialize::ToSql,
@@ -184,6 +184,43 @@ impl From<LockerNew> for Locker {
             hash_id: value.hash_id,
             ttl: value.ttl,
             updated_by: value.updated_by,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable)]
+#[diesel(table_name = schema::configs, primary_key(key))]
+#[allow(dead_code)]
+pub(crate) struct Config {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub updated_at: time::PrimitiveDateTime,
+    pub created_at: time::PrimitiveDateTime,
+}
+
+#[derive(Debug, Clone, Insertable)]
+#[diesel(table_name = schema::configs)]
+pub(crate) struct ConfigNew {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub created_at: time::PrimitiveDateTime,
+    pub updated_at: time::PrimitiveDateTime,
+}
+
+/// Updatable fields of a `configs` row — used by `ON CONFLICT … DO UPDATE`
+/// so `key` and `created_at` are never rewritten.
+#[derive(Debug, Clone, AsChangeset)]
+#[diesel(table_name = schema::configs, primary_key(key))]
+pub(crate) struct ConfigUpdate {
+    pub value: serde_json::Value,
+    pub updated_at: time::PrimitiveDateTime,
+}
+
+impl From<ConfigNew> for ConfigUpdate {
+    fn from(value: ConfigNew) -> Self {
+        Self {
+            value: value.value,
+            updated_at: value.updated_at,
         }
     }
 }

@@ -1,3 +1,5 @@
+use super::RuntimeConfigError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum MerchantDBError {
     #[error("Error while encrypting DEK before adding to DB")]
@@ -231,4 +233,11 @@ impl_storage_error!(
     duplicate = Duplicate,
     not_found = NotFoundError,
     other = DBError
+);
+#[cfg(feature = "redis")]
+impl_storage_error!(
+    RuntimeConfigError,
+    duplicate = Duplicate,
+    not_found = NotFound,
+    other = StorageError
 );
