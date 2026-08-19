@@ -194,8 +194,8 @@ impl From<LockerNew> for Locker {
 pub(crate) struct Config {
     pub key: String,
     pub value: serde_json::Value,
-    pub updated_at: time::PrimitiveDateTime,
     pub created_at: time::PrimitiveDateTime,
+    pub updated_at: time::PrimitiveDateTime,
 }
 
 #[derive(Debug, Clone, Insertable)]

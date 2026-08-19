@@ -5,8 +5,8 @@ diesel::table! {
         #[max_length = 255]
         key -> Varchar,
         value -> Jsonb,
-        updated_at -> Timestamp,
         created_at -> Timestamp,
+        updated_at -> Timestamp,
     }
 }
 
