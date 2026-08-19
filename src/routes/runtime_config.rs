@@ -54,7 +54,7 @@ pub async fn update_runtime_config(
             ))?;
 
     if !manager.verify_admin_api_key(api_key_header) {
-        return Err(error::ApiError::Unauthorized)?;
+        Err(error::ApiError::Unauthorized)?;
     }
 
     manager
