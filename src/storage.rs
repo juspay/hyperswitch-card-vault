@@ -215,13 +215,8 @@ pub struct Storage {
 
 type PgPool = bb8::Pool<async_bb8_diesel::ConnectionManager<PgConnection>>;
 
-// The `Deref` target of a checked-out `bb8::PooledConnection`, not the pooled-connection guard
-// itself — the guard borrows the pool it came from (to return the connection on drop), so naming
-// it directly would force that lifetime onto every alias user.
 type PgPooledConn = async_bb8_diesel::Connection<PgConnection>;
 
-// The pooled-connection guard itself, unlike deadpool's `Object<M>` this does borrow the pool
-// it was checked out from, hence the lifetime.
 type PgPooledConnGuard<'a> =
     bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>;
 
@@ -259,9 +254,6 @@ impl<'a> DbConnection<'a> {
         self.pool
     }
 
-    // async-bb8-diesel executes queries through `&Connection<PgConnection>` (shared
-    // reference, internally mutex-guarded and dispatched to a blocking thread), not
-    // through `&mut`, hence the explicit deref instead of a `get_mut`-style accessor.
     fn get(&self) -> &PgPooledConn {
         &self.conn
     }
@@ -417,9 +409,6 @@ impl Storage {
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
         use crate::observability::metrics::{DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE};
 
-        // bb8::State reports `connections`/`idle_connections` as `u32`, which always fits `u64`.
-        // Unlike deadpool it does not expose a count of tasks waiting for a connection, so
-        // DATABASE_POOL_WAITING is no longer populated after this migration.
         let primary = self.primary_pg_pool.state();
         let pool = DbPool::Primary;
         let attrs =

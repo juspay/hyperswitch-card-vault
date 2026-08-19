@@ -111,8 +111,7 @@ pub struct Database {
     pub port: u16,
     pub dbname: String,
     pub pool_size: Option<usize>,
-    /// Maximum lifetime of a pooled connection, in seconds, before it's closed and replaced
-    /// rather than reused. Defaults to 120s if unset.
+    /// Maximum lifetime of a pooled connection, in seconds (default: 120)
     pub max_lifetime: Option<u64>,
 }
 
