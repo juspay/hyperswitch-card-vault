@@ -1,3 +1,4 @@
+#[cfg(feature = "redis")]
 use super::RuntimeConfigError;
 
 #[derive(Debug, thiserror::Error)]
