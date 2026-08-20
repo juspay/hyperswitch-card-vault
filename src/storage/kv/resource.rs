@@ -123,7 +123,10 @@ pub(crate) trait KvResource:
 
     /// Build the INSERT statement consumed by the drainer when Redis is the
     /// write path.
-    fn generate_insert_drainer_query(
+    ///
+    /// A live pooled connection is used to resolve bind type metadata (OIDs).
+    async fn generate_insert_drainer_query(
+        store: &Storage,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
@@ -155,7 +158,10 @@ pub(crate) trait KvResource:
 pub(crate) trait KvDeletableResource: KvResource {
     /// Build the DELETE statement consumed by the drainer when Redis is the
     /// delete path.
-    fn generate_delete_drainer_query(
+    ///
+    /// A live pooled connection is used to resolve bind type metadata (OIDs).
+    async fn generate_delete_drainer_query(
+        store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
@@ -190,7 +196,10 @@ pub(crate) trait KvUpdatableResource: KvResource {
 
     /// Build the UPDATE statement consumed by the drainer when Redis is the
     /// update path.
-    fn generate_update_drainer_query(
+    ///
+    /// A live pooled connection is used to resolve bind type metadata (OIDs).
+    async fn generate_update_drainer_query(
+        store: &Storage,
         update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
@@ -871,7 +880,8 @@ where
     match decided_scheme {
         DecidedStorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
         DecidedStorageScheme::Kv(kv_backend) => {
-            let drainer_query = M::generate_insert_drainer_query(&diesel_new)
+            let drainer_query = M::generate_insert_drainer_query(store, &diesel_new)
+                .await
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let partition_key_str = partition_key.to_string();
@@ -1141,7 +1151,8 @@ where
                 Some(resource) => resource,
                 None => find_resource_by_id_inner::<M>(store, primary_key.clone()).await?,
             };
-            let update_query = M::generate_update_drainer_query(&update, &primary_key)
+            let update_query = M::generate_update_drainer_query(store, &update, &primary_key)
+                .await
                 .map_err(kv_backend_error::<M::Error>)?;
             let updated_model = M::apply_update(update, current);
             let updated_resource = updated_model.clone().into();
@@ -1187,7 +1198,8 @@ where
         DecidedStorageScheme::Kv(kv_backend) => {
             let partition_key = primary_key.get_partition_key();
             let secondary_key = primary_key.get_secondary_key();
-            let delete_query = M::generate_delete_drainer_query(&primary_key)
+            let delete_query = M::generate_delete_drainer_query(store, &primary_key)
+                .await
                 .map_err(kv_backend_error::<M::Error>)?;
 
             let partition_key_str = partition_key.to_string();

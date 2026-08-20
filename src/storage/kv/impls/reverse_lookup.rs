@@ -69,12 +69,15 @@ impl KvResource for ReverseLookup {
         new_object.updated_by = scheme.to_string();
     }
 
-    fn generate_insert_drainer_query(
+    async fn generate_insert_drainer_query(
+        store: &Storage,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError> {
         generate_insert_query::<crate::storage::schema::reverse_lookup::table, _>(
+            store,
             new_object.clone(),
         )
+        .await
     }
 
     async fn storage_insert(
@@ -120,13 +123,14 @@ impl KvResource for ReverseLookup {
 }
 
 impl KvDeletableResource for ReverseLookup {
-    fn generate_delete_drainer_query(
+    async fn generate_delete_drainer_query(
+        store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError> {
         let query = diesel::delete(crate::storage::schema::reverse_lookup::table)
             .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id.clone()));
 
-        generate_delete_query::<_, Self>(query)
+        generate_delete_query::<_, Self>(store, query).await
     }
 
     async fn storage_delete(

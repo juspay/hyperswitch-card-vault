@@ -83,10 +83,12 @@ impl KvResource for Vault {
         new_object.set_updated_by(scheme);
     }
 
-    fn generate_insert_drainer_query(
+    async fn generate_insert_drainer_query(
+        store: &Storage,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
-        generate_insert_query::<crate::storage::schema::vault::table, _>(new_object.clone())
+        generate_insert_query::<crate::storage::schema::vault::table, _>(store, new_object.clone())
+            .await
     }
 
     async fn storage_insert(
@@ -137,7 +139,8 @@ impl KvResource for Vault {
 }
 
 impl KvDeletableResource for Vault {
-    fn generate_delete_drainer_query(
+    async fn generate_delete_drainer_query(
+        store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
         let query = diesel::delete(crate::storage::schema::vault::table).filter(
@@ -146,7 +149,7 @@ impl KvDeletableResource for Vault {
                 .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.clone())),
         );
 
-        generate_delete_query::<_, Self::DieselEntity>(query)
+        generate_delete_query::<_, Self::DieselEntity>(store, query).await
     }
 
     async fn storage_delete(
@@ -183,7 +186,8 @@ impl KvUpdatableResource for Vault {
         update.updated_by = scheme;
     }
 
-    fn generate_update_drainer_query(
+    async fn generate_update_drainer_query(
+        store: &Storage,
         update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
@@ -195,7 +199,7 @@ impl KvUpdatableResource for Vault {
             )
             .set(update.clone());
 
-        generate_update_query::<_, Self::DieselEntity>(query)
+        generate_update_query::<_, Self::DieselEntity>(store, query).await
     }
 
     fn apply_update(update: Self::DieselUpdate, current: Self::DieselEntity) -> Self::DieselEntity {
