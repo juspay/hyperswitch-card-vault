@@ -5,7 +5,7 @@ use hyperswitch_masking::PeekInterface;
 use crate::{
     error::{ContainerError, VaultDBError},
     storage::{
-        DbOperation, Storage,
+        DbOperation, PgPooledConn, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -84,10 +84,10 @@ impl KvResource for Vault {
     }
 
     async fn generate_insert_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
-        generate_insert_query::<crate::storage::schema::vault::table, _>(store, new_object.clone())
+        generate_insert_query::<crate::storage::schema::vault::table, _>(conn, new_object.clone())
             .await
     }
 
@@ -140,7 +140,7 @@ impl KvResource for Vault {
 
 impl KvDeletableResource for Vault {
     async fn generate_delete_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
         let query = diesel::delete(crate::storage::schema::vault::table).filter(
@@ -149,7 +149,7 @@ impl KvDeletableResource for Vault {
                 .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.clone())),
         );
 
-        generate_delete_query::<_, Self::DieselEntity>(store, query).await
+        generate_delete_query::<_, Self::DieselEntity>(conn, query).await
     }
 
     async fn storage_delete(
@@ -187,7 +187,7 @@ impl KvUpdatableResource for Vault {
     }
 
     async fn generate_update_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
@@ -199,7 +199,7 @@ impl KvUpdatableResource for Vault {
             )
             .set(update.clone());
 
-        generate_update_query::<_, Self::DieselEntity>(store, query).await
+        generate_update_query::<_, Self::DieselEntity>(conn, query).await
     }
 
     fn apply_update(update: Self::DieselUpdate, current: Self::DieselEntity) -> Self::DieselEntity {

@@ -20,7 +20,7 @@ use crate::{
         kv::{KvError, RedisErrorExt},
     },
     observability::metrics,
-    storage::{ReverseLookupInterface, Storage, types},
+    storage::{DbConnection, PgPooledConn, ReverseLookupInterface, Storage, types},
 };
 
 /// Trait for retrieving the partition key of a KV resource.
@@ -124,9 +124,9 @@ pub(crate) trait KvResource:
     /// Build the INSERT statement consumed by the drainer when Redis is the
     /// write path.
     ///
-    /// A live pooled connection is used to resolve bind type metadata (OIDs).
+    /// The pooled connection is used to resolve bind type metadata (OIDs).
     async fn generate_insert_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
@@ -159,9 +159,9 @@ pub(crate) trait KvDeletableResource: KvResource {
     /// Build the DELETE statement consumed by the drainer when Redis is the
     /// delete path.
     ///
-    /// A live pooled connection is used to resolve bind type metadata (OIDs).
+    /// The pooled connection is used to resolve bind type metadata (OIDs).
     async fn generate_delete_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
 
@@ -197,9 +197,9 @@ pub(crate) trait KvUpdatableResource: KvResource {
     /// Build the UPDATE statement consumed by the drainer when Redis is the
     /// update path.
     ///
-    /// A live pooled connection is used to resolve bind type metadata (OIDs).
+    /// The pooled connection is used to resolve bind type metadata (OIDs).
     async fn generate_update_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError>;
@@ -377,6 +377,16 @@ where
     kv_backend_error::<E>(Report::new(KvError::DuplicateValue {
         key: key.to_string(),
     }))
+}
+
+/// Acquire a primary pool connection for drainer query generation, mapping
+/// pool-acquire failures into the KV error domain.
+async fn drainer_query_conn(store: &Storage) -> error_stack::Result<DbConnection<'_>, KvError> {
+    store.get_conn().await.map_err(|err| {
+        err.error
+            .change_context(KvError::Backend)
+            .attach_printable("failed to acquire database connection for drainer query generation")
+    })
 }
 
 fn kv_key_context(partition_key: &str, secondary_key: &str) -> String {
@@ -880,7 +890,10 @@ where
     match decided_scheme {
         DecidedStorageScheme::PostgresOnly => M::storage_insert(diesel_new, store).await,
         DecidedStorageScheme::Kv(kv_backend) => {
-            let drainer_query = M::generate_insert_drainer_query(store, &diesel_new)
+            let drainer_conn = drainer_query_conn(store)
+                .await
+                .map_err(kv_backend_error::<M::Error>)?;
+            let drainer_query = M::generate_insert_drainer_query(drainer_conn.get(), &diesel_new)
                 .await
                 .map_err(kv_backend_error::<M::Error>)?;
 
@@ -1151,9 +1164,13 @@ where
                 Some(resource) => resource,
                 None => find_resource_by_id_inner::<M>(store, primary_key.clone()).await?,
             };
-            let update_query = M::generate_update_drainer_query(store, &update, &primary_key)
+            let drainer_conn = drainer_query_conn(store)
                 .await
                 .map_err(kv_backend_error::<M::Error>)?;
+            let update_query =
+                M::generate_update_drainer_query(drainer_conn.get(), &update, &primary_key)
+                    .await
+                    .map_err(kv_backend_error::<M::Error>)?;
             let updated_model = M::apply_update(update, current);
             let updated_resource = updated_model.clone().into();
 
@@ -1198,7 +1215,10 @@ where
         DecidedStorageScheme::Kv(kv_backend) => {
             let partition_key = primary_key.get_partition_key();
             let secondary_key = primary_key.get_secondary_key();
-            let delete_query = M::generate_delete_drainer_query(store, &primary_key)
+            let drainer_conn = drainer_query_conn(store)
+                .await
+                .map_err(kv_backend_error::<M::Error>)?;
+            let delete_query = M::generate_delete_drainer_query(drainer_conn.get(), &primary_key)
                 .await
                 .map_err(kv_backend_error::<M::Error>)?;
 

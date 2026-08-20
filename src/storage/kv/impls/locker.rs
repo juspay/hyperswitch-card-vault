@@ -5,7 +5,7 @@ use hyperswitch_masking::PeekInterface;
 use crate::{
     error::{ContainerError, VaultDBError},
     storage::{
-        DbOperation, Storage,
+        DbOperation, PgPooledConn, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -155,10 +155,10 @@ impl KvResource for Locker {
     }
 
     async fn generate_insert_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
-        generate_insert_query::<crate::storage::schema::locker::table, _>(store, new_object.clone())
+        generate_insert_query::<crate::storage::schema::locker::table, _>(conn, new_object.clone())
             .await
     }
 
@@ -220,7 +220,7 @@ impl KvResource for Locker {
 
 impl KvDeletableResource for Locker {
     async fn generate_delete_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
         let query = diesel::delete(crate::storage::schema::locker::table).filter(
@@ -230,7 +230,7 @@ impl KvDeletableResource for Locker {
                 .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.clone())),
         );
 
-        generate_delete_query::<_, Self>(store, query).await
+        generate_delete_query::<_, Self>(conn, query).await
     }
 
     async fn storage_delete(

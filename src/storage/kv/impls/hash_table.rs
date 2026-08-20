@@ -5,7 +5,7 @@ use hyperswitch_masking::Secret;
 use crate::{
     error::{ContainerError, HashDBError, kv::KvError},
     storage::{
-        DbOperation, Storage,
+        DbOperation, PgPooledConn, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -67,11 +67,11 @@ impl KvResource for HashTable {
     }
 
     async fn generate_insert_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError> {
         generate_insert_query::<crate::storage::schema::hash_table::table, _>(
-            store,
+            conn,
             new_object.clone(),
         )
         .await

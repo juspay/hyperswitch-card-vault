@@ -75,7 +75,7 @@ use hyperswitch_masking::Secret;
 use tracing::debug;
 
 use super::entity::EntityType;
-use crate::{error::kv::KvError, storage::Storage};
+use crate::{error::kv::KvError, storage::PgPooledConn};
 
 type SecretBinaryData = Secret<Vec<u8>>;
 
@@ -118,8 +118,13 @@ impl SerializableQuery {
     }
 
     /// Construct a `SerializableQuery` from any diesel query fragment.
+    ///
+    /// Mirror hyperswitch's KV implementation: binds are collected against the
+    /// live pooled connection. `PgConnection` implements
+    /// `diesel::pg::PgMetadataLookup`, so the recorded bind type metadata
+    /// carries real OID information for the drainer to replay.
     async fn from_query<Q>(
-        store: &Storage,
+        conn: &PgPooledConn,
         query: Q,
         entity_type: String,
         operation: DatabaseOperation,
@@ -143,21 +148,7 @@ impl SerializableQuery {
                 "Failed to determine whether query is safe to store in prepared statement cache",
             )?;
 
-        // Mirror hyperswitch's KV implementation: collect binds against a live
-        // pooled connection. `PgConnection` implements `diesel::pg::PgMetadataLookup`,
-        // so the recorded bind type metadata carries real OID information for the
-        // drainer to replay.
-        let conn = store
-            .get_conn()
-            .await
-            .map_err(|err| err.error)
-            .change_context(KvError::Backend)
-            .attach_printable(
-                "Failed to acquire database connection for drainer query generation",
-            )?;
-
         let bind_collector = conn
-            .get()
             .run(move |c| {
                 let mut bind_collector = RawBytesBindCollector::<Pg>::new();
                 query.collect_binds(&mut bind_collector, c, &Pg)?;
@@ -203,7 +194,7 @@ impl SerializableQuery {
 }
 
 pub(crate) async fn generate_insert_query<T, N>(
-    store: &Storage,
+    conn: &PgPooledConn,
     new: N,
 ) -> error_stack::Result<SerializableQuery, KvError>
 where
@@ -214,13 +205,13 @@ where
 {
     let entity_type = N::ENTITY_TYPE.to_owned();
     let query = diesel::insert_into(<T as HasTable>::table()).values(new);
-    SerializableQuery::from_query(store, query, entity_type, DatabaseOperation::Insert)
+    SerializableQuery::from_query(conn, query, entity_type, DatabaseOperation::Insert)
         .await
         .attach_printable("Failed to generate insert query")
 }
 
 pub(crate) async fn generate_delete_query<Q, N>(
-    store: &Storage,
+    conn: &PgPooledConn,
     query: Q,
 ) -> error_stack::Result<SerializableQuery, KvError>
 where
@@ -228,13 +219,13 @@ where
     Q: QueryFragment<Pg> + Send + 'static,
 {
     let entity_type = N::ENTITY_TYPE.to_owned();
-    SerializableQuery::from_query(store, query, entity_type, DatabaseOperation::Delete)
+    SerializableQuery::from_query(conn, query, entity_type, DatabaseOperation::Delete)
         .await
         .attach_printable("Failed to generate delete query")
 }
 
 pub(crate) async fn generate_update_query<Q, N>(
-    store: &Storage,
+    conn: &PgPooledConn,
     query: Q,
 ) -> error_stack::Result<SerializableQuery, KvError>
 where
@@ -242,7 +233,7 @@ where
     Q: QueryFragment<Pg> + Send + 'static,
 {
     let entity_type = N::ENTITY_TYPE.to_owned();
-    SerializableQuery::from_query(store, query, entity_type, DatabaseOperation::Update)
+    SerializableQuery::from_query(conn, query, entity_type, DatabaseOperation::Update)
         .await
         .attach_printable("Failed to generate update query")
 }

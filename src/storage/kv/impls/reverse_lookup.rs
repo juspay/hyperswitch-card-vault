@@ -4,7 +4,7 @@ use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
 use crate::{
     error::{ContainerError, ReverseLookupDBError, kv::KvError},
     storage::{
-        self, Storage,
+        self, PgPooledConn, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -70,11 +70,11 @@ impl KvResource for ReverseLookup {
     }
 
     async fn generate_insert_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError> {
         generate_insert_query::<crate::storage::schema::reverse_lookup::table, _>(
-            store,
+            conn,
             new_object.clone(),
         )
         .await
@@ -124,13 +124,13 @@ impl KvResource for ReverseLookup {
 
 impl KvDeletableResource for ReverseLookup {
     async fn generate_delete_drainer_query(
-        store: &Storage,
+        conn: &PgPooledConn,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, KvError> {
         let query = diesel::delete(crate::storage::schema::reverse_lookup::table)
             .filter(crate::storage::schema::reverse_lookup::lookup_id.eq(pk.lookup_id.clone()));
 
-        generate_delete_query::<_, Self>(store, query).await
+        generate_delete_query::<_, Self>(conn, query).await
     }
 
     async fn storage_delete(
