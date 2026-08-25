@@ -283,16 +283,28 @@ impl Storage {
         let mut pool = bb8::Pool::builder();
 
         if let Some(value) = database_config.pool_size {
-            let max_size = u32::try_from(value)
-                .change_context(error::StorageError::DBPoolError)
-                .attach_printable("pool_size does not fit in u32")?;
-            pool = pool.max_size(max_size);
+            pool = pool.max_size(value);
         }
+
+        let min_idle = database_config
+            .min_idle
+            .unwrap_or(consts::DEFAULT_DB_POOL_MIN_IDLE);
+        pool = pool.min_idle(Some(min_idle));
 
         let max_lifetime = database_config
             .max_lifetime
             .unwrap_or(consts::DEFAULT_DB_POOL_MAX_LIFETIME_SECS);
         pool = pool.max_lifetime(Duration::from_secs(max_lifetime));
+
+        let idle_timeout = database_config
+            .idle_timeout
+            .unwrap_or(consts::DEFAULT_DB_POOL_IDLE_TIMEOUT_SECS);
+        pool = pool.idle_timeout(Duration::from_secs(idle_timeout));
+
+        let connection_timeout = database_config
+            .connection_timeout
+            .unwrap_or(consts::DEFAULT_DB_POOL_CONNECTION_TIMEOUT_SECS);
+        pool = pool.connection_timeout(Duration::from_secs(connection_timeout));
 
         pool.build(manager)
             .await

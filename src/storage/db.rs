@@ -403,11 +403,7 @@ impl super::TestInterface for Storage {
     async fn test(&self) -> Result<(), ContainerError<Self::Error>> {
         let conn = self.get_conn().await?;
 
-        // diesel_async's `test_transaction` (always-rollback) has no equivalent on
-        // `async_bb8_diesel::AsyncConnection` — its `TestTransaction` customizer instead
-        // pins a whole pool into test-isolation mode at build time, which doesn't fit a
-        // runtime health probe. A plain transaction is behaviorally equivalent here since
-        // the row inserted below is deleted again before commit.
+        // Health probe: insert then delete within one transaction so nothing persists.
         conn.get()
             .transaction_async(|conn| async move {
                 let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
