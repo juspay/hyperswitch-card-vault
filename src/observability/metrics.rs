@@ -257,7 +257,6 @@ gauge_metric!(
     name: "database.pool.available",
     description: "Number of available connections in the database pool",
 );
-// Never recorded: bb8 doesn't expose a waiting-callers count like deadpool did.
 gauge_metric!(
     pub(crate) DATABASE_POOL_WAITING, CARD_VAULT_METER,
     name: "database.pool.waiting",

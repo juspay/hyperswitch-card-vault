@@ -419,7 +419,9 @@ impl Storage {
     }
 
     pub fn collect_db_pool_state(&self, tenant_id: &str) {
-        use crate::observability::metrics::{DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE};
+        use crate::observability::metrics::{
+            DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE, DATABASE_POOL_WAITING,
+        };
 
         let primary = self.primary_pg_pool.state();
         let pool = DbPool::Primary;
@@ -428,6 +430,7 @@ impl Storage {
 
         DATABASE_POOL_SIZE.record(u64::from(primary.connections), attrs);
         DATABASE_POOL_AVAILABLE.record(u64::from(primary.idle_connections), attrs);
+        DATABASE_POOL_WAITING.record(primary.statistics.pending_gets(), attrs);
 
         if let Some(replica) = &self.replica_pg_pool {
             let replica = replica.state();
@@ -439,6 +442,7 @@ impl Storage {
 
             DATABASE_POOL_SIZE.record(u64::from(replica.connections), attrs);
             DATABASE_POOL_AVAILABLE.record(u64::from(replica.idle_connections), attrs);
+            DATABASE_POOL_WAITING.record(replica.statistics.pending_gets(), attrs);
         }
     }
 }
