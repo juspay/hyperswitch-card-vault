@@ -1,5 +1,5 @@
+use async_bb8_diesel::AsyncRunQueryDsl;
 use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::RunQueryDsl;
 use hyperswitch_masking::Secret;
 
 use crate::{
@@ -76,7 +76,7 @@ impl KvResource for HashTable {
         new_object: Self::DieselNew,
         store: &Storage,
     ) -> Result<Self, ContainerError<HashDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
 
         let query = diesel::insert_into(Self::table()).values(new_object);
 
@@ -85,7 +85,7 @@ impl KvResource for HashTable {
         crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
         let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
-            query.get_result(conn.get_mut()),
+            query.get_result_async(conn.get()),
             operation,
             pool,
         )
@@ -97,17 +97,17 @@ impl KvResource for HashTable {
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<HashDBError>> {
-        let mut conn = store.route_conn().await?;
+        let conn = store.route_conn().await?;
 
-        let query =
-            Self::table().filter(crate::storage::schema::hash_table::data_hash.eq(&pk.data_hash));
+        let query = Self::table()
+            .filter(crate::storage::schema::hash_table::data_hash.eq(pk.data_hash.clone()));
 
         let pool = conn.pool();
         let operation = DbOperation::FindOne;
         crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
         let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
-            query.get_result(conn.get_mut()),
+            query.get_result_async(conn.get()),
             operation,
             pool,
         )

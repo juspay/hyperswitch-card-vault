@@ -54,7 +54,7 @@ mod pg_type_metadata {
         let pairs: Vec<(u32, u32)> = Vec::deserialize(d)?;
         Ok(pairs
             .into_iter()
-            .map(|(oid, array_oid)| PgTypeMetadata::from_result(Ok((oid, array_oid))))
+            .map(|(oid, array_oid)| PgTypeMetadata::new(oid, array_oid))
             .collect())
     }
 }
@@ -91,7 +91,7 @@ impl diesel::pg::PgMetadataLookup for KvPgMetadataLookup {
         _type_name: &str,
         _schema: Option<&str>,
     ) -> diesel::pg::PgTypeMetadata {
-        diesel::pg::PgTypeMetadata::from_result(Ok((FAKE_OID, FAKE_OID)))
+        diesel::pg::PgTypeMetadata::new(FAKE_OID, FAKE_OID)
     }
 }
 

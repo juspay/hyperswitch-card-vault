@@ -19,15 +19,10 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    time::Duration,
 };
 
-use diesel_async::{
-    AsyncPgConnection,
-    pooled_connection::{
-        self,
-        deadpool::{Object, Pool},
-    },
-};
+use diesel::PgConnection;
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
 #[cfg(feature = "kv")]
@@ -208,8 +203,8 @@ impl GlobalStore {
 /// Storage State that is to be passed though the application
 #[derive(Clone)]
 pub struct Storage {
-    primary_pg_pool: Arc<Pool<AsyncPgConnection>>,
-    replica_pg_pool: Option<Arc<Pool<AsyncPgConnection>>>,
+    primary_pg_pool: Arc<PgPool>,
+    replica_pg_pool: Option<Arc<PgPool>>,
     runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
     global_store: Arc<GlobalStore>,
     #[cfg(feature = "redis")]
@@ -218,7 +213,12 @@ pub struct Storage {
     kv_backend: Option<kv::KvBackend>,
 }
 
-type DeadPoolConnType = Object<AsyncPgConnection>;
+type PgPool = bb8::Pool<async_bb8_diesel::ConnectionManager<PgConnection>>;
+
+type PgPooledConn = async_bb8_diesel::Connection<PgConnection>;
+
+type PgPooledConnGuard<'a> =
+    bb8::PooledConnection<'a, async_bb8_diesel::ConnectionManager<PgConnection>>;
 
 #[derive(Debug, Clone, Copy, strum::IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
@@ -240,13 +240,13 @@ enum DbOperation {
 
 crate::impl_metric_value_from!(DbPool, DbOperation);
 
-pub struct DbConnection {
-    conn: DeadPoolConnType,
+pub struct DbConnection<'a> {
+    conn: PgPooledConnGuard<'a>,
     pool: DbPool,
 }
 
-impl DbConnection {
-    fn new(conn: DeadPoolConnType, pool: DbPool) -> Self {
+impl<'a> DbConnection<'a> {
+    fn new(conn: PgPooledConnGuard<'a>, pool: DbPool) -> Self {
         Self { conn, pool }
     }
 
@@ -254,8 +254,8 @@ impl DbConnection {
         self.pool
     }
 
-    fn get_mut(&mut self) -> &mut DeadPoolConnType {
-        &mut self.conn
+    fn get(&self) -> &PgPooledConn {
+        &self.conn
     }
 }
 
@@ -264,10 +264,10 @@ impl Storage {
     pub fn get_redis_store(&self) -> Option<redis_store::TenantAwareRedisStore> {
         self.redis.clone()
     }
-    fn create_database_connection_pool(
+    async fn create_database_connection_pool(
         database_config: &Database,
         schema: &str,
-    ) -> error_stack::Result<Pool<AsyncPgConnection>, error::StorageError> {
+    ) -> error_stack::Result<PgPool, error::StorageError> {
         let database_url = format!(
             "postgres://{}:{}@{}:{}/{}?application_name={}&options=-c search_path%3D{}",
             database_config.username,
@@ -279,16 +279,35 @@ impl Storage {
             schema
         );
 
-        let config =
-            pooled_connection::AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
-        let pool = Pool::builder(config);
+        let manager = async_bb8_diesel::ConnectionManager::<PgConnection>::new(database_url);
+        let mut pool = bb8::Pool::builder();
 
-        let pool = match database_config.pool_size {
-            Some(value) => pool.max_size(value),
-            None => pool,
-        };
+        if let Some(value) = database_config.pool_size {
+            pool = pool.max_size(value);
+        }
 
-        pool.build()
+        let min_idle = database_config
+            .min_idle
+            .unwrap_or(consts::DEFAULT_DB_POOL_MIN_IDLE);
+        pool = pool.min_idle(Some(min_idle));
+
+        let max_lifetime = database_config
+            .max_lifetime
+            .unwrap_or(consts::DEFAULT_DB_POOL_MAX_LIFETIME_SECS);
+        pool = pool.max_lifetime(Duration::from_secs(max_lifetime));
+
+        let idle_timeout = database_config
+            .idle_timeout
+            .unwrap_or(consts::DEFAULT_DB_POOL_IDLE_TIMEOUT_SECS);
+        pool = pool.idle_timeout(Duration::from_secs(idle_timeout));
+
+        let connection_timeout = database_config
+            .connection_timeout
+            .unwrap_or(consts::DEFAULT_DB_POOL_CONNECTION_TIMEOUT_SECS);
+        pool = pool.connection_timeout(Duration::from_secs(connection_timeout));
+
+        pool.build(manager)
+            .await
             .change_context(error::StorageError::DBPoolError)
     }
 
@@ -301,15 +320,13 @@ impl Storage {
         global_store: Arc<GlobalStore>,
         #[cfg(feature = "redis")] redis: Option<redis_store::TenantAwareRedisStore>,
     ) -> error_stack::Result<Self, error::StorageError> {
-        let pg_pool = Arc::new(Self::create_database_connection_pool(
-            primary_config,
-            schema,
-        )?);
+        let pg_pool =
+            Arc::new(Self::create_database_connection_pool(primary_config, schema).await?);
 
         let replica_pool = match replica_config {
-            Some(config) => Some(Arc::new(Self::create_database_connection_pool(
-                config, schema,
-            )?)),
+            Some(config) => Some(Arc::new(
+                Self::create_database_connection_pool(config, schema).await?,
+            )),
             None => None,
         };
 
@@ -326,7 +343,7 @@ impl Storage {
     }
 
     /// Get connection from database pool for accessing data
-    pub async fn get_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
+    pub async fn get_conn(&self) -> Result<DbConnection<'_>, ContainerError<error::StorageError>> {
         let pool = DbPool::Primary;
         let conn = record_db_connection_acquire_duration(self.primary_pg_pool.get(), pool)
             .await
@@ -339,7 +356,7 @@ impl Storage {
     /// Returns `ReplicaPoolNotConfigured` error if no replica pool was initialized.
     pub async fn get_replica_conn(
         &self,
-    ) -> Result<DbConnection, ContainerError<error::StorageError>> {
+    ) -> Result<DbConnection<'_>, ContainerError<error::StorageError>> {
         match self.replica_pg_pool.as_ref() {
             Some(pg_pool) => {
                 let pool = DbPool::Replica;
@@ -378,7 +395,9 @@ impl Storage {
 
     /// Returns a connection from the replica pool when the runtime config enables it,
     /// otherwise returns a primary pool connection.
-    pub async fn route_conn(&self) -> Result<DbConnection, ContainerError<error::StorageError>> {
+    pub async fn route_conn(
+        &self,
+    ) -> Result<DbConnection<'_>, ContainerError<error::StorageError>> {
         if self.should_use_replica() {
             crate::logger::debug!("Routing to read replica");
             self.get_replica_conn().await
@@ -404,54 +423,26 @@ impl Storage {
             DATABASE_POOL_AVAILABLE, DATABASE_POOL_SIZE, DATABASE_POOL_WAITING,
         };
 
-        fn to_u64(value: usize, field: &'static str, pool: DbPool, tenant_id: &str) -> Option<u64> {
-            match u64::try_from(value) {
-                Ok(v) => Some(v),
-                Err(_) => {
-                    tracing::warn!(
-                        field,
-                        pool = %<&'static str>::from(pool),
-                        tenant_id,
-                        value,
-                        "Database pool metric value overflows u64, skipping"
-                    );
-                    None
-                }
-            }
-        }
-
-        let primary = self.primary_pg_pool.status();
+        let primary = self.primary_pg_pool.state();
         let pool = DbPool::Primary;
         let attrs =
             metrics_utils::metric_attributes!(("pool", pool), ("tenant_id", tenant_id.to_owned()));
 
-        if let Some(size) = to_u64(primary.size, "size", pool, tenant_id) {
-            DATABASE_POOL_SIZE.record(size, attrs);
-        }
-        if let Some(available) = to_u64(primary.available, "available", pool, tenant_id) {
-            DATABASE_POOL_AVAILABLE.record(available, attrs);
-        }
-        if let Some(waiting) = to_u64(primary.waiting, "waiting", pool, tenant_id) {
-            DATABASE_POOL_WAITING.record(waiting, attrs);
-        }
+        DATABASE_POOL_SIZE.record(u64::from(primary.connections), attrs);
+        DATABASE_POOL_AVAILABLE.record(u64::from(primary.idle_connections), attrs);
+        DATABASE_POOL_WAITING.record(primary.statistics.pending_gets(), attrs);
 
         if let Some(replica) = &self.replica_pg_pool {
-            let replica = replica.status();
+            let replica = replica.state();
             let pool = DbPool::Replica;
             let attrs = metrics_utils::metric_attributes!(
                 ("pool", pool),
                 ("tenant_id", tenant_id.to_owned())
             );
 
-            if let Some(size) = to_u64(replica.size, "size", pool, tenant_id) {
-                DATABASE_POOL_SIZE.record(size, attrs);
-            }
-            if let Some(available) = to_u64(replica.available, "available", pool, tenant_id) {
-                DATABASE_POOL_AVAILABLE.record(available, attrs);
-            }
-            if let Some(waiting) = to_u64(replica.waiting, "waiting", pool, tenant_id) {
-                DATABASE_POOL_WAITING.record(waiting, attrs);
-            }
+            DATABASE_POOL_SIZE.record(u64::from(replica.connections), attrs);
+            DATABASE_POOL_AVAILABLE.record(u64::from(replica.idle_connections), attrs);
+            DATABASE_POOL_WAITING.record(replica.statistics.pending_gets(), attrs);
         }
     }
 }

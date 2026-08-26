@@ -1,3 +1,5 @@
+use crate::logger;
+
 #[derive(Debug, thiserror::Error)]
 pub enum MerchantDBError {
     #[error("Error while encrypting DEK before adding to DB")]
@@ -68,6 +70,16 @@ pub enum TestDBError {
     UnknownError,
     #[error("Read replica pool is not configured")]
     DBReplicaNotConfigured,
+}
+
+impl From<diesel::result::Error> for TestDBError {
+    fn from(err: diesel::result::Error) -> Self {
+        logger::error!(transaction_err=?err, "Error during test-transaction management (begin/commit/rollback)");
+        match err {
+            diesel::result::Error::DatabaseError(_, _) => Self::DBError,
+            _ => Self::UnknownError,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

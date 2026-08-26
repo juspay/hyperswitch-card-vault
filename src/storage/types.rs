@@ -39,8 +39,8 @@ impl Merchant {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = schema::merchant)]
-pub(crate) struct MerchantNewInner<'a> {
-    pub(super) merchant_id: &'a str,
+pub(crate) struct MerchantNewInner {
+    pub(super) merchant_id: String,
     enc_key: Encrypted,
 }
 
@@ -480,7 +480,7 @@ impl StorageDecryption for MerchantInner {
 }
 
 impl<'a> StorageEncryption for MerchantNew<'a> {
-    type Output = MerchantNewInner<'a>;
+    type Output = MerchantNewInner;
 
     type Algorithm = GcmAes256;
 
@@ -489,7 +489,7 @@ impl<'a> StorageEncryption for MerchantNew<'a> {
         algo: &Self::Algorithm,
     ) -> <Self::Algorithm as Encryption<Vec<u8>, Vec<u8>>>::ReturnType<'_, Self::Output> {
         Ok(Self::Output {
-            merchant_id: self.merchant_id,
+            merchant_id: self.merchant_id.to_string(),
             enc_key: algo.encrypt(self.enc_key.expose())?.into(),
         })
     }

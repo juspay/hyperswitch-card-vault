@@ -110,7 +110,15 @@ pub struct Database {
     pub host: String,
     pub port: u16,
     pub dbname: String,
-    pub pool_size: Option<usize>,
+    pub pool_size: Option<u32>,
+    /// Maximum lifetime of a pooled connection, in seconds (default: 120)
+    pub max_lifetime: Option<u64>,
+    /// Minimum number of idle connections maintained in the pool (default: 2)
+    pub min_idle: Option<u32>,
+    /// Idle timeout for a pooled connection, in seconds (default: 300)
+    pub idle_timeout: Option<u64>,
+    /// Timeout for acquiring a connection from the pool, in seconds (default: 10)
+    pub connection_timeout: Option<u64>,
 }
 
 #[cfg(feature = "caching")]
