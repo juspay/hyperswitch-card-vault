@@ -4,13 +4,9 @@ use axum::{
     middleware::Next,
 };
 use http_body_util::BodyExt;
-use josekit::jwe;
 
 use crate::{
-    crypto::encryption_manager::{
-        encryption_interface::Encryption,
-        managers::jw::{self, JWEncryption},
-    },
+    crypto::encryption_manager::{encryption_interface::Encryption, managers::jw},
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
 };
@@ -44,12 +40,7 @@ pub async fn middleware(
     axum::Json(jwe_body): axum::Json<jw::JweBody>,
     next: Next,
 ) -> Result<(response::Parts, axum::Json<jw::JweBody>), ContainerError<error::ApiError>> {
-    let keys = JWEncryption {
-        private_key: state.config.locker_secrets.locker_private_key.clone(),
-        public_key: state.config.tenant_secrets.public_key.clone(),
-        encryption_algo: jwe::RSA_OAEP,
-        decryption_algo: jwe::RSA_OAEP_256,
-    };
+    let keys = &state.jwe_keys;
 
     let jwe_decrypted =
         record_jwe_middleware_operation(async { keys.decrypt(jwe_body) }, "request_decrypt")

@@ -1,4 +1,3 @@
-use hyperswitch_masking::PeekInterface;
 use josekit::{jwe, jws};
 
 use crate::{
@@ -6,11 +5,18 @@ use crate::{
     error::{self, ContainerError},
 };
 
+/// Holds the RSA key material for the JWE/JWS envelope in its *parsed* form.
+///
+/// Deriving a signer/verifier/encrypter/decrypter from PEM costs a base64 decode, an
+/// ASN.1 parse and an RSA key setup each. Doing that per request dominated the envelope
+/// cost, so the four are derived once at construction and reused. This holds no key
+/// material the process was not already holding: the PEM itself lives for the same
+/// lifetime, and caching the parsed form means fewer copies on the heap, not more.
 pub struct JWEncryption {
-    pub(crate) private_key: hyperswitch_masking::Secret<String>,
-    pub(crate) public_key: hyperswitch_masking::Secret<String>,
-    pub(crate) encryption_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
-    pub(crate) decryption_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
+    signer: jws::alg::rsassa::RsassaJwsSigner,
+    verifier: jws::alg::rsassa::RsassaJwsVerifier,
+    encrypter: jwe::alg::rsaes::RsaesJweEncrypter,
+    decrypter: jwe::alg::rsaes::RsaesJweDecrypter,
 }
 
 impl JWEncryption {
@@ -19,13 +25,13 @@ impl JWEncryption {
         public_key: String,
         enc_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
         dec_algo: jwe::alg::rsaes::RsaesJweAlgorithm,
-    ) -> Self {
-        Self {
-            private_key: private_key.into(),
-            public_key: public_key.into(),
-            encryption_algo: enc_algo,
-            decryption_algo: dec_algo,
-        }
+    ) -> Result<Self, error::CryptoError> {
+        Ok(Self {
+            signer: jws::RS256.signer_from_pem(private_key.as_bytes())?,
+            verifier: jws::RS256.verifier_from_pem(public_key.as_bytes())?,
+            encrypter: enc_algo.encrypter_from_pem(public_key.as_bytes())?,
+            decrypter: dec_algo.decrypter_from_pem(private_key.as_bytes())?,
+        })
     }
 }
 
@@ -99,16 +105,12 @@ impl Encryption<Vec<u8>, JweBody> for JWEncryption {
 
     fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, JweBody> {
         let payload = input;
-        let jws_encoded = jws_sign_payload(&payload, self.private_key.peek().as_bytes())?;
+        let jws_encoded = jws_sign_payload(&payload, &self.signer)?;
         let jws_body = JwsBody::from_dotted_str(&jws_encoded).ok_or(
             error::CryptoError::InvalidData("JWS encoded data is incomplete"),
         )?;
         let jws_payload = serde_json::to_vec(&jws_body).map_err(error::CryptoError::from)?;
-        let jwe_encrypted = encrypt_jwe(
-            &jws_payload,
-            self.public_key.peek().as_bytes(),
-            self.encryption_algo,
-        )?;
+        let jwe_encrypted = encrypt_jwe(&jws_payload, &self.encrypter)?;
         let jwe_body = JweBody::from_str(&jwe_encrypted)
             .ok_or(error::CryptoError::InvalidData("JWE data incomplete"))?;
         Ok(jwe_body)
@@ -116,59 +118,52 @@ impl Encryption<Vec<u8>, JweBody> for JWEncryption {
 
     fn decrypt(&self, input: JweBody) -> Self::ReturnType<'_, Vec<u8>> {
         let jwe_encoded = input.get_dotted_jwe();
-        let jwe_decrypted =
-            decrypt_jwe(&jwe_encoded, self.private_key.peek(), self.decryption_algo)?;
+        let jwe_decrypted = decrypt_jwe(&jwe_encoded, &self.decrypter)?;
 
         let jws_parsed: JwsBody = serde_json::from_str(&jwe_decrypted)
             .map_err(|_| error::CryptoError::InvalidData("Failed while extracting jws body"))?;
 
         let jws_encoded = jws_parsed.get_dotted_jws();
-        let output = verify_sign(jws_encoded, self.public_key.peek().as_bytes())?;
+        let output = verify_sign(jws_encoded, &self.verifier)?;
         Ok(output.as_bytes().to_vec())
     }
 }
 
 pub fn jws_sign_payload(
     payload: &[u8],
-    private_key: impl AsRef<[u8]>,
+    signer: &jws::alg::rsassa::RsassaJwsSigner,
 ) -> Result<String, error::CryptoError> {
-    let alg = jws::RS256;
     let src_header = jws::JwsHeader::new();
-    let signer = alg.signer_from_pem(private_key)?;
-    Ok(jws::serialize_compact(payload, &src_header, &signer)?)
+    Ok(jws::serialize_compact(payload, &src_header, signer)?)
 }
 
 pub fn encrypt_jwe(
     payload: &[u8],
-    public_key: impl AsRef<[u8]>,
-    alg: jwe::alg::rsaes::RsaesJweAlgorithm,
+    encrypter: &jwe::alg::rsaes::RsaesJweEncrypter,
 ) -> Result<String, error::CryptoError> {
     let enc = "A256GCM";
     let mut src_header = jwe::JweHeader::new();
     src_header.set_content_encryption(enc);
     src_header.set_token_type("JWT");
-    let encrypter = alg.encrypter_from_pem(public_key)?;
 
-    Ok(jwe::serialize_compact(payload, &src_header, &encrypter)?)
+    Ok(jwe::serialize_compact(payload, &src_header, encrypter)?)
 }
 
 pub fn decrypt_jwe(
     jwt: &str,
-    private_key: impl AsRef<[u8]>,
-    alg: jwe::alg::rsaes::RsaesJweAlgorithm,
+    decrypter: &jwe::alg::rsaes::RsaesJweDecrypter,
 ) -> Result<String, error::CryptoError> {
-    let decrypter = alg.decrypter_from_pem(private_key)?;
-
-    let (dst_payload, _dst_header) = jwe::deserialize_compact(jwt, &decrypter)?;
+    let (dst_payload, _dst_header) = jwe::deserialize_compact(jwt, decrypter)?;
 
     Ok(String::from_utf8(dst_payload)?)
 }
 
-pub fn verify_sign(jws_body: String, key: impl AsRef<[u8]>) -> Result<String, error::CryptoError> {
-    let alg = jws::RS256;
+pub fn verify_sign(
+    jws_body: String,
+    verifier: &jws::alg::rsassa::RsassaJwsVerifier,
+) -> Result<String, error::CryptoError> {
     let input = jws_body.as_bytes();
-    let verifier = alg.verifier_from_pem(key)?;
-    let (dst_payload, _dst_header) = jws::deserialize_compact(input, &verifier)?;
+    let (dst_payload, _dst_header) = jws::deserialize_compact(input, verifier)?;
     let resp = String::from_utf8(dst_payload)?;
     Ok(resp)
 }
