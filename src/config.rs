@@ -525,4 +525,38 @@ mod tests {
             _ => assert!(false),
         }
     }
+
+    #[cfg(feature = "kms-gcp")]
+    #[test]
+    fn test_gcp_kms_case() {
+        let data = r#"
+        [secrets_management]
+        secrets_manager = "gcp_kms"
+
+        [secrets_management.gcp_kms]
+        project_id = "my-project"
+        location_id = "global"
+        key_ring_id = "my-key-ring"
+        key_id = "my-key"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.secrets_management {
+            SecretsManagementConfig::GcpKms { gcp_kms } => {
+                assert!(
+                    gcp_kms.project_id == "my-project"
+                        && gcp_kms.location_id == "global"
+                        && gcp_kms.key_ring_id == "my-key-ring"
+                        && gcp_kms.key_id == "my-key"
+                )
+            }
+            _ => assert!(false),
+        }
+    }
 }

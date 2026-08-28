@@ -3,6 +3,12 @@ use tartarus::{logger, tenant::GlobalAppState};
 #[allow(clippy::expect_used)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Avoids a rustls "no process-level CryptoProvider" panic on first TLS use.
+    #[cfg(feature = "kms-gcp")]
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     let mut global_config =
         tartarus::config::GlobalConfig::new().expect("Failed while parsing config");
 

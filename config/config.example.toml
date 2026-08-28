@@ -38,14 +38,16 @@ hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d
 # - secrets.tenant_public_key
 # - secrets.locker_private_key
 #
-# Following possible encryption schemes are used, of of them are mutually exclusive, the sections are:
+# Following possible encryption schemes are used, only one of them can be active at a time, the sections are:
 # - aws_kms (AWS KMS Symmetric Encryption)
 # - hashi_corp_vault (HashiCorp Vault Secrets Engine KV version 2)
+# - gcp_kms (GCP Cloud KMS Symmetric Encryption)
 
 # Aws kms as secrets manager
 # [secrets_management]
 # secrets_manager = "aws_kms" # Secrets manager client to be used
 
+# Required only if `secrets_manager` above is set to "aws_kms"
 # [secrets_management.aws_kms]
 # key_id = "kms_key_id" # The AWS key ID used by the KMS SDK for decrypting data.
 # region = "kms_region" # The AWS region used by the KMS SDK for decrypting data.
@@ -54,9 +56,21 @@ hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d
 # [secrets_management]
 # secrets_manager = "hashi_corp_vault" # Secrets manager client to be used
 
-# [secrets_management.aws_kms]
+# Required only if `secrets_manager` above is set to "hashi_corp_vault"
+# [secrets_management.hashi_corp_vault]
 # url = "http://127.0.0.1:8200" # The URL of the hosted HashiCorp vault
 # token = "hvs.abc" # The secret token to access and communicate with the vault
+
+# GCP KMS as secrets manager
+# [secrets_management]
+# secrets_manager = "gcp_kms" # Secrets manager client to be used
+
+# Required only if `secrets_manager` above is set to "gcp_kms"
+# [secrets_management.gcp_kms]
+# project_id = "gcp_project_id"       # The GCP project ID that owns the KMS key ring.
+# location_id = "gcp_kms_location_id" # The location ID of the KMS key ring, e.g. "global", "us-east1".
+# key_ring_id = "gcp_kms_key_ring_id" # The ID of the KMS key ring.
+# key_id = "gcp_kms_key_id"           # The ID of the KMS key used to decrypt data.
 
 # TLS server within axum
 [tls]
