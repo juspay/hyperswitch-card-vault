@@ -1,4 +1,4 @@
-use masking::{PeekInterface, Secret};
+use hyperswitch_masking::{PeekInterface, Secret};
 use ring::hmac;
 
 use crate::{crypto::hash_manager::hash_interface::Encode, error};
@@ -23,8 +23,8 @@ impl Encode<Vec<u8>, Vec<u8>> for Sha512 {
 /// # Example
 ///
 ///```
-/// use tartarus::crypto::hash_manager::managers::sha::HmacSha512;
-/// use tartarus::crypto::hash_manager::hash_interface::Encode;
+/// use hyperswitch_card_vault::crypto::hash_manager::managers::sha::HmacSha512;
+/// use hyperswitch_card_vault::crypto::hash_manager::hash_interface::Encode;
 ///
 /// let data = "Hello, World!";
 /// let key = "key";
@@ -37,8 +37,8 @@ impl Encode<Vec<u8>, Vec<u8>> for Sha512 {
 ///
 /// ```compile_fail
 ///
-/// use tartarus::crypto::hash_manager::managers::sha::HmacSha512;
-/// use tartarus::crypto::hash_manager::hash_interface::Encode;
+/// use hyperswitch_card_vault::crypto::hash_manager::managers::sha::HmacSha512;
+/// use hyperswitch_card_vault::crypto::hash_manager::hash_interface::Encode;
 ///
 /// let key = "key";
 /// let algo = HmacSha512::<0>::new(key.as_bytes().to_vec().into());
@@ -47,10 +47,10 @@ impl Encode<Vec<u8>, Vec<u8>> for Sha512 {
 /// ```
 ///
 ///
-pub struct HmacSha512<const N: usize = 1>(masking::Secret<Vec<u8>>);
+pub struct HmacSha512<const N: usize = 1>(hyperswitch_masking::Secret<Vec<u8>>);
 
 impl<const N: usize> HmacSha512<N> {
-    pub fn new(key: masking::Secret<Vec<u8>>) -> Self {
+    pub fn new(key: hyperswitch_masking::Secret<Vec<u8>>) -> Self {
         #[allow(clippy::let_unit_value)]
         let _ = <Self as AssertGt0>::VALID;
 

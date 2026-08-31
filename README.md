@@ -1,19 +1,19 @@
-# Tartarus - Rust Locker
+# Hyperswitch Card Vault - Rust Locker
 
 
 ## Overview
 
-The Hyperswitch Card Vault (Tartarus) is a highly performant and a secure vault to save sensitive data such as payment card details, bank account details etc.
+The Hyperswitch Card Vault is a highly performant and a secure vault to save sensitive data such as payment card details, bank account details etc.
 
 It is designed in an polymorphic manner to handle and store any type of sensitive information making it highly scalable with extensive coverage of payment methods and processors.
 
-Tartarus is built with a GDPR compliant personal identifiable information (PII) storage and secure encryption algorithms to be fully compliant with PCI DSS requirements.
+Hyperswitch Card Vault is built with a GDPR compliant personal identifiable information (PII) storage and secure encryption algorithms to be fully compliant with PCI DSS requirements.
 
-Here's a quick guide to [Get Started](./docs/guides/setup.md) with setting up Tartarus.
+Here's a quick guide to [Get Started](./docs/guides/setup.md) with setting up Hyperswitch Card Vault.
 
-### How does Tartarus work?
+### How does Hyperswitch Card Vault work?
 
-- Your application will communicate with Tartarus via a middleware.
+- Your application will communicate with Hyperswitch Card Vault via a middleware.
 - All requests and responses to and from the middleware are signed and encrypted with the JWS and JWE algorithms.
 - The locker supports CRD APIs on the /data and /cards endpoints - <API Reference to be linked>
 - Cards are stored against the combination of merchant and customer identifiers.
@@ -30,4 +30,4 @@ Here's a quick guide to [Get Started](./docs/guides/setup.md) with setting up Ta
 
 ### Setup Guide
 
-Follow this guide to setup Tartarus - [Get Started](./docs/guides/setup.md)
+Follow this guide to setup Hyperswitch Card Vault - [Get Started](./docs/guides/setup.md)

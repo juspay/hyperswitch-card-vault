@@ -1,6 +1,6 @@
 use axum::Json;
 use base64::Engine;
-use masking::ExposeInterface;
+use hyperswitch_masking::ExposeInterface;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -17,9 +17,9 @@ use crate::{
     error::{self, ContainerError, ResultContainerExt},
     logger,
     storage::{
-        consts,
+        EntityInterface, MerchantInterface, consts,
         types::{Entity, Merchant},
-        utils, EntityInterface, MerchantInterface,
+        utils,
     },
 };
 
@@ -33,12 +33,19 @@ pub struct TransferKeyResponse {
     pub total_transferred: usize,
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn transfer_keys(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<MerchantKeyTransferRequest>,
 ) -> Result<Json<TransferKeyResponse>, ContainerError<error::ApiError>> {
-    let master_encryption =
-        GcmAes256::new(tenant_app_state.config.tenant_secrets.master_key.clone());
+    let master_encryption = GcmAes256::new(
+        tenant_app_state
+            .config
+            .tenant_secrets
+            .master_key
+            .clone()
+            .expose(),
+    );
     let merchant_keys = tenant_app_state
         .db
         .find_all_keys_excluding_entity_keys(&master_encryption, request.limit)

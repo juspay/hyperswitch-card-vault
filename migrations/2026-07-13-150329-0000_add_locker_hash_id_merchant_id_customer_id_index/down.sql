@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS locker_hash_id_merchant_id_customer_id_idx;

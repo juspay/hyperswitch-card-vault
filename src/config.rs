@@ -1,3 +1,14 @@
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
+
+use error_stack::ResultExt;
+use hyperswitch_masking::{ExposeInterface, PeekInterface, Secret};
+#[cfg(feature = "redis")]
+use hyperswitch_redis_interface::RedisSettings;
+
 use crate::{
     api_client::ApiClientConfig,
     crypto::secrets_manager::{
@@ -5,25 +16,20 @@ use crate::{
     },
     error,
     logger::config::Log,
-};
-use error_stack::ResultExt;
-use masking::ExposeInterface;
-#[cfg(feature = "external_key_manager")]
-use masking::Secret;
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    path::PathBuf,
+    observability::MetricsConfig,
 };
 
 #[derive(Clone, serde::Deserialize, Debug)]
 pub struct GlobalConfig {
     pub server: Server,
     pub database: Database,
+    pub read_replica: Option<Database>,
     pub secrets: Secrets,
-    #[serde[default]]
+    #[serde(default)]
     pub secrets_management: SecretsManagementConfig,
     pub log: Log,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
     #[cfg(feature = "limit")]
     pub limit: Limit,
     #[cfg(feature = "caching")]
@@ -34,6 +40,13 @@ pub struct GlobalConfig {
     pub api_client: ApiClientConfig,
     #[serde(default)]
     pub external_key_manager: ExternalKeyManagerConfig,
+    #[cfg(feature = "redis")]
+    pub redis: Option<RedisSettings>,
+    #[serde(default)]
+    pub runtime_config: RuntimeConfig,
+    #[cfg(feature = "kv")]
+    #[serde(default)]
+    pub kv: KvConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +55,9 @@ pub struct TenantConfig {
     pub locker_secrets: Secrets,
     pub tenant_secrets: TenantSecrets,
     pub external_key_manager: ExternalKeyManagerConfig,
+    /// Redis key namespace for this tenant.
+    #[cfg(feature = "redis")]
+    pub redis_key_prefix: String,
 }
 
 impl TenantConfig {
@@ -51,16 +67,23 @@ impl TenantConfig {
     /// Never, as tenant_id would already be validated from [`crate::custom_extractors::TenantId`] custom extractor
     ///
     pub fn from_global_config(global_config: &GlobalConfig, tenant_id: String) -> Self {
+        #[allow(clippy::unwrap_used)]
+        let tenant_secrets = global_config
+            .tenant_secrets
+            .get(&tenant_id)
+            .cloned()
+            .unwrap();
+
+        #[cfg(feature = "redis")]
+        let redis_key_prefix = tenant_secrets.redis_key_prefix.clone();
+
         Self {
-            tenant_id: tenant_id.clone(),
+            tenant_id,
             locker_secrets: global_config.secrets.clone(),
-            #[allow(clippy::unwrap_used)]
-            tenant_secrets: global_config
-                .tenant_secrets
-                .get(&tenant_id)
-                .cloned()
-                .unwrap(),
+            tenant_secrets,
             external_key_manager: global_config.external_key_manager.clone(),
+            #[cfg(feature = "redis")]
+            redis_key_prefix,
         }
     }
 }
@@ -83,11 +106,19 @@ pub struct Server {
 pub struct Database {
     pub username: String,
     // KMS encrypted
-    pub password: masking::Secret<String>,
+    pub password: hyperswitch_masking::Secret<String>,
     pub host: String,
     pub port: u16,
     pub dbname: String,
-    pub pool_size: Option<usize>,
+    pub pool_size: Option<u32>,
+    /// Maximum lifetime of a pooled connection, in seconds (default: 120)
+    pub max_lifetime: Option<u64>,
+    /// Minimum number of idle connections maintained in the pool (default: 2)
+    pub min_idle: Option<u32>,
+    /// Idle timeout for a pooled connection, in seconds (default: 300)
+    pub idle_timeout: Option<u64>,
+    /// Timeout for acquiring a connection from the pool, in seconds (default: 10)
+    pub connection_timeout: Option<u64>,
 }
 
 #[cfg(feature = "caching")]
@@ -103,21 +134,25 @@ pub struct Cache {
 pub struct Secrets {
     // KMS encrypted
     #[cfg(feature = "middleware")]
-    pub locker_private_key: masking::Secret<String>,
+    pub locker_private_key: hyperswitch_masking::Secret<String>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct TenantSecrets {
     #[serde(deserialize_with = "deserialize_hex")]
-    pub master_key: Vec<u8>,
+    pub master_key: Secret<Vec<u8>>,
     #[cfg(feature = "middleware")]
-    pub public_key: masking::Secret<String>,
+    pub public_key: hyperswitch_masking::Secret<String>,
 
     /// schema name for the tenant (defaults to tenant_id)
     pub schema: String,
+
+    /// Redis key prefix (deser-only; app reads `TenantConfig.redis_key_prefix`).
+    #[cfg(feature = "redis")]
+    pub redis_key_prefix: String,
 }
 
-fn deserialize_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+fn deserialize_hex<'de, D>(deserializer: D) -> Result<Secret<Vec<u8>>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -125,7 +160,7 @@ where
 
     let deserialized_str = deserialized_str.into_bytes();
 
-    Ok(deserialized_str)
+    Ok(Secret::new(deserialized_str))
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -159,7 +194,7 @@ impl Default for ApiClientConfig {
             client_idle_timeout: 90,
             pool_max_idle_per_host: 5,
             #[cfg(feature = "external_key_manager")]
-            identity: masking::Secret::default(),
+            identity: hyperswitch_masking::Secret::default(),
         }
     }
 }
@@ -188,7 +223,13 @@ impl GlobalConfig {
 
         let config = Self::builder(&env)?
             .add_source(config::File::from(config_path).required(false))
-            .add_source(config::Environment::with_prefix("LOCKER").separator("__"))
+            .add_source(
+                config::Environment::with_prefix("LOCKER")
+                    .separator("__")
+                    .try_parsing(true)
+                    .list_separator(",")
+                    .with_list_parse_key("redis.cluster_urls"),
+            )
             .build()?;
 
         serde_path_to_error::deserialize(config).map_err(|error| {
@@ -246,11 +287,20 @@ impl GlobalConfig {
                 "database_password",
             ))?;
 
+        if let Some(ref mut read_replica) = self.read_replica {
+            read_replica.password = secret_management_client
+                .get_secret(read_replica.password.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "read_replica_password",
+                ))?;
+        }
+
         for tenant_secrets in self.tenant_secrets.values_mut() {
             tenant_secrets.master_key = hex::decode(
                 secret_management_client
                     .get_secret(
-                        String::from_utf8(tenant_secrets.master_key.clone())
+                        String::from_utf8(tenant_secrets.master_key.clone().expose())
                             .expect("Failed while converting master key to `String`")
                             .into(),
                     )
@@ -258,6 +308,7 @@ impl GlobalConfig {
                     .change_context(error::ConfigurationError::KmsDecryptError("master_key"))?
                     .expose(),
             )
+            .map(Secret::new)
             .expect("Failed to hex decode master key")
         }
 
@@ -275,6 +326,18 @@ impl GlobalConfig {
                 .await
                 .change_context(error::ConfigurationError::KmsDecryptError(
                     "locker_private_key",
+                ))?;
+        }
+
+        if let RuntimeConfig::Enabled {
+            ref mut endpoint, ..
+        } = self.runtime_config
+        {
+            endpoint.api_key = secret_management_client
+                .get_secret(endpoint.api_key.clone())
+                .await
+                .change_context(error::ConfigurationError::KmsDecryptError(
+                    "runtime_config api_key",
                 ))?;
         }
 
@@ -315,11 +378,108 @@ impl GlobalConfig {
 
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
+        self.runtime_config.validate()?;
+        #[cfg(feature = "kv")]
+        {
+            self.kv.validate()?;
+            self.validate_kv_tenant_prefixes()?;
+        }
         #[cfg(feature = "external_key_manager")]
         {
             self.external_key_manager.validate()?;
             self.api_client
                 .validate_for_mtls(&self.external_key_manager)?;
+        }
+        self.metrics.validate()?;
+
+        Ok(())
+    }
+
+    /// Validate `redis_key_prefix` when kv + redis is enabled.
+    #[cfg(feature = "kv")]
+    fn validate_kv_tenant_prefixes(&self) -> Result<(), error::ConfigurationError> {
+        #[cfg(feature = "redis")]
+        if self.redis.is_none() {
+            return Ok(());
+        }
+
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for (tenant_id, secrets) in self.tenant_secrets.iter() {
+            let prefix = secrets.redis_key_prefix.trim();
+            if prefix.contains('{') || prefix.contains('}') {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!("tenant `{tenant_id}`: redis_key_prefix must not contain `{{` or `}}`"),
+                ));
+            }
+            if prefix.is_empty() {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!("tenant `{tenant_id}`: redis_key_prefix required with kv"),
+                ));
+            }
+            if !seen.insert(prefix) {
+                return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                    format!("duplicate redis_key_prefix `{prefix}`"),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "kv")]
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct KvConfig {
+    /// Drainer stream suffix: `{shard_N}_{suffix}`.
+    #[serde(default = "default_drainer_stream_suffix")]
+    pub drainer_stream_suffix: String,
+    /// Drainer shard count. Must be `> 0` (validated in [`KvConfig::validate`]).
+    #[serde(default = "default_drainer_num_partitions")]
+    pub drainer_num_partitions: u8,
+    /// TTL (seconds) for KV keys in Redis. Must exceed max drainer replay lag.
+    #[serde(default = "default_ttl_for_kv")]
+    pub ttl_for_kv: u32,
+}
+
+#[cfg(feature = "kv")]
+fn default_drainer_stream_suffix() -> String {
+    "DRAINER_STREAM".to_string()
+}
+
+#[cfg(feature = "kv")]
+fn default_drainer_num_partitions() -> u8 {
+    16
+}
+
+#[cfg(feature = "kv")]
+fn default_ttl_for_kv() -> u32 {
+    900
+}
+
+#[cfg(feature = "kv")]
+impl Default for KvConfig {
+    fn default() -> Self {
+        Self {
+            drainer_stream_suffix: default_drainer_stream_suffix(),
+            drainer_num_partitions: default_drainer_num_partitions(),
+            ttl_for_kv: default_ttl_for_kv(),
+        }
+    }
+}
+
+#[cfg(feature = "kv")]
+impl KvConfig {
+    /// Format: `{shard_key}_{suffix}`. The braces are a Redis Cluster hash tag
+    /// and must match the KV data-key hash tag.
+    pub fn drainer_stream_name(&self, shard_key: &str) -> String {
+        format!("{{{}}}_{}", shard_key, self.drainer_stream_suffix)
+    }
+
+    /// Reject `drainer_num_partitions == 0` (crc32 % 0 panics).
+    pub fn validate(&self) -> Result<(), error::ConfigurationError> {
+        if self.drainer_num_partitions == 0 {
+            return Err(error::ConfigurationError::InvalidConfigurationValueError(
+                "kv.drainer_num_partitions must be greater than 0".into(),
+            ));
         }
         Ok(())
     }
@@ -354,6 +514,63 @@ impl std::fmt::Display for Env {
             Self::Development => write!(f, "development"),
             Self::Release => write!(f, "release"),
         }
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RuntimeConfigEndpoint {
+    pub base_url: String,
+    pub api_key: hyperswitch_masking::Secret<String>,
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, hyperswitch_masking::Secret<String>>,
+    #[serde(default)]
+    pub path: String,
+}
+
+/// Runtime configuration source.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum RuntimeConfig {
+    #[default]
+    Disabled,
+    Enabled {
+        endpoint: RuntimeConfigEndpoint,
+        #[serde(default = "default_runtime_config_refresh_interval_seconds")]
+        refresh_interval_seconds: u64,
+    },
+}
+
+fn default_runtime_config_refresh_interval_seconds() -> u64 {
+    30
+}
+
+impl RuntimeConfig {
+    pub fn is_enabled(&self) -> bool {
+        matches!(self, Self::Enabled { .. })
+    }
+
+    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
+        if let Self::Enabled { endpoint, .. } = self {
+            if endpoint.base_url.trim().is_empty() {
+                return Err(
+                    crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        r#"runtime_config.endpoint.base_url is required when mode is "enabled""#
+                            .into(),
+                    ),
+                );
+            }
+
+            if endpoint.api_key.peek().trim().is_empty() {
+                return Err(
+                    crate::error::ConfigurationError::InvalidConfigurationValueError(
+                        r#"runtime_config.endpoint.api_key is required when mode is "enabled""#
+                            .into(),
+                    ),
+                );
+            }
+        }
+
+        Ok(())
     }
 }
 

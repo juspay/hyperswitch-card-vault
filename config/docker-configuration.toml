@@ -11,7 +11,7 @@ tenant = "hyperswitch"
 locker_private_key = ""
 
 [tenant_secrets]
-hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
+hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public", redis_key_prefix = "" }
 
 [secrets_management]
 secrets_manager = "no_encryption"
@@ -37,3 +37,35 @@ identity = ""
 
 [external_key_manager]
 mode = "disabled"
+url = "http://localhost:5000"
+cert = ""
+
+[redis]
+host = "127.0.0.1"
+port = 6379
+pool_size = 5
+reconnect_max_attempts = 0
+reconnect_delay = 200
+default_ttl = 300
+default_hash_ttl = 900
+use_legacy_version = false
+stream_read_count = 1
+auto_pipeline = true
+broadcast_channel_capacity = 32
+disable_auto_backpressure = false
+max_in_flight_commands = 5000
+default_command_timeout = 30
+unresponsive_timeout = 10
+unresponsive_check_interval = 2
+max_feed_count = 200
+max_failure_threshold_seconds = 5
+
+[kv]
+drainer_stream_suffix = "DRAINER_STREAM"
+drainer_num_partitions = 16
+ttl_for_kv = 900
+
+[metrics]
+mode = "prometheus"
+host = "0.0.0.0"
+port = 9090

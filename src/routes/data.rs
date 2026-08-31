@@ -1,30 +1,48 @@
-use std::sync::Arc;
-
-use axum::{routing::post, Json};
-
-#[cfg(feature = "limit")]
-use axum::{error_handling::HandleErrorLayer, response::IntoResponse};
-
-use crate::{
-    crypto::{hash_manager::managers::sha::Sha512, keymanager},
-    custom_extractors::TenantStateResolver,
-    error::{self, ContainerError, ResultContainerExt},
-    logger,
-    storage::{FingerprintInterface, HashInterface, LockerInterface},
-    tenant::GlobalAppState,
-    utils,
-};
-
-use self::types::Validation;
-
 pub mod crypto_operation;
 mod transformers;
 pub mod types;
 
+use std::sync::Arc;
+
+use axum::{Json, routing::post};
+#[cfg(feature = "limit")]
+use axum::{error_handling::HandleErrorLayer, extract::MatchedPath, response::IntoResponse};
+use hyperswitch_masking::Secret;
+
+use self::types::Validation;
+use crate::{
+    crypto::{hash_manager::managers::sha::Sha512, keymanager},
+    custom_extractors::{OptionalFingerprintId, TenantStateResolver},
+    domain::{fingerprint, hash},
+    error::{self, ContainerError, ResultContainerExt},
+    logger,
+    observability::metrics,
+    storage::{HashInterface, LockerInterface},
+    tenant::GlobalAppState,
+    utils,
+};
+
 #[cfg(feature = "limit")]
 const BUFFER_LIMIT: usize = 1024;
+
 #[cfg(feature = "limit")]
-async fn ratelimit_err_handler(_: axum::BoxError) -> impl IntoResponse {
+async fn ratelimit_err_handler(
+    method: hyper::Method,
+    matched_path: Option<MatchedPath>,
+    _: axum::BoxError,
+) -> impl IntoResponse {
+    let route = matched_path
+        .map(|path| path.as_str().to_owned())
+        .unwrap_or_else(|| "UNKNOWN".to_string());
+
+    crate::observability::metrics::HTTP_SERVER_RATE_LIMITED_REQUEST_COUNT.add(
+        1,
+        metrics_utils::metric_attributes!(
+            ("http.request.method", method.to_string()),
+            ("http.route", route),
+        ),
+    );
+
     (hyper::StatusCode::TOO_MANY_REQUESTS, "Rate Limit Applied")
 }
 
@@ -68,16 +86,22 @@ pub fn serve(
 }
 
 /// `/data/add` handling the requirement of storing data
+#[tracing::instrument(skip_all)]
 pub async fn add_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::StoreCardRequest>,
 ) -> Result<Json<types::StoreCardResponse>, ContainerError<error::ApiError>> {
     request.validate()?;
 
-    let hash_data = transformers::get_hash(&request.data, Sha512)
-        .change_error(error::ApiError::EncodingError)?;
+    let hash_data = Secret::new(
+        transformers::get_hash(&request.data, Sha512)
+            .change_error(error::ApiError::EncodingError)?,
+    );
 
-    let optional_hash_table = tenant_app_state.db.find_by_data_hash(&hash_data).await?;
+    let optional_hash_table = tenant_app_state
+        .db
+        .find_optional_by_data_hash(hash_data.clone())
+        .await?;
 
     let crypto_manager = keymanager::get_dek_manager(&tenant_app_state.config.external_key_manager)
         .find_or_create_entity(&tenant_app_state, request.merchant_id.clone())
@@ -87,7 +111,7 @@ pub async fn add_card(
         Some(hash_table) => {
             let stored_data = tenant_app_state
                 .db
-                .find_by_hash_id_merchant_id_customer_id(
+                .find_optional_by_hash_id_merchant_id_customer_id(
                     &hash_table.hash_id,
                     &request.merchant_id,
                     &request.merchant_customer_id,
@@ -123,7 +147,7 @@ pub async fn add_card(
             (duplication_check, output)
         }
         None => {
-            let hash_table = tenant_app_state.db.insert_hash(hash_data).await?;
+            let hash_table = hash::insert_or_get(&tenant_app_state, hash_data).await?;
 
             let encrypted_locker_data = crypto_operation::encrypt_data_and_insert_into_db(
                 &tenant_app_state,
@@ -144,6 +168,7 @@ pub async fn add_card(
 }
 
 /// `/data/delete` handling the requirement of deleting data
+#[tracing::instrument(skip_all)]
 pub async fn delete_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::DeleteCardRequest>,
@@ -154,7 +179,7 @@ pub async fn delete_card(
 
     let _delete_status = tenant_app_state
         .db
-        .delete_from_locker(
+        .delete_locker(
             request.card_reference.into(),
             &request.merchant_id,
             &request.merchant_customer_id,
@@ -170,6 +195,7 @@ pub async fn delete_card(
 }
 
 /// `/data/retrieve` handling the requirement of retrieving data
+#[tracing::instrument(skip_all)]
 pub async fn retrieve_card(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     Json(request): Json<types::RetrieveCardRequest>,
@@ -194,15 +220,26 @@ pub async fn retrieve_card(
         .ttl
         .map(|ttl| -> Result<(), error::ApiError> {
             if utils::date_time::now() > ttl {
+                super::record_expired_data_encountered(metrics::Resource::Locker);
+
                 tokio::spawn(async move {
-                    tenant_app_state
+                    let result = tenant_app_state
                         .db
-                        .delete_from_locker(
+                        .delete_locker(
                             request.card_reference.into(),
                             &request.merchant_id,
                             &request.merchant_customer_id,
                         )
-                        .await
+                        .await;
+
+                    super::record_ttl_deletion_result(
+                        metrics::Resource::Locker,
+                        if result.is_ok() {
+                            metrics::TtlDeletionOutcome::Deleted
+                        } else {
+                            metrics::TtlDeletionOutcome::Failed
+                        },
+                    );
                 });
 
                 Err(error::ApiError::NotFoundError)
@@ -219,14 +256,15 @@ pub async fn retrieve_card(
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
+#[tracing::instrument(skip_all)]
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
+    OptionalFingerprintId(fingerprint_id): OptionalFingerprintId,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
-    let fingerprint = tenant_app_state
-        .db
-        .get_or_insert_fingerprint(request.data, request.key)
-        .await?;
+    let fingerprint =
+        fingerprint::get_or_insert(&tenant_app_state, request.data, request.key, fingerprint_id)
+            .await?;
 
     let response = Json(fingerprint.into());
     logger::info!(fingerprint_response=?response);

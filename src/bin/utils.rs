@@ -4,19 +4,19 @@
 //! Simple Cli tool for generating keys to be used in the locker before deployment
 //!
 
-use std::io::{stdin, stdout, Read, Write};
+use std::io::{Read, Write, stdin, stdout};
 
-use josekit::jwe;
-use tartarus::{
+use hyperswitch_card_vault::{
     crypto::encryption_manager::{
         encryption_interface::Encryption,
         managers::{
-            aes::{generate_aes256_key, GcmAes256},
+            aes::{GcmAes256, generate_aes256_key},
             jw::JWEncryption,
         },
     },
     error,
 };
+use josekit::jwe;
 
 #[derive(argh::FromArgs, Debug)]
 /// Utilities to generate associated properties used by locker

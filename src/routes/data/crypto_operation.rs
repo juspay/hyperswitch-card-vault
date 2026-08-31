@@ -1,14 +1,14 @@
-use masking::ExposeInterface;
+use hyperswitch_masking::ExposeInterface;
 
 use crate::{
     app::TenantAppState,
     crypto::keymanager::CryptoOperationsManager,
+    domain::{locker, vault},
     error::{self, ContainerError, ResultContainerExt},
-    routes::data::types,
+    routes::{data::types, routes_v2::data::types as types_v2},
     storage::{
-        storage_v2::{types::VaultNew, VaultInterface},
+        storage_v2::types::VaultNew,
         types::{Locker, LockerNew},
-        LockerInterface,
     },
 };
 
@@ -30,10 +30,7 @@ pub async fn encrypt_data_and_insert_into_db<'a>(
 
     let locker_new = LockerNew::new(request, hash_id, encrypted_data.into());
 
-    let locker = tenant_app_state
-        .db
-        .insert_or_get_from_locker(locker_new)
-        .await?;
+    let locker = locker::get_or_insert(tenant_app_state, locker_new).await?;
 
     Ok(locker)
 }
@@ -56,10 +53,11 @@ where
     Ok(data)
 }
 
-pub async fn encrypt_data_and_insert_into_db_v2(
+pub async fn encrypt_data_and_upsert_into_db_v2(
     tenant_app_state: &TenantAppState,
     crypto_operator: Box<dyn CryptoOperationsManager>,
-    request: crate::routes::routes_v2::data::types::StoreDataRequest,
+    request: types_v2::StoreDataRequest,
+    mode: Option<types_v2::WriteMode>,
 ) -> Result<crate::storage::storage_v2::types::Vault, ContainerError<error::ApiError>> {
     let data_to_be_encrypted = serde_json::to_vec(&request.data.clone().expose())
         .change_error(error::ApiError::EncodingError)?;
@@ -70,10 +68,12 @@ pub async fn encrypt_data_and_insert_into_db_v2(
 
     let vault_new = VaultNew::new(request, encrypted_data.into());
 
-    let vault = tenant_app_state
-        .db
-        .insert_or_get_from_vault(vault_new)
-        .await?;
+    let vault = match mode {
+        Some(types_v2::WriteMode::Upsert) => vault::upsert(tenant_app_state, vault_new).await?,
+        None | Some(types_v2::WriteMode::Insert) => {
+            vault::get_or_insert(tenant_app_state, vault_new).await?
+        }
+    };
 
     Ok(vault)
 }

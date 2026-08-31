@@ -3,7 +3,7 @@
 use std::{collections::HashMap, future::Future, pin::Pin};
 
 use error_stack::{Report, ResultExt};
-use masking::{PeekInterface, Secret};
+use hyperswitch_masking::{PeekInterface, Secret};
 use vaultrs::client::{VaultClient, VaultClientSettingsBuilder};
 
 use crate::error::ConfigurationError;

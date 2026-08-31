@@ -1,14 +1,15 @@
+use error_stack::ResultExt;
+use ring::aead::{self, BoundKey};
+
 use crate::{
     crypto::encryption_manager::encryption_interface::Encryption,
     error::{self, ContainerError},
 };
-use error_stack::ResultExt;
-use ring::aead::{self, BoundKey};
 ///
 /// GcmAes256
 ///
 /// The algorithm use to perform GcmAes256 encryption/decryption. This is implemented for data
-/// Vec<u8>
+/// `Vec<u8>`
 ///
 pub struct GcmAes256 {
     secret: Vec<u8>,

@@ -22,6 +22,24 @@ password = "damn"  # password of the database
 host = "localhost" # the host where the database is hosted on
 port = 5432        # the port of the database
 dbname = "locker"  # the name of the database where the cards are stored
+pool_size = 10          # optional: pool size for the database connection pool
+max_lifetime = 120      # optional: max lifetime (in secs) of a pooled connection before it's recycled
+min_idle = 2            # optional: minimum number of idle connections to maintain in the pool
+idle_timeout = 300      # optional: idle timeout (in secs) for a pooled connection
+connection_timeout = 10 # optional: timeout (in secs) for acquiring a connection from the pool
+
+# Optional read replica
+# [read_replica]
+# username = "sam"   # username for the read replica database
+# password = "damn"  # password of the read replica database
+# host = "localhost" # the host where the read replica is hosted on
+# port = 5432        # the port of the read replica database
+# dbname = "locker"  # the name of the read replica database
+# pool_size = 10          # optional: pool size for the read replica connection pool
+# max_lifetime = 120      # optional: max lifetime (in secs) of a pooled connection before it's recycled
+# min_idle = 2            # optional: minimum number of idle connections to maintain in the pool
+# idle_timeout = 300      # optional: idle timeout (in secs) for a pooled connection
+# connection_timeout = 10 # optional: timeout (in secs) for acquiring a connection from the pool
 
 [secrets]
 locker_private_key = "" # the locker private key to used used and the private key present with the tenant
@@ -30,7 +48,7 @@ locker_private_key = "" # the locker private key to used used and the private ke
 # configure master_key and public_key for each tenant
 # master_key - used for database encryption this could be aes encrypted by key custodian
 # public_key - used for signature verification and encryption of response payload which is sent back to tenant
-hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public" }
+hyperswitch = { master_key = "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308", public_key = "", schema = "public", redis_key_prefix = "hyperswitch" }
 
 # To protect secret/sensitive values like:
 # - database.passwod
@@ -97,3 +115,82 @@ mode = "disabled"  # Options: "disabled", "enabled", "enabled_with_mtls"
 # -----END CERTIFICATE-----
 # """
 
+# Redis configuration (only used with the `redis` feature)
+[redis]
+host = "127.0.0.1"                 # Redis server host
+port = 6379                        # Redis server port
+pool_size = 5                      # number of connections in the pool
+reconnect_max_attempts = 0         # max reconnection attempts (0 = retry forever)
+reconnect_delay = 200              # delay between reconnection attempts (milliseconds)
+default_ttl = 300                  # default key TTL (seconds)
+default_hash_ttl = 900             # default hash-table TTL (seconds)
+use_legacy_version = false         # use RESP2 instead of RESP3
+stream_read_count = 1              # entries read per stream read
+auto_pipeline = true               # automatically pipeline commands
+broadcast_channel_capacity = 32    # pub/sub broadcast channel capacity
+disable_auto_backpressure = false  # disable automatic backpressure
+max_in_flight_commands = 5000      # max in-flight commands before backpressure (0 = disabled)
+default_command_timeout = 30       # command timeout (seconds)
+unresponsive_timeout = 10          # mark a connection unresponsive after (seconds)
+unresponsive_check_interval = 2    # how often to check for unresponsiveness (seconds)
+max_feed_count = 200               # max commands fed to the server at once
+max_failure_threshold_seconds = 5  # max seconds Redis may be unreachable before it's failed
+
+# KV (write-through Redis) configuration — global drainer settings (only used with the `kv` feature)
+[kv]
+drainer_stream_suffix = "DRAINER_STREAM"  # suffix for the drainer stream name
+drainer_num_partitions = 16        # number of shard partitions (must be > 0)
+ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
+
+# KV enablement is controlled SOLELY at runtime via the runtime-config endpoint (see
+# [runtime_config] below).  There is no TOML fallback — a single source of truth avoids drift.
+# When the endpoint is disabled or unreachable the service fails closed to "disabled"
+# (all reads/writes go to Postgres).  The endpoint returns the config object as its `value`:
+#   {"enable_kv": "disabled" | "enabled" | "soft_kill", "use_replica": true | false}
+#   "enabled"   → write-through Redis (writes → Redis + drainer; reads → Redis-first)
+#   "soft_kill" → gradual rollout (inserts → Postgres, reads → Redis-first)
+
+# Per-tenant `redis_key_prefix` (under `[tenant_secrets.<id>]`) MUST be non-empty
+# and unique across tenants whenever KV is enabled, otherwise the service fails to
+# start. It must not contain `{` or `}` because KV data keys and drainer streams
+# use `{shard_N}` as the Redis Cluster hash tag. The drainer must consume the
+# prefixed `{prefix}:{shard_N}_DRAINER_STREAM` for each tenant; KV data for that
+# shard is stored under `{prefix}:{shard_N}:<partition-key>` so both keys route to
+# the same Redis Cluster slot.
+
+# Metrics configuration: export metrics for monitoring.
+# - disabled: no metrics exported
+# - otlp: configure endpoint, endpoint_timeout_secs, metrics_export_interval_secs
+# - prometheus: configure host, port (scraped at /metrics on a separate HTTP server)
+[metrics]
+mode = "otlp" # Options: "disabled", "otlp", "prometheus"
+
+# When mode is "otlp", configure endpoint, endpoint_timeout_secs and metrics_export_interval_secs:
+endpoint = "http://localhost:4317"               # OTLP gRPC endpoint
+endpoint_timeout_secs = 10                       # OTLP exporter connection timeout (seconds)
+metrics_export_interval_secs = 60                # How often to export metrics (seconds)
+background_metrics_collection_interval_secs = 15 # How often to collect metrics in the background (in secs)
+
+# When mode is "prometheus", configure host and port:
+# host = "127.0.0.1"                               # IP address the Prometheus HTTP server binds to
+# port = 9090                                      # Port the Prometheus HTTP server listens on
+# background_metrics_collection_interval_secs = 15 # How often to collect metrics in the background (in secs)
+
+# Runtime configuration endpoint
+# [runtime_config]
+# mode = "enabled"
+# refresh_interval_seconds = 30
+
+# Endpoint needs to be specified if mode is "enabled"
+# [runtime_config.endpoint]
+# base_url = "http://localhost:8090/configs"
+# api_key = "test_admin"
+# path = ""
+#
+# The endpoint at `{base_url}{path}` returns `{"key": "...", "value": "<config json string>"}`,
+# where `value` is a JSON string holding the flat config object, e.g.:
+#   {"key":"locker.configs","value":"{\"enable_kv\":\"enabled\",\"use_replica\":false}"}
+
+# Optional static headers sent on every runtime config pull request (omit entirely to send none)
+# [runtime_config.endpoint.headers]
+# accept = "application/json"

@@ -1,8 +1,10 @@
 #![allow(clippy::expect_used)]
 #![allow(clippy::missing_panics_doc)]
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use tartarus::crypto::hash_manager::{hash_interface::Encode, managers::sha::HmacSha512};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use hyperswitch_card_vault::crypto::hash_manager::{
+    hash_interface::Encode, managers::sha::HmacSha512,
+};
 
 const ITERATION: u32 = 14;
 
@@ -19,7 +21,7 @@ macro_rules! const_iter {
 }
 
 pub fn criterion_hmac_sha512(c: &mut Criterion) {
-    let key: masking::Secret<_> = (0..1000)
+    let key: hyperswitch_masking::Secret<_> = (0..1000)
         .map(|_| rand::random::<u8>())
         .collect::<Vec<_>>()
         .into();

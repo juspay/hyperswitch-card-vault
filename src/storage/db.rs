@@ -1,20 +1,21 @@
-use diesel::BoolExpressionMethods;
-use diesel::{associations::HasTable, ExpressionMethods, QueryDsl};
-use diesel_async::{AsyncConnection, RunQueryDsl};
-use masking::ExposeInterface;
-use masking::Secret;
-
-use crate::{
-    crypto::{
-        encryption_manager::managers::aes,
-        hash_manager::{hash_interface::Encode, managers::sha::HmacSha512},
-    },
-    error::{self, ContainerError, ResultContainerExt},
-};
+use async_bb8_diesel::{AsyncConnection, AsyncRunQueryDsl};
+#[cfg(not(feature = "kv"))]
+use diesel::{BoolExpressionMethods, OptionalExtension};
+use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
+#[cfg(not(feature = "kv"))]
+use hyperswitch_masking::ExposeInterface;
+use hyperswitch_masking::Secret;
 
 use super::{
-    consts, schema, types, types::StorageDecryption, types::StorageEncryption, utils,
-    LockerInterface, MerchantInterface, Storage,
+    DbOperation, MerchantInterface, Storage, schema, types,
+    types::{StorageDecryption, StorageEncryption},
+    utils,
+};
+use crate::{
+    crypto::encryption_manager::managers::aes,
+    error::{self, ContainerError, ResultContainerExt},
+    logger,
+    storage::scheme::StorageScheme,
 };
 
 impl MerchantInterface for Storage {
@@ -26,56 +27,29 @@ impl MerchantInterface for Storage {
         merchant_id: &str,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
-        let output: Result<types::MerchantInner, diesel::result::Error> =
-            types::MerchantInner::table()
-                .filter(schema::merchant::merchant_id.eq(merchant_id))
-                .get_result(&mut conn)
-                .await;
+        // Reads are routed to the read replica when enabled.
+        let conn = self.route_conn().await?;
 
-        let output = match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
-                }
-                _ => Err(err).change_error(error::StorageError::FindError),
-            },
-            Ok(merchant) => Ok(merchant),
-        };
+        // Single SELECT; a missing row surfaces (via `?`) as `MerchantDBError::NotFoundError`.
+        // Decryption of the stored DEK is the merchant-specific envelope.
+        let query = types::MerchantInner::table()
+            .filter(schema::merchant::merchant_id.eq(merchant_id.to_owned()));
 
-        output
-            .map_err(From::from)
-            .and_then(|inner| Ok(inner.decrypt(key)?))
-    }
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        super::log_db_query::<<types::MerchantInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
 
-    async fn find_or_create_by_merchant_id(
-        &self,
-        merchant_id: &str,
-        key: &aes::GcmAes256,
-    ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let inner: types::MerchantInner =
+            super::record_db_query::<<types::MerchantInner as HasTable>::Table, _, _, _>(
+                query.get_result_async(conn.get()),
+                operation,
+                pool,
+            )
+            .await?;
 
-        let output: Result<types::MerchantInner, diesel::result::Error> =
-            types::MerchantInner::table()
-                .filter(schema::merchant::merchant_id.eq(merchant_id))
-                .get_result(&mut conn)
-                .await;
-        match output {
-            Ok(inner) => Ok(inner.decrypt(key)?),
-            Err(inner_err) => match inner_err {
-                diesel::result::Error::NotFound => {
-                    self.insert_merchant(
-                        types::MerchantNew {
-                            merchant_id,
-                            enc_key: aes::generate_aes256_key().to_vec().into(),
-                        },
-                        key,
-                    )
-                    .await
-                }
-                output => Err(output).change_error(error::StorageError::FindError)?,
-            },
-        }
+        Ok(inner.decrypt(key)?)
     }
 
     async fn insert_merchant(
@@ -83,35 +57,57 @@ impl MerchantInterface for Storage {
         new: types::MerchantNew<'_>,
         key: &aes::GcmAes256,
     ) -> Result<types::Merchant, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
+
         let query = diesel::insert_into(types::MerchantInner::table()).values(new.encrypt(key)?);
 
-        query
-            .get_result(&mut conn)
-            .await
-            .change_error(error::StorageError::InsertError)
-            .map_err(From::from)
-            .and_then(|inner: types::MerchantInner| Ok(inner.decrypt(key)?))
+        let pool = conn.pool();
+        let operation = DbOperation::Insert;
+        super::log_db_query::<<types::MerchantInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
+
+        let inner: types::MerchantInner =
+            super::record_db_query::<<types::MerchantInner as HasTable>::Table, _, _, _>(
+                query.get_result_async(conn.get()),
+                operation,
+                pool,
+            )
+            .await?;
+
+        Ok(inner.decrypt(key)?)
     }
 
+    #[cfg(feature = "external_key_manager")]
     async fn find_all_keys_excluding_entity_keys(
         &self,
         key: &Self::Algorithm,
         limit: i64,
     ) -> Result<Vec<types::Merchant>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.route_conn().await?;
+
+        let query = schema::merchant::table
+            .filter(
+                schema::merchant::merchant_id
+                    .ne_all(schema::entity::table.select(schema::entity::entity_id)),
+            )
+            .limit(limit);
+
+        let pool = conn.pool();
+        let operation = DbOperation::Filter;
+        super::log_db_query::<<types::MerchantInner as HasTable>::Table, _>(
+            &query, operation, pool,
+        );
 
         let result: Result<Vec<types::MerchantInner>, ContainerError<Self::Error>> =
-            schema::merchant::table
-                .filter(
-                    schema::merchant::merchant_id
-                        .ne_all(schema::entity::table.select(schema::entity::entity_id)),
-                )
-                .limit(limit)
-                .load::<types::MerchantInner>(&mut conn)
-                .await
-                .change_error(error::StorageError::FindError)
-                .map_err(From::from);
+            super::record_db_query::<<types::MerchantInner as HasTable>::Table, _, _, _>(
+                query.load_async::<types::MerchantInner>(conn.get()),
+                operation,
+                pool,
+            )
+            .await
+            .change_error(error::StorageError::FindError)
+            .map_err(ContainerError::from);
 
         result?
             .into_iter()
@@ -124,8 +120,42 @@ impl MerchantInterface for Storage {
     }
 }
 
-impl LockerInterface for Storage {
+impl super::LockerInterface for Storage {
     type Error = error::VaultDBError;
+
+    async fn insert_locker(
+        &self,
+        new: types::LockerNew,
+    ) -> Result<types::Locker, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            return super::kv::insert_resource_with_reverse_lookup::<types::Locker>(self, new)
+                .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+
+            let query = diesel::insert_into(types::LockerInner::table()).values(new);
+
+            let pool = conn.pool();
+            let operation = DbOperation::Insert;
+            super::log_db_query::<<types::LockerInner as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output: types::LockerInner =
+                super::record_db_query::<<types::LockerInner as HasTable>::Table, _, _, _>(
+                    query.get_result_async(conn.get()),
+                    operation,
+                    pool,
+                )
+                .await?;
+
+            Ok(output.into())
+        }
+    }
 
     async fn find_by_locker_id_merchant_id_customer_id(
         &self,
@@ -133,154 +163,236 @@ impl LockerInterface for Storage {
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let pk = super::kv::impls::locker::LockerPrimaryKeyType {
+                locker_id: locker_id.clone(),
+                merchant_id: merchant_id.to_string(),
+                customer_id: customer_id.to_string(),
+            };
+            return super::kv::find_resource_by_id::<types::Locker>(self, pk).await;
+        }
 
-        let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
-            .filter(
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+
+            // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
+            let query = types::LockerInner::table().filter(
                 schema::locker::locker_id
                     .eq(locker_id.expose())
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
-            )
-            .get_result(&mut conn)
-            .await;
+                    .and(schema::locker::merchant_id.eq(merchant_id.to_owned()))
+                    .and(schema::locker::customer_id.eq(customer_id.to_owned())),
+            );
 
-        let output = match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
-                }
-                _ => Err(err).change_error(error::StorageError::FindError),
-            },
-            Ok(locker) => Ok(locker),
-        };
+            let pool = conn.pool();
+            let operation = DbOperation::FindOne;
+            super::log_db_query::<<types::LockerInner as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
 
-        output.map_err(From::from).map(From::from)
+            let output: types::LockerInner =
+                super::record_db_query::<<types::LockerInner as HasTable>::Table, _, _, _>(
+                    query.get_result_async(conn.get()),
+                    operation,
+                    pool,
+                )
+                .await?;
+
+            Ok(output.into())
+        }
     }
 
-    async fn find_by_hash_id_merchant_id_customer_id(
+    async fn find_optional_by_hash_id_merchant_id_customer_id(
         &self,
         hash_id: &str,
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<Option<types::Locker>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let lookup_key = super::kv::impls::locker::LockerHashLookupKey {
+                hash_id: hash_id.to_string(),
+                merchant_id: merchant_id.to_string(),
+                customer_id: customer_id.to_string(),
+            };
 
-        let output: Result<types::LockerInner, diesel::result::Error> = types::LockerInner::table()
-            .filter(
-                schema::locker::hash_id
-                    .eq(hash_id)
-                    .and(schema::locker::merchant_id.eq(merchant_id))
-                    .and(schema::locker::customer_id.eq(customer_id)),
+            return super::kv::find_optional_resource_by_lookup_id::<types::Locker>(
+                self, lookup_key,
             )
-            .get_result(&mut conn)
             .await;
+        }
 
-        match output {
-            Ok(inner) => Ok(Some(inner.into())),
-            Err(err) => match err {
-                diesel::result::Error::NotFound => Ok(None),
-                error => Err(error).change_error(error::StorageError::FindError)?,
-            },
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+
+            let query = types::LockerInner::table().filter(
+                schema::locker::hash_id
+                    .eq(hash_id.to_owned())
+                    .and(schema::locker::merchant_id.eq(merchant_id.to_owned()))
+                    .and(schema::locker::customer_id.eq(customer_id.to_owned())),
+            );
+
+            let pool = conn.pool();
+            let operation = DbOperation::FindOne;
+            super::log_db_query::<<types::LockerInner as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output = super::record_db_query_optional::<
+                <types::LockerInner as HasTable>::Table,
+                _,
+                _,
+                _,
+            >(
+                async {
+                    query
+                        .get_result_async::<types::LockerInner>(conn.get())
+                        .await
+                        .optional()
+                },
+                operation,
+                pool,
+            )
+            .await?;
+
+            Ok(output.map(From::from))
         }
     }
 
-    async fn insert_or_get_from_locker(
-        &self,
-        new: types::LockerNew<'_>,
-    ) -> Result<types::Locker, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
-        let cloned_new = new.clone();
-
-        let query: Result<_, diesel::result::Error> =
-            diesel::insert_into(types::LockerInner::table())
-                .values(new)
-                .get_result::<types::LockerInner>(&mut conn)
-                .await;
-
-        match query {
-            Ok(inner) => Ok(inner.into()),
-            Err(error) => match error {
-                diesel::result::Error::DatabaseError(
-                    diesel::result::DatabaseErrorKind::UniqueViolation,
-                    _,
-                ) => {
-                    self.find_by_locker_id_merchant_id_customer_id(
-                        cloned_new.locker_id,
-                        &cloned_new.merchant_id,
-                        &cloned_new.customer_id,
-                    )
-                    .await
-                }
-                error => Err(error).change_error(error::StorageError::InsertError)?,
-            },
-        }
-    }
-
-    async fn delete_from_locker(
+    async fn delete_locker(
         &self,
         locker_id: Secret<String>,
         merchant_id: &str,
         customer_id: &str,
     ) -> Result<usize, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let pk = super::kv::impls::locker::LockerPrimaryKeyType {
+                locker_id,
+                merchant_id: merchant_id.to_string(),
+                customer_id: customer_id.to_string(),
+            };
 
-        let query = diesel::delete(types::LockerInner::table()).filter(
-            schema::locker::locker_id
-                .eq(locker_id.expose())
-                .and(schema::locker::merchant_id.eq(merchant_id))
-                .and(schema::locker::customer_id.eq(customer_id)),
-        );
+            return super::kv::delete_resource_by_id_with_reverse_lookup::<types::Locker>(self, pk)
+                .await;
+        }
 
-        Ok(query
-            .execute(&mut conn)
-            .await
-            .change_error(error::StorageError::DeleteError)?)
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+            let query = diesel::delete(types::LockerInner::table()).filter(
+                schema::locker::locker_id
+                    .eq(locker_id.expose())
+                    .and(schema::locker::merchant_id.eq(merchant_id.to_owned()))
+                    .and(schema::locker::customer_id.eq(customer_id.to_owned())),
+            );
+
+            let pool = conn.pool();
+            let operation = DbOperation::Delete;
+            super::log_db_query::<<types::LockerInner as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output =
+                super::record_db_query_rows::<<types::LockerInner as HasTable>::Table, _, _>(
+                    query.execute_async(conn.get()),
+                    operation,
+                    pool,
+                )
+                .await?;
+            Ok(output)
+        }
     }
 }
 
 impl super::HashInterface for Storage {
     type Error = error::HashDBError;
 
-    async fn find_by_data_hash(
+    async fn find_optional_by_data_hash(
         &self,
-        data_hash: &[u8],
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::HashTable>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        #[cfg(feature = "kv")]
+        {
+            let pk = super::kv::impls::hash_table::HashTablePrimaryKey { data_hash };
 
-        let output: Result<_, diesel::result::Error> = types::HashTable::table()
-            .filter(schema::hash_table::data_hash.eq(data_hash))
-            .get_result(&mut conn)
-            .await;
+            return super::kv::find_optional_resource_by_id::<types::HashTable>(self, pk).await;
+        }
 
-        match output {
-            Ok(inner) => Ok(Some(inner)),
-            Err(inner_err) => match inner_err {
-                diesel::result::Error::NotFound => Ok(None),
-                error => Err(error).change_error(error::StorageError::FindError)?,
-            },
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+
+            let query = types::HashTable::table()
+                .filter(schema::hash_table::data_hash.eq(data_hash.expose()));
+
+            let pool = conn.pool();
+            let operation = DbOperation::FindOne;
+            super::log_db_query::<<types::HashTable as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output =
+                super::record_db_query_optional::<<types::HashTable as HasTable>::Table, _, _, _>(
+                    async {
+                        query
+                            .get_result_async::<types::HashTable>(conn.get())
+                            .await
+                            .optional()
+                    },
+                    operation,
+                    pool,
+                )
+                .await?;
+
+            Ok(output)
         }
     }
+
     async fn insert_hash(
         &self,
-        data_hash: Vec<u8>,
+        data_hash: Secret<Vec<u8>>,
     ) -> Result<types::HashTable, ContainerError<Self::Error>> {
-        let output = self.find_by_data_hash(&data_hash).await?;
-        match output {
-            Some(inner) => Ok(inner),
-            None => {
-                let mut conn = self.get_conn().await?;
-                let query =
-                    diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
-                        hash_id: utils::generate_uuid(),
-                        data_hash,
-                    });
+        #[cfg(feature = "kv")]
+        {
+            let hash_table_new = types::HashTableNew {
+                hash_id: utils::generate_uuid(),
+                data_hash,
+                created_at: crate::utils::date_time::now(),
+                updated_by: Some(StorageScheme::PostgresOnly),
+            };
+            return super::kv::insert_resource::<types::HashTable>(self, hash_table_new).await;
+        }
 
-                Ok(query
-                    .get_result(&mut conn)
-                    .await
-                    .change_error(error::StorageError::InsertError)?)
-            }
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+
+            let query =
+                diesel::insert_into(types::HashTable::table()).values(types::HashTableNew {
+                    hash_id: utils::generate_uuid(),
+                    data_hash,
+                    created_at: crate::utils::date_time::now(),
+                    updated_by: Some(StorageScheme::PostgresOnly),
+                });
+
+            let pool = conn.pool();
+            let operation = DbOperation::Insert;
+            super::log_db_query::<<types::HashTable as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output: types::HashTable =
+                super::record_db_query::<<types::HashTable as HasTable>::Table, _, _, _>(
+                    query.get_result_async(conn.get()),
+                    operation,
+                    pool,
+                )
+                .await?;
+
+            Ok(output)
         }
     }
 }
@@ -289,39 +401,58 @@ impl super::TestInterface for Storage {
     type Error = error::TestDBError;
 
     async fn test(&self) -> Result<(), ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
 
-        let _data = conn
-            .test_transaction(|x| {
-                Box::pin(async {
-                    let query =
-                        diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
-                    let _x: i32 = query
-                        .get_result(x)
-                        .await
-                        .change_error(error::StorageError::FindError)?;
+        // Health probe: insert then delete within one transaction so nothing persists.
+        conn.get()
+            .transaction_async(|conn| async move {
+                let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+                let _x: i32 = query.get_result_async(&conn).await.map_err(|err| {
+                    logger::error!(read_err=?err, "Error while reading element in the database");
+                    error::TestDBError::DBReadError
+                })?;
 
-                    diesel::insert_into(types::HashTable::table())
-                        .values(types::HashTableNew {
-                            hash_id: "test".to_string(),
-                            data_hash: b"0".to_vec(),
-                        })
-                        .execute(x)
-                        .await
-                        .change_error(error::StorageError::InsertError)?;
-
-                    diesel::delete(
-                        types::HashTable::table()
-                            .filter(schema::hash_table::hash_id.eq("test".to_string())),
-                    )
-                    .execute(x)
+                diesel::insert_into(types::HashTable::table())
+                    .values(types::HashTableNew {
+                        hash_id: "test".to_string(),
+                        data_hash: Secret::new(b"0".to_vec()),
+                        created_at: crate::utils::date_time::now(),
+                        // Test-only — always PostgresOnly.
+                        updated_by: Some(StorageScheme::PostgresOnly),
+                    })
+                    .execute_async(&conn)
                     .await
-                    .change_error(error::StorageError::DeleteError)?;
+                    .map_err(|err| {
+                        logger::error!(write_err=?err, "Error while writing to database");
+                        error::TestDBError::DBWriteError
+                    })?;
 
-                    Ok::<_, ContainerError<Self::Error>>(())
-                })
+                diesel::delete(
+                    types::HashTable::table()
+                        .filter(schema::hash_table::hash_id.eq("test".to_string())),
+                )
+                .execute_async(&conn)
+                .await
+                .map_err(|err| {
+                    logger::error!(delete_err=?err, "Error while deleting element in the database");
+                    error::TestDBError::DBDeleteError
+                })?;
+
+                Ok::<(), error::TestDBError>(())
             })
-            .await;
+            .await?;
+
+        Ok(())
+    }
+
+    async fn test_replica(&self) -> Result<(), ContainerError<Self::Error>> {
+        let conn = self.get_replica_conn().await?;
+
+        let query = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1 + 1"));
+        let _x: i32 = query
+            .get_result_async(conn.get())
+            .await
+            .change_error(error::StorageError::FindError)?;
 
         Ok(())
     }
@@ -330,53 +461,99 @@ impl super::TestInterface for Storage {
 impl super::FingerprintInterface for Storage {
     type Error = error::FingerprintDBError;
 
-    async fn find_by_fingerprint_hash(
+    async fn find_optional_by_fingerprint_hash(
         &self,
         fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
-
-        let output: Result<_, diesel::result::Error> = types::Fingerprint::table()
-            .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash))
-            .get_result(&mut conn)
+        #[cfg(feature = "kv")]
+        {
+            // Return the Queryable model, not the New struct.
+            return super::kv::find_optional_resource_by_id::<types::Fingerprint>(
+                self,
+                super::kv::impls::fingerprint::FingerprintPrimaryKey { fingerprint_hash },
+            )
             .await;
+        }
 
-        match output {
-            Ok(inner) => Ok(Some(inner)),
-            Err(inner_err) => match inner_err {
-                diesel::result::Error::NotFound => Ok(None),
-                error => Err(error).change_error(error::StorageError::FindError)?,
-            },
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+
+            let query = types::Fingerprint::table()
+                .filter(schema::fingerprint::fingerprint_hash.eq(fingerprint_hash.expose()));
+
+            let pool = conn.pool();
+            let operation = DbOperation::FindOne;
+            super::log_db_query::<<types::Fingerprint as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output = super::record_db_query_optional::<
+                <types::Fingerprint as HasTable>::Table,
+                _,
+                _,
+                _,
+            >(
+                async {
+                    query
+                        .get_result_async::<types::Fingerprint>(conn.get())
+                        .await
+                        .optional()
+                },
+                operation,
+                pool,
+            )
+            .await?;
+
+            Ok(output)
         }
     }
-    async fn get_or_insert_fingerprint(
+
+    async fn insert_fingerprint(
         &self,
-        data: Secret<String>,
-        key: Secret<String>,
+        fingerprint_hash: Secret<Vec<u8>>,
+        fingerprint_id: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let algo = HmacSha512::<1>::new(key.map(|inner| inner.into_bytes()));
+        #[cfg(feature = "kv")]
+        {
+            // `id: 0` — serial unknown at KV-insert time, assigned by drainer on replay.
+            // `updated_by: PostgresOnly` is a placeholder — overwritten by `set_storage_scheme`
+            // in `insert_resource` before the model is written to Redis or PG.
+            let finger_print_new = types::FingerprintTableNew {
+                fingerprint_hash: fingerprint_hash.clone(),
+                fingerprint_id,
+                updated_by: Some(StorageScheme::PostgresOnly),
+            };
+            return super::kv::insert_resource::<types::Fingerprint>(self, finger_print_new).await;
+        }
 
-        let fingerprint_hash = algo.encode(data.expose().into_bytes().into())?;
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
 
-        let output = self
-            .find_by_fingerprint_hash(fingerprint_hash.clone())
-            .await?;
-        match output {
-            Some(inner) => Ok(inner),
-            None => {
-                let mut conn = self.get_conn().await?;
-                let query = diesel::insert_into(types::Fingerprint::table()).values(
-                    types::FingerprintTableNew {
-                        fingerprint_hash,
-                        fingerprint_id: utils::generate_nano_id(consts::ID_LENGTH).into(),
-                    },
-                );
+            let query = diesel::insert_into(types::Fingerprint::table()).values(
+                types::FingerprintTableNew {
+                    fingerprint_hash,
+                    fingerprint_id,
+                    updated_by: Some(StorageScheme::PostgresOnly),
+                },
+            );
 
-                Ok(query
-                    .get_result(&mut conn)
-                    .await
-                    .change_error(error::StorageError::InsertError)?)
-            }
+            let pool = conn.pool();
+            let operation = DbOperation::Insert;
+            super::log_db_query::<<types::Fingerprint as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output: types::Fingerprint =
+                super::record_db_query::<<types::Fingerprint as HasTable>::Table, _, _, _>(
+                    query.get_result_async(conn.get()),
+                    operation,
+                    pool,
+                )
+                .await?;
+
+            Ok(output)
         }
     }
 }
@@ -389,23 +566,28 @@ impl super::EntityInterface for Storage {
         &self,
         entity_id: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
-        let output: Result<types::Entity, diesel::result::Error> = types::Entity::table()
-            .filter(schema::entity::entity_id.eq(entity_id))
-            .get_result(&mut conn)
-            .await;
+        // Reads are routed to the read replica when enabled.
+        let conn = self.route_conn().await?;
 
-        let output = match output {
-            Err(err) => match err {
-                diesel::result::Error::NotFound => {
-                    Err(err).change_error(error::StorageError::NotFoundError)
-                }
-                _ => Err(err).change_error(error::StorageError::FindError),
-            },
-            Ok(entity) => Ok(entity),
-        };
+        // A missing row surfaces as `EntityDBError::NotFoundError` (see the `From<diesel>`
+        // classifier), which `find_or_create_entity` in the key manager checks via
+        // `is_not_found()`.
+        let query =
+            types::Entity::table().filter(schema::entity::entity_id.eq(entity_id.to_owned()));
 
-        output.map_err(From::from)
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        super::log_db_query::<<types::Entity as HasTable>::Table, _>(&query, operation, pool);
+
+        let output: types::Entity = super::record_db_query::<
+            <types::Entity as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result_async(conn.get()), operation, pool)
+        .await?;
+
+        Ok(output)
     }
 
     async fn insert_entity(
@@ -413,16 +595,101 @@ impl super::EntityInterface for Storage {
         entity_id: &str,
         identifier: &str,
     ) -> Result<types::Entity, ContainerError<Self::Error>> {
-        let mut conn = self.get_conn().await?;
+        let conn = self.get_conn().await?;
+
         let query = diesel::insert_into(types::Entity::table()).values(types::EntityTableNew {
             entity_id: entity_id.into(),
             enc_key_id: identifier.into(),
         });
 
-        query
-            .get_result(&mut conn)
-            .await
-            .change_error(error::StorageError::InsertError)
-            .map_err(From::from)
+        let pool = conn.pool();
+        let operation = DbOperation::Insert;
+        super::log_db_query::<<types::Entity as HasTable>::Table, _>(&query, operation, pool);
+
+        let output: types::Entity = super::record_db_query::<
+            <types::Entity as HasTable>::Table,
+            _,
+            _,
+            _,
+        >(query.get_result_async(conn.get()), operation, pool)
+        .await?;
+
+        Ok(output)
+    }
+}
+
+impl super::ReverseLookupInterface for Storage {
+    type Error = error::ReverseLookupDBError;
+
+    async fn insert_reverse_lookup(
+        &self,
+        new: types::ReverseLookupNew,
+    ) -> Result<types::ReverseLookup, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            return Box::pin(super::kv::insert_resource::<types::ReverseLookup>(
+                self, new,
+            ))
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+
+            let query = diesel::insert_into(types::ReverseLookup::table()).values(new);
+
+            let pool = conn.pool();
+            let operation = DbOperation::Insert;
+            super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let reverse_lookup = super::record_db_query::<
+                <types::ReverseLookup as HasTable>::Table,
+                _,
+                _,
+                _,
+            >(query.get_result_async(conn.get()), operation, pool)
+            .await?;
+            Ok(reverse_lookup)
+        }
+    }
+
+    async fn delete_reverse_lookup(
+        &self,
+        lookup_id: &str,
+    ) -> Result<usize, ContainerError<Self::Error>> {
+        #[cfg(feature = "kv")]
+        {
+            return Box::pin(super::kv::delete_resource_by_id::<types::ReverseLookup>(
+                self,
+                super::kv::impls::reverse_lookup::ReverseLookupPrimaryKey {
+                    lookup_id: lookup_id.to_string(),
+                },
+            ))
+            .await;
+        }
+
+        #[cfg(not(feature = "kv"))]
+        {
+            let conn = self.get_conn().await?;
+            let query = diesel::delete(types::ReverseLookup::table())
+                .filter(schema::reverse_lookup::lookup_id.eq(lookup_id.to_owned()));
+
+            let pool = conn.pool();
+            let operation = DbOperation::Delete;
+            super::log_db_query::<<types::ReverseLookup as HasTable>::Table, _>(
+                &query, operation, pool,
+            );
+
+            let output = super::record_db_query_rows::<
+                <types::ReverseLookup as HasTable>::Table,
+                _,
+                _,
+            >(query.execute_async(conn.get()), operation, pool)
+            .await?;
+            Ok(output)
+        }
     }
 }

@@ -4,6 +4,88 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 - - -
 
+## 0.9.0 (2026-07-31)
+
+### Features
+
+- **entity:** Add explicit POST /entity provisioning endpoint ([#172](https://github.com/juspay/hyperswitch-card-vault/pull/172)) ([`c5485d9`](https://github.com/juspay/hyperswitch-card-vault/commit/c5485d9c14f36f6c38bb22ed727c4b9be5cd4bfe))
+- **kv:**
+  - KV framework introduction + fingerprint table movement for kv ([#177](https://github.com/juspay/hyperswitch-card-vault/pull/177)) ([`d3c0a14`](https://github.com/juspay/hyperswitch-card-vault/commit/d3c0a143d30247a78dfb821afafc973844723061))
+  - Add locker kv support ([#182](https://github.com/juspay/hyperswitch-card-vault/pull/182)) ([`22207b0`](https://github.com/juspay/hyperswitch-card-vault/commit/22207b04045308c32df217021789fc7bb53eb5dc))
+  - Add hash table kv support ([#183](https://github.com/juspay/hyperswitch-card-vault/pull/183)) ([`6c16b80`](https://github.com/juspay/hyperswitch-card-vault/commit/6c16b80d740c6fac52ce163f4a34169425aeda55))
+  - Add vault kv support ([#181](https://github.com/juspay/hyperswitch-card-vault/pull/181)) ([`e437e03`](https://github.com/juspay/hyperswitch-card-vault/commit/e437e036c2db60fdf6e03a8c4a052880f20ba031))
+  - Add reverse lookup kv support ([#180](https://github.com/juspay/hyperswitch-card-vault/pull/180)) ([`7e91be4`](https://github.com/juspay/hyperswitch-card-vault/commit/7e91be412a93f2e2f74fe3650238ea7fdb500757))
+  - Validate runtime storage transitions ([#187](https://github.com/juspay/hyperswitch-card-vault/pull/187)) ([`b64cf2f`](https://github.com/juspay/hyperswitch-card-vault/commit/b64cf2fe8643b890963f10b8ad34ee9726b8b71c))
+- **storage:** Introduce reverse_lookup table ([#174](https://github.com/juspay/hyperswitch-card-vault/pull/174)) ([`3c1a9a5`](https://github.com/juspay/hyperswitch-card-vault/commit/3c1a9a56b360c744e30e24a8f89067a0ccc243a7))
+- Allow reads from read replica for merchant and entity tables based on runtime config ([#171](https://github.com/juspay/hyperswitch-card-vault/pull/171)) ([`9260ba2`](https://github.com/juspay/hyperswitch-card-vault/commit/9260ba2fd6ff37593d178d7bba0603a1068b6c44))
+- Introduce metrics for all major operations ([#184](https://github.com/juspay/hyperswitch-card-vault/pull/184)) ([`1aad793`](https://github.com/juspay/hyperswitch-card-vault/commit/1aad7937997a02e2849f0c5c16c17d6f395aabac))
+
+### Refactors
+
+- **deps:** Use metrics_utils to setup metrics pipeline  ([#190](https://github.com/juspay/hyperswitch-card-vault/pull/190)) ([`5d2103b`](https://github.com/juspay/hyperswitch-card-vault/commit/5d2103b71c3abea36ea69501e9ed809a5f0a3cc9))
+- **storage:** Split storage into single-query primitives with a domain composition layer ([#170](https://github.com/juspay/hyperswitch-card-vault/pull/170)) ([`45f44c2`](https://github.com/juspay/hyperswitch-card-vault/commit/45f44c247a662b8de9e0aa6aaa7e20ce499754c5))
+- Change hash_table primary key to data_hash ([#176](https://github.com/juspay/hyperswitch-card-vault/pull/176)) ([`400a1f1`](https://github.com/juspay/hyperswitch-card-vault/commit/400a1f1d0883c01128bbab47169873ffcbd42399))
+
+### Miscellaneous Tasks
+
+- **config:** Update redis_key_prefix for hyperswitch tenant configuration ([#191](https://github.com/juspay/hyperswitch-card-vault/pull/191)) ([`e437ff1`](https://github.com/juspay/hyperswitch-card-vault/commit/e437ff1bbbf73da32d09ba111c39bd5eb69d32cc))
+- **kv:** Refactor wrapper delete behaviour ([#188](https://github.com/juspay/hyperswitch-card-vault/pull/188)) ([`ae5f055`](https://github.com/juspay/hyperswitch-card-vault/commit/ae5f055f9a3d13b26cce4795d005484ae0fc4313))
+- **metrics:** Do not specify `unit: 1` for counter and gauge metrics ([#186](https://github.com/juspay/hyperswitch-card-vault/pull/186)) ([`ff47270`](https://github.com/juspay/hyperswitch-card-vault/commit/ff4727071940f4686ec664983d4fd35ff7b8896d))
+- **migrations:** Add migration to create hash ID based locker index ([#179](https://github.com/juspay/hyperswitch-card-vault/pull/179)) ([`1bb0741`](https://github.com/juspay/hyperswitch-card-vault/commit/1bb07414e9e9c2b1f9be4d75582fbb28645cb5ec))
+- **runtime:** Add support for optional static headers in runtime config requests ([#178](https://github.com/juspay/hyperswitch-card-vault/pull/178)) ([`77c10a7`](https://github.com/juspay/hyperswitch-card-vault/commit/77c10a79d03bd5745a27e6b47e865d8d90dd7ef1))
+
+**Full Changelog:** [`v0.8.0...v0.9.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.8.0...v0.9.0)
+
+- - -
+
+
+## 0.8.0 (2026-06-24)
+
+### Features
+
+- **fingerprint:** Support caller-supplied fingerprint ID via `x-fingerprint-id` header ([#164](https://github.com/juspay/hyperswitch-card-vault/pull/164)) ([`c2768d0`](https://github.com/juspay/hyperswitch-card-vault/commit/c2768d0d3289eb2c2e5684615249efa821880beb))
+- **storage:** Add redis support for locker ([#168](https://github.com/juspay/hyperswitch-card-vault/pull/168)) ([`6fb3d42`](https://github.com/juspay/hyperswitch-card-vault/commit/6fb3d42ac3b201c06e7786da28ace060ab17c7f4))
+- Implement upsert functionality for vault data and add error handling for updates ([#158](https://github.com/juspay/hyperswitch-card-vault/pull/158)) ([`a9fd7fa`](https://github.com/juspay/hyperswitch-card-vault/commit/a9fd7fab3246bf4c06e8f0bbf88646d1013cb37b))
+- Add support to export metrics in OpenTelemetry or Prometheus formats ([#169](https://github.com/juspay/hyperswitch-card-vault/pull/169)) ([`9f3011d`](https://github.com/juspay/hyperswitch-card-vault/commit/9f3011dd83df49ecf167bbe7bf8b019b16dddfe7))
+
+### Bug Fixes
+
+- **config:** Fix failures in parsing metrics port from environment variables ([#173](https://github.com/juspay/hyperswitch-card-vault/pull/173)) ([`539f61e`](https://github.com/juspay/hyperswitch-card-vault/commit/539f61ee9a6cbfcbb3bf81d8c395dc413a250532))
+
+### Refactors
+
+- Migrate to use `build_info` and `log_utils` crates for build information and logging framework ([#161](https://github.com/juspay/hyperswitch-card-vault/pull/161)) ([`b5ca83a`](https://github.com/juspay/hyperswitch-card-vault/commit/b5ca83a4d4805243c60aaee214b67e1fef12dca6))
+- Rename package from `tartarus` to `hyperswitch-card-vault` ([#165](https://github.com/juspay/hyperswitch-card-vault/pull/165)) ([`ea99b64`](https://github.com/juspay/hyperswitch-card-vault/commit/ea99b646c763612aa493ea87a86b36f2873ff67e))
+
+### Build System / Dependencies
+
+- **deps:** Pull `hyperswitch_masking` from `crates.io` instead of as a git dependency ([#159](https://github.com/juspay/hyperswitch-card-vault/pull/159)) ([`59ddad0`](https://github.com/juspay/hyperswitch-card-vault/commit/59ddad049221930f611034e46e7fee1bb43747e7))
+- Bump edition to 2024 ([#160](https://github.com/juspay/hyperswitch-card-vault/pull/160)) ([`c7d2ad1`](https://github.com/juspay/hyperswitch-card-vault/commit/c7d2ad1be58259abda869fbdd2ffe2155282f2a0))
+
+**Full Changelog:** [`v0.7.0...v0.8.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.7.0...v0.8.0)
+
+- - -
+
+
+## 0.7.0 (2026-02-24)
+
+### Features
+
+- Convert external key manager feature flag to runtime config with enum-based validation pattern ([#155](https://github.com/juspay/hyperswitch-card-vault/pull/155)) ([`0b07ee4`](https://github.com/juspay/hyperswitch-card-vault/commit/0b07ee40484055af86aee458416f896105267583))
+
+### Bug Fixes
+
+- Resolve all failing CI checks ([#156](https://github.com/juspay/hyperswitch-card-vault/pull/156)) ([`560eca3`](https://github.com/juspay/hyperswitch-card-vault/commit/560eca3a6d34b0b57d6657fe61f283f67ca4031f))
+
+### Build System / Dependencies
+
+- **docker:** Update Debian base images from bookworm to trixie ([#157](https://github.com/juspay/hyperswitch-card-vault/pull/157)) ([`7309812`](https://github.com/juspay/hyperswitch-card-vault/commit/7309812f95b7c4cf681eeaf4886f0c9f065262e8))
+
+**Full Changelog:** [`v0.6.5...v0.7.0`](https://github.com/juspay/hyperswitch-card-vault/compare/v0.6.5...v0.7.0)
+
+- - -
+
+
 ## 0.6.5 (2025-04-23)
 
 ### Bug Fixes

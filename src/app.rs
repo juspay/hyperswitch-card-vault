@@ -1,28 +1,30 @@
-use axum::{extract::Request, routing::post};
-use axum_server::tls_rustls::RustlsConfig;
-use error_stack::ResultExt;
-use tower_http::trace as tower_trace;
-
-#[cfg(feature = "middleware")]
-use crate::middleware as custom_middleware;
+use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "middleware")]
 use axum::middleware;
+use axum::{extract::Request, routing::post};
+use axum_server::tls_rustls::RustlsConfig;
+use error_stack::ResultExt;
+use tower::ServiceBuilder;
+use tower_http::{
+    ServiceBuilderExt,
+    request_id::{MakeRequestId, RequestId},
+    trace as tower_trace,
+};
 
-use std::sync::Arc;
-
+#[cfg(feature = "middleware")]
+use crate::middleware as custom_middleware;
+#[cfg(feature = "caching")]
+use crate::storage::caching::Caching;
 use crate::{
     api_client::ApiClient,
     config::{self, GlobalConfig, TenantConfig},
-    error, logger,
+    error, logger, observability,
     routes::{self, routes_v2},
     storage,
     tenant::GlobalAppState,
     utils,
 };
-
-#[cfg(feature = "caching")]
-use crate::storage::caching::Caching;
 
 #[cfg(feature = "caching")]
 type Storage = Caching<storage::Storage>;
@@ -52,11 +54,23 @@ impl TenantAppState {
         global_config: &GlobalConfig,
         tenant_config: TenantConfig,
         api_client: ApiClient,
+        #[cfg(feature = "redis")] shared_redis: Option<&storage::redis::RedisStore>,
+        runtime_config_manager: Arc<crate::runtime_config::RuntimeConfigManager>,
+        global_store: Arc<storage::GlobalStore>,
     ) -> error_stack::Result<Self, error::ConfigurationError> {
+        #[cfg(feature = "redis")]
+        let tenant_redis = shared_redis
+            .map(|store| store.clone_with_prefix(tenant_config.redis_key_prefix.trim()));
+
         #[allow(clippy::map_identity)]
         let db = storage::Storage::new(
             &global_config.database,
+            global_config.read_replica.as_ref(),
             &tenant_config.tenant_secrets.schema,
+            runtime_config_manager,
+            global_store,
+            #[cfg(feature = "redis")]
+            tenant_redis.clone(),
         )
         .await
         .map(
@@ -83,15 +97,71 @@ pub struct CustodianKeys {
     pub key2: Option<String>,
 }
 
+#[cfg(feature = "vergen")]
+fn default_headers() -> tower_http::set_header::SetResponseHeaderLayer<axum::http::HeaderValue> {
+    tower_http::set_header::SetResponseHeaderLayer::overriding(
+        axum::http::HeaderName::from_static("x-version"),
+        axum::http::HeaderValue::from_static(build_info::git_describe!()),
+    )
+}
+
+#[derive(Clone, Copy)]
+struct MakeUuidV7;
+
+impl MakeRequestId for MakeUuidV7 {
+    fn make_request_id<B>(&mut self, _request: &axum::http::Request<B>) -> Option<RequestId> {
+        let uuid = uuid::Uuid::now_v7();
+        axum::http::HeaderValue::from_str(&uuid.to_string())
+            .ok()
+            .map(RequestId::new)
+    }
+}
+
+#[allow(clippy::expect_used)]
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Received shutdown signal, starting graceful shutdown");
+}
+
 ///
 /// The server responsible for the custodian APIs and main locker APIs this will perform all storage, retrieval and
 /// deletion operation
 ///
 pub async fn server_builder(
     global_app_state: Arc<GlobalAppState>,
-) -> Result<(), error::ConfigurationError>
-where
-{
+    metrics_handle: observability::MetricsHandle,
+) -> Result<(), error::ConfigurationError> {
+    // Warm + periodically refresh the runtime-config cache. No-op when disabled.
+    let runtime_config_manager = global_app_state.runtime_config_manager.clone();
+    let state_for_prefetch = global_app_state.clone();
+    let _prefetch_handle = runtime_config_manager.spawn_prefetch_task(move || {
+        let state_for_prefetch = state_for_prefetch.clone();
+        async move {
+            state_for_prefetch.apply_runtime_config_updates().await;
+        }
+    });
+
     let socket_addr = std::net::SocketAddr::new(
         global_app_state.global_config.server.host.parse()?,
         global_app_state.global_config.server.port,
@@ -121,17 +191,21 @@ where
         ),
         allow(unused_mut)
     )]
-    let mut router = router.nest(
-        "/api/v2/vault",
-        axum::Router::new()
-            .route("/delete", post(routes_v2::data::delete_data))
-            .route("/add", post(routes_v2::data::add_data))
-            .route("/retrieve", post(routes_v2::data::retrieve_data))
-            .route(
-                "/fingerprint",
-                post(routes::data::get_or_insert_fingerprint),
-            ),
-    );
+    let mut router = router
+        .nest(
+            "/api/v2/vault",
+            axum::Router::new()
+                .route("/delete", post(routes_v2::data::delete_data))
+                .route("/add", post(routes_v2::data::add_data))
+                .route("/retrieve", post(routes_v2::data::retrieve_data))
+                .route(
+                    "/fingerprint",
+                    post(routes::data::get_or_insert_fingerprint),
+                ),
+        )
+        // Explicit provisioning endpoint. Config decides the backing table: `merchant` under the
+        // internal key manager, `entity` under the external key manager.
+        .route("/entity", post(routes::entity::create_entity));
 
     #[cfg(feature = "middleware")]
     {
@@ -157,7 +231,29 @@ where
         router = router.nest("/custodian", routes::key_custodian::serve());
     }
 
-    let router = router.layer(
+    router = router.nest("/health", routes::health::serve());
+
+    if metrics_handle.is_enabled() {
+        router = router.layer(observability::HttpRequestMetricsLayer);
+    }
+
+    if let observability::MetricsHandle::Prometheus { inner, host, port } = &metrics_handle
+        && let Some(registry) = inner.prometheus_registry()
+    {
+        observability::start_prometheus_metrics_server(host, *port, registry.clone())?;
+    }
+
+    if metrics_handle.is_enabled() {
+        observability::spawn_bg_metrics_collector(
+            &global_app_state,
+            global_app_state
+                .global_config
+                .metrics
+                .background_metrics_collection_interval_secs(),
+        );
+    }
+
+    router = router.layer(
         tower_trace::TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| utils::record_fields_from_header(request))
             .on_request(tower_trace::DefaultOnRequest::new().level(tracing::Level::INFO))
@@ -173,9 +269,19 @@ where
             ),
     );
 
-    let router = router
-        .nest("/health", routes::health::serve())
-        .with_state(global_app_state.clone());
+    router = router.layer(
+        ServiceBuilder::new()
+            .set_x_request_id(MakeUuidV7)
+            .propagate_x_request_id(),
+    );
+
+    // Register default headers layer last so it wraps all routes, ensuring x-version is present on all responses.
+    #[cfg(feature = "vergen")]
+    {
+        router = router.layer(default_headers());
+    }
+
+    let router = router.with_state(global_app_state.clone());
 
     logger::info!(
         "Locker started [{:?}] [{:?}]",
@@ -190,13 +296,23 @@ where
         let rusttls_config =
             RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.private_key).await?;
 
+        let handle = axum_server::Handle::new();
+        let shutdown_handle = handle.clone();
+        tokio::spawn(async move {
+            shutdown_signal().await;
+            shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
+        });
+
         axum_server::from_tcp_rustls(tcp_listener, rusttls_config)
+            .handle(handle)
             .serve(router.into_make_service())
             .await?;
     } else {
         let tcp_listener = tokio::net::TcpListener::bind(socket_addr).await?;
 
-        axum::serve(tcp_listener, router.into_make_service()).await?;
+        axum::serve(tcp_listener, router.into_make_service())
+            .with_graceful_shutdown(shutdown_signal())
+            .await?;
     }
 
     Ok(())

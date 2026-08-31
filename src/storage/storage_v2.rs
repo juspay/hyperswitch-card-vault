@@ -1,6 +1,6 @@
-use masking::Secret;
+use hyperswitch_masking::Secret;
 
-use crate::{crypto::encryption_manager::encryption_interface::Encryption, error::ContainerError};
+use crate::error::ContainerError;
 
 pub mod db;
 pub mod types;
@@ -8,26 +8,33 @@ pub mod types;
 ///
 /// VaultInterface:
 ///
-/// Interface for interacting with the vault database table
-#[allow(dead_code)]
+/// Single-query primitives for the vault table. The `get_or_insert` / `upsert`
+/// compositions live in the domain layer (`crate::domain::vault`).
 pub(crate) trait VaultInterface {
-    type Algorithm: Encryption<Vec<u8>, Vec<u8>>;
     type Error;
 
-    /// Fetch data from vault table
+    /// Insert a vault row. A duplicate primary key surfaces as `Error::is_duplicate()`.
+    async fn insert_vault(
+        &self,
+        new: types::VaultNew,
+    ) -> Result<types::Vault, ContainerError<Self::Error>>;
+
+    /// Point read by primary key; a missing row surfaces as `Error::is_not_found()`.
     async fn find_by_vault_id_entity_id(
         &self,
         vault_id: Secret<String>,
         entity_id: &str,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
-    /// Insert data into vault table
-    async fn insert_or_get_from_vault(
+    /// Overwrite mutable fields for an existing vault row.
+    async fn update_vault_data(
         &self,
-        new: types::VaultNew,
+        vault_id: Secret<String>,
+        entity_id: String,
+        update: types::VaultUpdate,
     ) -> Result<types::Vault, ContainerError<Self::Error>>;
 
-    /// Delete data from the vault
+    /// Delete a vault row by primary key.
     async fn delete_from_vault(
         &self,
         vault_id: Secret<String>,

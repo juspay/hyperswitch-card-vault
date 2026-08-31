@@ -4,6 +4,8 @@ use std::string::FromUtf8Error;
 pub mod container;
 
 mod custom_error;
+#[cfg(feature = "kv")]
+pub mod kv;
 mod transforms;
 
 pub use container::*;
@@ -64,6 +66,10 @@ pub enum StorageError {
     EncryptionError,
     #[error("Element not found in storage")]
     NotFoundError,
+    #[error("Error while updating element in database")]
+    UpdateError,
+    #[error("Read replica pool is not configured")]
+    ReplicaPoolNotConfigured,
 }
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]

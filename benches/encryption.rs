@@ -5,13 +5,16 @@
     clippy::unwrap_in_result
 )]
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use josekit::jwe;
-use rand::rngs::OsRng;
-use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey};
-use tartarus::crypto::encryption_manager::{
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use hyperswitch_card_vault::crypto::encryption_manager::{
     encryption_interface::Encryption,
     managers::{aes, jw},
+};
+use josekit::jwe;
+use rand::rngs::OsRng;
+use rsa::{
+    RsaPrivateKey, RsaPublicKey,
+    pkcs8::{EncodePrivateKey, EncodePublicKey},
 };
 
 const ITERATION: u32 = 14;

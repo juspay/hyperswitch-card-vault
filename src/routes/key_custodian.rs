@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use axum::{extract::State, routing::post, Json};
+use axum::{Json, extract::State, routing::post};
 use error_stack::ResultExt;
+use hyperswitch_masking::{ExposeInterface, Secret};
 
 use crate::{
     app::TenantAppState,
@@ -60,6 +61,7 @@ pub fn serve() -> axum::Router<Arc<GlobalAppState>> {
 }
 
 /// Handler for `/custodian/key1`
+#[tracing::instrument(skip_all)]
 pub async fn key1(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
@@ -77,6 +79,7 @@ pub async fn key1(
 }
 
 /// Handler for `/custodian/key2`
+#[tracing::instrument(skip_all)]
 pub async fn key2(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
@@ -94,6 +97,7 @@ pub async fn key2(
 }
 
 /// Handler for `/custodian/decrypt`
+#[tracing::instrument(skip_all)]
 pub async fn decrypt(
     State(global_app_state): State<Arc<GlobalAppState>>,
     TenantId(tenant_id): TenantId,
@@ -118,6 +122,10 @@ pub async fn decrypt(
                 &global_app_state.global_config,
                 tenant_config,
                 global_app_state.api_client.clone(),
+                #[cfg(feature = "redis")]
+                global_app_state.redis_store.as_ref(),
+                global_app_state.runtime_config_manager.clone(),
+                global_app_state.storage_global_store.clone(),
             )
             .await
             .change_context(error::ApiError::TenantError(
@@ -157,7 +165,8 @@ async fn aes_decrypt_custodian_key(
         hex::decode(custodian_key)
             .change_error(error::ApiError::DecryptingKeysFailed("Hex dcoding failed"))?,
     )
-    .decrypt(tenant_config.tenant_secrets.master_key.clone())
+    .decrypt(tenant_config.tenant_secrets.master_key.clone().expose())
+    .map(Secret::new)
     .change_error(error::ApiError::DecryptingKeysFailed(
         "AES decryption failed",
     ))?;

@@ -32,14 +32,16 @@ error_transform!(super::StorageError => super::MerchantDBError);
 impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
-            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
-                Self::DBError
-            }
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
             super::StorageError::NotFoundError => Self::NotFoundError,
         }
     }
@@ -49,14 +51,16 @@ error_transform!(super::StorageError => super::VaultDBError);
 impl<'a> From<&'a super::StorageError> for super::VaultDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
-            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
-                Self::DBError
-            }
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError | super::StorageError::EncryptionError => {
                 Self::UnknownError
             }
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
             super::StorageError::DeleteError => Self::DBDeleteError,
             super::StorageError::NotFoundError => Self::NotFoundError,
         }
@@ -67,14 +71,16 @@ error_transform!(super::StorageError => super::HashDBError);
 impl<'a> From<&'a super::StorageError> for super::HashDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
-            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
-                Self::DBError
-            }
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
             super::StorageError::NotFoundError => Self::DBFilterError,
         }
     }
@@ -88,11 +94,14 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
                 Self::DBError
             }
             super::StorageError::FindError => Self::DBReadError,
-            super::StorageError::InsertError => Self::DBWriteError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBWriteError
+            }
             super::StorageError::DeleteError => Self::DBDeleteError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::NotFoundError => Self::UnknownError,
+            super::StorageError::ReplicaPoolNotConfigured => Self::DBReplicaNotConfigured,
         }
     }
 }
@@ -101,16 +110,18 @@ error_transform!(super::StorageError => super::FingerprintDBError);
 impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
-            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
-                Self::DBError
-            }
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError | super::StorageError::NotFoundError => {
                 Self::DBFilterError
             }
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
         }
     }
 }
@@ -138,6 +149,7 @@ impl<'a> From<&'a super::FingerprintDBError> for super::ApiError {
             super::FingerprintDBError::DBError => Self::DatabaseError,
             super::FingerprintDBError::DBFilterError => Self::RetrieveDataFailed("fingerprint"),
             super::FingerprintDBError::DBInsertError => Self::DatabaseInsertFailed("fingerprint"),
+            super::FingerprintDBError::Duplicate => Self::DatabaseInsertFailed("fingerprint"),
             super::FingerprintDBError::UnknownError => Self::UnknownError,
         }
     }
@@ -169,6 +181,7 @@ impl<'a> From<&'a super::MerchantDBError> for super::ApiError {
                                                          // occur because of master key failure
             super::MerchantDBError::DBError |
             super::MerchantDBError::DBFilterError |
+            super::MerchantDBError::Duplicate |
             super::MerchantDBError::DBInsertError=> Self::MerchantError,
             super::MerchantDBError::NotFoundError=> Self::NotFoundError,
             super::MerchantDBError::UnknownError => Self::UnknownError
@@ -189,6 +202,7 @@ impl<'a> From<&'a super::VaultDBError> for super::ApiError {
             super::VaultDBError::DBDeleteError => Self::DatabaseDeleteFailed("locker"),
             super::VaultDBError::UnknownError => Self::UnknownError,
             super::VaultDBError::NotFoundError => Self::NotFoundError,
+            super::VaultDBError::Duplicate => Self::DatabaseInsertFailed("locker"),
         }
     }
 }
@@ -200,6 +214,7 @@ impl<'a> From<&'a super::HashDBError> for super::ApiError {
             super::HashDBError::DBError => Self::DatabaseError,
             super::HashDBError::DBFilterError => Self::RetrieveDataFailed("hash table"),
             super::HashDBError::DBInsertError => Self::DatabaseInsertFailed("hash table"),
+            super::HashDBError::Duplicate => Self::DatabaseInsertFailed("hash table"),
             super::HashDBError::UnknownError => Self::UnknownError,
         }
     }
@@ -214,6 +229,7 @@ impl<'a> From<&'a super::TestDBError> for super::ApiError {
             super::TestDBError::DBWriteError => Self::DatabaseInsertFailed("TestFailed"),
             super::TestDBError::DBReadError => Self::RetrieveDataFailed("Test Failed"),
             super::TestDBError::DBDeleteError => Self::DatabaseDeleteFailed("Test Failed"),
+            super::TestDBError::DBReplicaNotConfigured => Self::DatabaseError,
         }
     }
 }
@@ -240,15 +256,17 @@ error_transform!(super::StorageError => super::EntityDBError);
 impl<'a> From<&'a super::StorageError> for super::EntityDBError {
     fn from(value: &'a super::StorageError) -> Self {
         match value {
-            super::StorageError::DBPoolError | super::StorageError::PoolClientFailure => {
-                Self::DBError
-            }
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::NotFoundError => Self::NotFoundError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
             | super::StorageError::DeleteError => Self::UnknownError,
-            super::StorageError::InsertError => Self::DBInsertError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
         }
     }
 }
@@ -275,8 +293,46 @@ impl<'a> From<&'a super::EntityDBError> for super::ApiError {
             super::EntityDBError::DBError => Self::DatabaseError,
             super::EntityDBError::DBFilterError => Self::RetrieveDataFailed("entity"),
             super::EntityDBError::DBInsertError => Self::DatabaseInsertFailed("entity"),
+            super::EntityDBError::Duplicate => Self::DatabaseInsertFailed("entity"),
             super::EntityDBError::UnknownError => Self::UnknownError,
             super::EntityDBError::NotFoundError => Self::NotFoundError,
+        }
+    }
+}
+
+error_transform!(super::StorageError => super::ReverseLookupDBError);
+impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
+    fn from(value: &'a super::StorageError) -> Self {
+        match value {
+            super::StorageError::DBPoolError
+            | super::StorageError::PoolClientFailure
+            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            super::StorageError::FindError => Self::DBFilterError,
+            super::StorageError::NotFoundError => Self::NotFoundError,
+            super::StorageError::DecryptionError
+            | super::StorageError::EncryptionError
+            | super::StorageError::DeleteError => Self::UnknownError,
+            super::StorageError::InsertError | super::StorageError::UpdateError => {
+                Self::DBInsertError
+            }
+        }
+    }
+}
+
+error_transform!(super::ReverseLookupDBError => super::ApiError);
+impl<'a> From<&'a super::ReverseLookupDBError> for super::ApiError {
+    fn from(value: &'a super::ReverseLookupDBError) -> Self {
+        match value {
+            super::ReverseLookupDBError::DBError => Self::DatabaseError,
+            super::ReverseLookupDBError::DBFilterError => {
+                Self::RetrieveDataFailed("reverse lookup")
+            }
+            super::ReverseLookupDBError::DBInsertError => {
+                Self::DatabaseInsertFailed("reverse lookup")
+            }
+            super::ReverseLookupDBError::Duplicate => Self::DatabaseInsertFailed("reverse lookup"),
+            super::ReverseLookupDBError::NotFoundError => Self::NotFoundError,
+            super::ReverseLookupDBError::UnknownError => Self::UnknownError,
         }
     }
 }
@@ -316,6 +372,7 @@ impl<'a> From<&'a super::EntityDBError> for super::KeyManagerError {
             super::EntityDBError::DBError
             | super::EntityDBError::DBFilterError
             | super::EntityDBError::DBInsertError
+            | super::EntityDBError::Duplicate
             | super::EntityDBError::UnknownError
             | super::EntityDBError::NotFoundError => Self::DbError,
         }

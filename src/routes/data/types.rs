@@ -1,4 +1,4 @@
-use masking::{Secret, StrongSecret};
+use hyperswitch_masking::{Secret, StrongSecret};
 
 use crate::{
     error,

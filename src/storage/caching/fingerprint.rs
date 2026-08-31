@@ -1,4 +1,4 @@
-use masking::{ExposeInterface, PeekInterface, Secret};
+use hyperswitch_masking::Secret;
 
 use crate::{
     error::ContainerError,
@@ -8,7 +8,7 @@ use crate::{
 impl<T> storage::FingerprintInterface for super::Caching<T>
 where
     T: storage::FingerprintInterface
-        + storage::Cacheable<types::Fingerprint, Key = Vec<u8>, Value = types::Fingerprint>
+        + storage::Cacheable<types::Fingerprint, Key = Secret<Vec<u8>>, Value = types::Fingerprint>
         + storage::Cacheable<types::Merchant>
         + storage::Cacheable<types::HashTable>
         + super::CacheableWithEntity<T>
@@ -17,21 +17,22 @@ where
 {
     type Error = T::Error;
 
-    async fn find_by_fingerprint_hash(
+    async fn find_optional_by_fingerprint_hash(
         &self,
         fingerprint_hash: Secret<Vec<u8>>,
     ) -> Result<Option<types::Fingerprint>, ContainerError<Self::Error>> {
-        let key = fingerprint_hash.peek().to_vec();
-        let cached_data = self.lookup::<types::Fingerprint>(key.clone()).await;
-        match cached_data {
+        match self
+            .lookup::<types::Fingerprint>(fingerprint_hash.clone())
+            .await
+        {
             Some(data) => Ok(Some(data)),
             None => {
                 let result = self
                     .inner
-                    .find_by_fingerprint_hash(fingerprint_hash)
+                    .find_optional_by_fingerprint_hash(fingerprint_hash.clone())
                     .await?;
                 if let Some(ref fingerprint) = result {
-                    self.cache_data::<types::Fingerprint>(key, fingerprint.clone())
+                    self.cache_data::<types::Fingerprint>(fingerprint_hash, fingerprint.clone())
                         .await;
                 }
                 Ok(result)
@@ -39,17 +40,17 @@ where
         }
     }
 
-    async fn get_or_insert_fingerprint(
+    async fn insert_fingerprint(
         &self,
-        data: Secret<String>,
-        key: Secret<String>,
+        fingerprint_hash: Secret<Vec<u8>>,
+        fingerprint_id: Secret<String>,
     ) -> Result<types::Fingerprint, ContainerError<Self::Error>> {
-        let output = self.inner.get_or_insert_fingerprint(data, key).await?;
-        self.cache_data::<types::Fingerprint>(
-            output.fingerprint_hash.clone().expose(),
-            output.clone(),
-        )
-        .await;
+        let output = self
+            .inner
+            .insert_fingerprint(fingerprint_hash, fingerprint_id)
+            .await?;
+        self.cache_data::<types::Fingerprint>(output.fingerprint_hash.clone(), output.clone())
+            .await;
         Ok(output)
     }
 }
