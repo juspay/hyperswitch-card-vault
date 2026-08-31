@@ -9,7 +9,7 @@ rust-version = "1.92.0"
 
 [features]
 default = ["caching"]
-release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "kms-gcp", "caching", "external_key_manager"]
+release = ["kms-aws", "middleware", "key_custodian", "limit", "kms-hashicorp-vault", "kms-gcp", "caching", "external_key_manager", "vergen", "redis", "kv"]
 kms-aws = ["dep:aws-config", "dep:aws-sdk-kms"]
 kms-hashicorp-vault = ["dep:vaultrs"]
 kms-gcp = ["dep:google-cloud-kms", "dep:rustls"]
@@ -65,9 +65,10 @@ serde_path_to_error = "0.1.16"
 error-stack = "0.5.0"
 futures-util = "0.3.30"
 fred = { version = "8.0.6", optional = true, features = ["metrics", "partial-tracing", "subscriber-client"] }
+hyperswitch_redis_interface = { git = "https://github.com/juspay/hyperswitch", tag = "2026.07.17.0", package = "redis_interface", default-features = false, features = ["fred", "metrics"], optional = true }
 digest = "0.10"
-masking = { package = "hyperswitch_masking", version = "0.0.1", features = ["serde", "diesel"] }
-ring = { version = "0.17.8", features = ["std"] }
+hyperswitch_masking = { version = "0.0.1", features = ["diesel", "serde"] }
+ring = { version = "0.17.14", features = ["std"] }
 hex = "0.4.3"
 time = { version = "0.3.45" }
 uuid = { version = "1.20.0", features = ["v7", "fast-rng"] }
