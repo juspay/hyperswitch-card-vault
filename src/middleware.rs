@@ -1,8 +1,8 @@
 use axum::{
     body::Body,
-    http::{Request, request, response},
+    http::{Request, request},
     middleware::Next,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use http_body_util::BodyExt;
 
@@ -56,7 +56,7 @@ pub async fn middleware(
     parts: request::Parts,
     axum::Json(jwe_body): axum::Json<jw::JweBody>,
     next: Next,
-) -> Result<response::Response, ContainerError<error::ApiError>> {
+) -> Result<Response, ContainerError<error::ApiError>> {
     let keys = &state.jwe_keys;
     let plain_response = wants_plain_response(&parts);
 
