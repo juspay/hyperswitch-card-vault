@@ -3,7 +3,10 @@ use std::{sync::Arc, time::Duration};
 #[cfg(feature = "middleware")]
 use axum::middleware;
 use axum::{extract::Request, routing::post};
-use axum_server::tls_rustls::RustlsConfig;
+use axum_server::{
+    accept::NoDelayAcceptor,
+    tls_rustls::{RustlsAcceptor, RustlsConfig},
+};
 use error_stack::ResultExt;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -315,6 +318,8 @@ pub async fn server_builder(
 
     logger::debug!(startup_config=?global_app_state.global_config);
 
+    let set_tcp_nodelay = global_app_state.global_config.server.set_tcp_nodelay;
+
     if let Some(tls_config) = &global_app_state.global_config.tls {
         let tcp_listener = std::net::TcpListener::bind(socket_addr)?;
         let rusttls_config =
@@ -327,8 +332,34 @@ pub async fn server_builder(
             shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
         });
 
-        axum_server::from_tcp_rustls(tcp_listener, rusttls_config)
+        let server = axum_server::from_tcp(tcp_listener).handle(handle);
+
+        if set_tcp_nodelay {
+            // NoDelayAcceptor disables Nagle's algorithm on accepted sockets.
+            server
+                .acceptor(RustlsAcceptor::new(rusttls_config).acceptor(NoDelayAcceptor::new()))
+                .serve(router.into_make_service())
+                .await?;
+        } else {
+            server
+                .acceptor(RustlsAcceptor::new(rusttls_config))
+                .serve(router.into_make_service())
+                .await?;
+        }
+    } else if set_tcp_nodelay {
+        let tcp_listener = std::net::TcpListener::bind(socket_addr)?;
+
+        let handle = axum_server::Handle::new();
+        let shutdown_handle = handle.clone();
+        tokio::spawn(async move {
+            shutdown_signal().await;
+            shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
+        });
+
+        // NoDelayAcceptor disables Nagle's algorithm on accepted sockets.
+        axum_server::from_tcp(tcp_listener)
             .handle(handle)
+            .acceptor(NoDelayAcceptor::new())
             .serve(router.into_make_service())
             .await?;
     } else {

@@ -7,6 +7,19 @@ log_format = "default" # format to be used for logging default | json
 host = "127.0.0.1" # The host that the server should be exposed to
 port = 8080        # The port where the server should be hosted on
 
+# Sets TCP_NODELAY on accepted sockets, disabling Nagle's algorithm.
+# (optional, default: true — the correct setting for a request/response service)
+#
+# With Nagle active, two responses written back-to-back on one connection stall:
+# the second waits on the first's acknowledgement, and the peer's delayed-ACK
+# timer adds ~40ms. Set false only to deliberately reproduce that behaviour.
+set_tcp_nodelay = true
+
+# Return `/fingerprint` responses as plain JSON when the caller sends
+# `x-response-encoding: plain`, skipping JWE/JWS response encryption for that route only.
+# The request payload must still be encrypted. (optional, default: false)
+plain_fingerprint_response = false
+
 [limit]
 request_count = 1 # The requests per duration
 duration = 60     # duration to rate limit the delete api (in sec)

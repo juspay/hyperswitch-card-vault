@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use axum::{
     body::Body,
+    extract::State,
     http::{Request, request, response},
     middleware::Next,
+    response::IntoResponse,
 };
 use http_body_util::BodyExt;
 
@@ -9,6 +13,8 @@ use crate::{
     crypto::encryption_manager::{encryption_interface::Encryption, managers::jw},
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
+    storage::consts,
+    tenant::GlobalAppState,
 };
 
 #[cfg(feature = "middleware")]
@@ -32,15 +38,35 @@ where
     result
 }
 
+/// Whether this request may receive a plain (unencrypted) response.
+///
+/// Requires all three: the deployment opted in, the route is `/fingerprint`, and the caller
+/// asked for it. A fingerprint response carries only a fingerprint id, so skipping response
+/// encryption for it is safe; the request payload is still decrypted and authenticated as usual.
+fn wants_plain_response(global_state: &GlobalAppState, parts: &request::Parts) -> bool {
+    global_state
+        .global_config
+        .server
+        .plain_fingerprint_response
+        && parts.uri.path().ends_with(consts::FINGERPRINT_PATH_SUFFIX)
+        && parts
+            .headers
+            .get(consts::X_RESPONSE_ENCODING)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value == consts::RESPONSE_ENCODING_PLAIN)
+}
+
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
 pub async fn middleware(
+    State(global_state): State<Arc<GlobalAppState>>,
     TenantStateResolver(state): TenantStateResolver,
     parts: request::Parts,
     axum::Json(jwe_body): axum::Json<jw::JweBody>,
     next: Next,
-) -> Result<(response::Parts, axum::Json<jw::JweBody>), ContainerError<error::ApiError>> {
+) -> Result<response::Response, ContainerError<error::ApiError>> {
     let keys = &state.jwe_keys;
+    let plain_response = wants_plain_response(&global_state, &parts);
 
     let jwe_decrypted =
         record_jwe_middleware_operation(async { keys.decrypt(jwe_body) }, "request_decrypt")
@@ -57,17 +83,27 @@ pub async fn middleware(
         ))?
         .to_bytes();
 
-    let jwe_payload = record_jwe_middleware_operation(
-        async { keys.encrypt(response_body.to_vec()) },
-        "response_encrypt",
-    )
-    .await?;
-
     parts.headers = hyper::HeaderMap::new();
     parts.headers.append(
         hyper::header::CONTENT_TYPE,
         axum::http::HeaderValue::from_static("application/json"),
     );
 
-    Ok((parts, axum::Json(jwe_payload)))
+    if plain_response {
+        // Echo the encoding so the caller can tell a plain body from an envelope without
+        // sniffing it.
+        parts.headers.append(
+            hyper::header::HeaderName::from_static(consts::X_RESPONSE_ENCODING),
+            axum::http::HeaderValue::from_static(consts::RESPONSE_ENCODING_PLAIN),
+        );
+        return Ok((parts, Body::from(response_body)).into_response());
+    }
+
+    let jwe_payload = record_jwe_middleware_operation(
+        async { keys.encrypt(response_body.to_vec()) },
+        "response_encrypt",
+    )
+    .await?;
+
+    Ok((parts, axum::Json(jwe_payload)).into_response())
 }

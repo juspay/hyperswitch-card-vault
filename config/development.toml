@@ -6,6 +6,8 @@ log_format = "default"
 [server]
 host = "127.0.0.1"
 port = 3001
+set_tcp_nodelay = true
+plain_fingerprint_response = true
 
 [limit]
 request_count = 1

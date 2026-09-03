@@ -1,6 +1,8 @@
 [server]
 host = "0.0.0.0"
 port = 8080
+set_tcp_nodelay = true
+plain_fingerprint_response = false
 
 [database]
 url = "postgres://sam:damn@localhost/locker"
