@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use axum::{
     body::Body,
-    extract::State,
     http::{Request, request, response},
     middleware::Next,
     response::IntoResponse,
@@ -14,7 +11,6 @@ use crate::{
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
     storage::consts,
-    tenant::GlobalAppState,
 };
 
 #[cfg(feature = "middleware")]
@@ -40,15 +36,12 @@ where
 
 /// Whether this request may receive a plain (unencrypted) response.
 ///
-/// Requires all three: the deployment opted in, the route is `/fingerprint`, and the caller
-/// asked for it. A fingerprint response carries only a fingerprint id, so skipping response
-/// encryption for it is safe; the request payload is still decrypted and authenticated as usual.
-fn wants_plain_response(global_state: &GlobalAppState, parts: &request::Parts) -> bool {
-    global_state
-        .global_config
-        .server
-        .plain_fingerprint_response
-        && parts.uri.path().ends_with(consts::FINGERPRINT_PATH_SUFFIX)
+/// Only when the route is `/fingerprint` and the caller explicitly asked for it; without the
+/// header the response is encrypted as usual. A fingerprint response carries only a fingerprint
+/// id, so skipping response encryption for it is safe; the request payload is still decrypted
+/// and authenticated as usual.
+fn wants_plain_response(parts: &request::Parts) -> bool {
+    parts.uri.path().ends_with(consts::FINGERPRINT_PATH_SUFFIX)
         && parts
             .headers
             .get(consts::X_RESPONSE_ENCODING)
@@ -59,14 +52,13 @@ fn wants_plain_response(global_state: &GlobalAppState, parts: &request::Parts) -
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
 pub async fn middleware(
-    State(global_state): State<Arc<GlobalAppState>>,
     TenantStateResolver(state): TenantStateResolver,
     parts: request::Parts,
     axum::Json(jwe_body): axum::Json<jw::JweBody>,
     next: Next,
 ) -> Result<response::Response, ContainerError<error::ApiError>> {
     let keys = &state.jwe_keys;
-    let plain_response = wants_plain_response(&global_state, &parts);
+    let plain_response = wants_plain_response(&parts);
 
     let jwe_decrypted =
         record_jwe_middleware_operation(async { keys.decrypt(jwe_body) }, "request_decrypt")

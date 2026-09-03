@@ -15,11 +15,6 @@ port = 8080        # The port where the server should be hosted on
 # timer adds ~40ms. Set false only to deliberately reproduce that behaviour.
 set_tcp_nodelay = true
 
-# Return `/fingerprint` responses as plain JSON when the caller sends
-# `x-response-encoding: plain`, skipping JWE/JWS response encryption for that route only.
-# The request payload must still be encrypted. (optional, default: false)
-plain_fingerprint_response = false
-
 [limit]
 request_count = 1 # The requests per duration
 duration = 60     # duration to rate limit the delete api (in sec)

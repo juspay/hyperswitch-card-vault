@@ -103,11 +103,6 @@ pub struct Server {
     /// Sets TCP_NODELAY on accepted sockets, disabling Nagle's algorithm.
     #[serde(default = "default_tcp_nodelay")]
     pub set_tcp_nodelay: bool,
-    /// Allows `/fingerprint` responses to be returned as plain JSON (skipping JWE/JWS response
-    /// encryption) when the caller asks for it via `x-response-encoding: plain`. The request
-    /// payload is still required to be encrypted. Opt-in; every other route stays encrypted.
-    #[serde(default)]
-    pub plain_fingerprint_response: bool,
 }
 
 const fn default_tcp_nodelay() -> bool {
