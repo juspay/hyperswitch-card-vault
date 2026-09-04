@@ -20,6 +20,12 @@ secrets_manager = "no_encryption"
 key_id = "us-west-2"
 region = "abc"
 
+[secrets_management.gcp_kms]
+project_id = "my-project"
+location_id = "global"
+key_ring_id = "my-key-ring"
+key_id = "my-key"
+
 [tls]
 certificate = "cert.pem"
 private_key = "key.pem"
@@ -30,6 +36,7 @@ pool_max_idle_per_host = 10
 identity = ""
 
 [external_key_manager]
+mode = "disabled"
 url = "http://localhost:5000"
 cert = ""
 
