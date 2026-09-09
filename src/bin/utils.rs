@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &public_key.ok_or(error::CryptoError::InvalidData("public key not found"))?,
             )?;
             jwe_operation(|payload| {
-                JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP)
+                JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP)?
                     .encrypt(payload)
                     .and_then(|payload| {
                         Ok(serde_json::to_vec(&payload)
@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map_err(error::CryptoError::SerdeJsonError)
                     .map_err(Into::into)
                     .and_then(|payload| {
-                        JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP)
+                        JWEncryption::new(priv_key, pub_key, jwe::RSA_OAEP_256, jwe::RSA_OAEP)?
                             .decrypt(payload)
                     })
                 // (x)
