@@ -202,17 +202,30 @@ mod tests {
     #[test]
     fn test_jwe() {
         let (private_key, public_key) = generate_rsa_key_pair();
-        let jwt = encrypt_jwe("request_payload".as_bytes(), public_key, jwe::RSA_OAEP).unwrap();
-        let alg = jwe::RSA_OAEP;
-        let payload = decrypt_jwe(&jwt, private_key, alg).unwrap();
+        let encrypter = jwe::RSA_OAEP
+            .encrypter_from_pem(public_key.as_bytes())
+            .expect("Failed to derive the JWE encrypter");
+        let decrypter = jwe::RSA_OAEP
+            .decrypter_from_pem(private_key.as_bytes())
+            .expect("Failed to derive the JWE decrypter");
+
+        let jwt = encrypt_jwe("request_payload".as_bytes(), &encrypter).unwrap();
+        let payload = decrypt_jwe(&jwt, &decrypter).unwrap();
         assert_eq!("request_payload".to_string(), payload)
     }
 
     #[test]
     fn test_jws() {
         let (private_key, public_key) = generate_rsa_key_pair();
-        let jwt = jws_sign_payload("jws payload".as_bytes(), private_key).unwrap();
-        let payload = verify_sign(jwt, public_key).unwrap();
+        let signer = jws::RS256
+            .signer_from_pem(private_key.as_bytes())
+            .expect("Failed to derive the JWS signer");
+        let verifier = jws::RS256
+            .verifier_from_pem(public_key.as_bytes())
+            .expect("Failed to derive the JWS verifier");
+
+        let jwt = jws_sign_payload("jws payload".as_bytes(), &signer).unwrap();
+        let payload = verify_sign(jwt, &verifier).unwrap();
         assert_eq!("jws payload".to_string(), payload)
     }
 }
