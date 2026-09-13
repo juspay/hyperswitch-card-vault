@@ -120,9 +120,10 @@ drainer_num_partitions = 16        # number of shard partitions (must be > 0)
 ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 
 # KV enablement is controlled SOLELY at runtime via the runtime-config endpoint (see
-# [runtime_config] below).  There is no TOML fallback — a single source of truth avoids drift.
-# When the endpoint is disabled or unreachable the service fails closed to "disabled"
-# (all reads/writes go to Postgres).  The endpoint returns the config object as its `value`:
+# [runtime_config] below).  The TOML value under [runtime_config.kv_config] is a seed
+# written only when the row is absent — it is never a read-path fallback, so a store
+# outage fails closed to "disabled" (all reads/writes go to Postgres) rather than to the
+# seeded value.  The `kv_config` entry holds:
 #   {"enable_kv": "disabled" | "enabled" | "soft_kill", "use_replica": true | false}
 #   "enabled"   → write-through Redis (writes → Redis + drainer; reads → Redis-first)
 #   "soft_kill" → gradual rollout (inserts → Postgres, reads → Redis-first)
@@ -157,22 +158,29 @@ background_metrics_collection_interval_secs = 15 # How often to collect metrics 
 # and read-through a per-tenant Redis cache. No polling.
 #
 # The runtime config source of truth is the per-tenant `configs` table
-# (created by migration 2026-08-17-120000_create_configs_table). The service
-# seeds a safe default (`{"use_replica":false,"enable_kv":"disabled"}`) at
-# startup when the row is absent.
+# (created by migration 2026-08-17-120000_create_configs_table), which holds one row
+# per runtime config keyed by its config key. Every key and its value struct are fixed
+# at compile time by the `runtime_configs!` registry in `src/runtime_config.rs`.
 #
-# The only knob enabled mode adds is the admin API key that guards the
-# `POST /runtime-config` update endpoint:
-#   mode = "enabled"
-#   admin_api_key = "..."   # required when mode is "enabled"
+# Enabled mode adds the admin API key that guards the `POST /runtime-config` update
+# endpoint, plus one optional seed section per runtime config. A seed is written at
+# startup only when that config's row is absent; it never overwrites a live value and
+# is never used as a read-path fallback. Omitted seeds fall back to the struct default
+# (KV disabled, replica off).
 
 # [runtime_config]
 # mode = "enabled"
 # admin_api_key = "test_internal_admin_api_key"
+#
+# Seed for the `kv_config` entry, written only if the row does not exist yet:
+# [runtime_config.kv_config]
+# enable_kv = "disabled"   # "disabled" | "enabled" | "soft_kill"
+# use_replica = false
 
-# Update the runtime config via:
+# Update a runtime config via (`key` selects which config; `value` must match that
+# config's struct — both are rejected at deserialization if they do not):
 #   curl -X POST http://<host>:<port>/runtime-config \
 #     -H "x-tenant-id: <tenant>" \
 #     -H "x-internal-api-key: <admin_api_key>" \
 #     -H "Content-Type: application/json" \
-#     -d '{"value":{"use_replica":true,"enable_kv":"enabled"}}'
+#     -d '{"key":"kv_config","value":{"use_replica":true,"enable_kv":"enabled"}}'

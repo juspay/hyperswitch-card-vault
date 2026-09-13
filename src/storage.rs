@@ -33,11 +33,14 @@ use crate::{
     error::{self, ContainerError},
 };
 
-/// All runtime configs, deserialized directly from the config endpoint's JSON body. Field names
-/// match the keys the endpoint returns; each `#[serde(default)]` field fails closed when absent.
+/// The `kv_config` runtime config: the KV master switch and read-replica routing, which
+/// travel together because replica usage is KV-dependent. `deny_unknown_fields` makes the
+/// shape authoritative — an update naming a field this binary does not know is rejected
+/// rather than silently dropped. Each `#[serde(default)]` field fails closed when absent.
 #[cfg(feature = "redis")]
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
-pub struct RuntimeConfigValues {
+#[serde(deny_unknown_fields)]
+pub struct KvConfigValues {
     #[cfg(feature = "kv")]
     #[serde(default)]
     pub enable_kv: kv::KvState,
@@ -45,10 +48,13 @@ pub struct RuntimeConfigValues {
     pub use_replica: bool,
 }
 
+/// Status response for `GET /health/runtime-config`: one entry per registered runtime
+/// config keyed by its config key, plus the effective routing state it produces.
 #[cfg(feature = "redis")]
 #[derive(Debug, serde::Serialize)]
 pub struct StorageRuntimeConfigStatus {
-    pub runtime_config: crate::runtime_config::RuntimeConfigStatus,
+    pub runtime_config:
+        std::collections::HashMap<&'static str, crate::runtime_config::RuntimeConfigStatus>,
     pub storage: StorageRuntimeConfigState,
 }
 
@@ -254,10 +260,7 @@ impl Storage {
     pub async fn runtime_config_status(&self) -> StorageRuntimeConfigStatus {
         let runtime_config = match self.runtime_config_manager() {
             Some(manager) => manager.status(self).await,
-            None => crate::runtime_config::RuntimeConfigStatus {
-                status: crate::runtime_config::RuntimeConfigStatusKind::Disabled,
-                config: None,
-            },
+            None => crate::runtime_config::disabled_status(),
         };
 
         StorageRuntimeConfigStatus {
@@ -319,9 +322,9 @@ impl Storage {
     /// `None` is returned and callers fail closed (`use_replica: false`, KV `Disabled`)
     /// without touching Postgres or Redis.
     #[cfg(feature = "redis")]
-    pub(crate) async fn runtime_config_values(&self) -> Option<RuntimeConfigValues> {
+    pub(crate) async fn runtime_config_values(&self) -> Option<KvConfigValues> {
         match self.runtime_config_manager() {
-            Some(manager) => manager.get::<RuntimeConfigValues>(self).await,
+            Some(manager) => manager.get::<KvConfigValues>(self).await,
             None => None,
         }
     }

@@ -12,23 +12,16 @@ use axum::{Json, extract::State, http::HeaderMap};
 use crate::{
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError},
+    runtime_config::RuntimeConfigUpdate,
     tenant::GlobalAppState,
 };
 
-#[derive(serde::Deserialize)]
-pub struct UpdateRuntimeConfigRequest {
-    /// Raw config body, e.g. `{"use_replica":true,"enable_kv":"enabled"}`.
-    /// Unknown fields are rejected by `RuntimeConfigValues::deserialize`.
-    pub value: serde_json::Value,
-}
-
-#[derive(serde::Serialize)]
-pub struct UpdateRuntimeConfigResponse {
-    /// The applied config value (echo back).
-    pub value: serde_json::Value,
-}
-
 /// `POST /runtime-config`
+///
+/// Body: `{"key": "<config key>", "value": {...}}`. The key selects which runtime config
+/// is written and, with it, the struct `value` must match — both are fixed at compile
+/// time by the `runtime_configs!` registry, so an unknown key or an unknown field inside
+/// `value` is rejected during deserialization, before any storage call.
 ///
 /// Auth:
 ///   - `x-tenant-id`        → tenant whose config table is updated
@@ -38,8 +31,8 @@ pub async fn update_runtime_config(
     State(_global_app_state): State<Arc<GlobalAppState>>,
     headers: HeaderMap,
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    Json(payload): Json<UpdateRuntimeConfigRequest>,
-) -> Result<Json<UpdateRuntimeConfigResponse>, ContainerError<error::ApiError>> {
+    Json(payload): Json<RuntimeConfigUpdate>,
+) -> Result<Json<RuntimeConfigUpdate>, ContainerError<error::ApiError>> {
     let api_key_header = headers
         .get("x-internal-api-key")
         .and_then(|v| v.to_str().ok())
@@ -58,11 +51,9 @@ pub async fn update_runtime_config(
     }
 
     manager
-        .update(&tenant_app_state.db, payload.value.clone())
+        .update(&tenant_app_state.db, payload.clone())
         .await
         .map_err(ContainerError::<error::ApiError>::from)?;
 
-    Ok(Json(UpdateRuntimeConfigResponse {
-        value: payload.value,
-    }))
+    Ok(Json(payload))
 }

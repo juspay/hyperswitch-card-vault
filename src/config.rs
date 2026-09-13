@@ -5,11 +5,15 @@ use std::{
 };
 
 use error_stack::ResultExt;
-#[cfg(feature = "redis")]
-use hyperswitch_masking::PeekInterface;
 use hyperswitch_masking::{ExposeInterface, Secret};
 #[cfg(feature = "redis")]
 use hyperswitch_redis_interface::RedisSettings;
+
+/// Runtime configuration is declared by the `runtime_configs!` registry so that each
+/// config's key and struct are bound at compile time; re-exported here because it is
+/// still a `[runtime_config]` section of the static config.
+#[cfg(feature = "redis")]
+pub use crate::runtime_config::RuntimeConfig;
 
 use crate::{
     api_client::ApiClientConfig,
@@ -327,6 +331,7 @@ impl GlobalConfig {
         #[cfg(feature = "redis")]
         if let RuntimeConfig::Enabled {
             ref mut admin_api_key,
+            ..
         } = self.runtime_config
         {
             *admin_api_key = secret_management_client
@@ -526,45 +531,6 @@ impl std::fmt::Display for Env {
             Self::Development => write!(f, "development"),
             Self::Release => write!(f, "release"),
         }
-    }
-}
-
-/// Runtime configuration source.
-///
-/// When enabled, the runtime config (`use_replica`, `enable_kv`) is stored in the
-/// per-tenant `configs` Postgres table and read-through a per-tenant Redis cache.
-/// The `admin_api_key` guards the `POST /runtime-config` update endpoint.
-/// Only available with the `redis` feature — runtime config never operates without
-/// its Redis read-through cache.
-#[cfg(feature = "redis")]
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-#[serde(tag = "mode", rename_all = "snake_case")]
-pub enum RuntimeConfig {
-    #[default]
-    Disabled,
-    Enabled {
-        admin_api_key: hyperswitch_masking::Secret<String>,
-    },
-}
-
-#[cfg(feature = "redis")]
-impl RuntimeConfig {
-    pub fn is_enabled(&self) -> bool {
-        matches!(self, Self::Enabled { .. })
-    }
-
-    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
-        if let Self::Enabled { admin_api_key } = self
-            && admin_api_key.peek().trim().is_empty()
-        {
-            return Err(
-                crate::error::ConfigurationError::InvalidConfigurationValueError(
-                    r#"runtime_config.admin_api_key is required when mode is "enabled""#.into(),
-                ),
-            );
-        }
-
-        Ok(())
     }
 }
 
