@@ -38,14 +38,9 @@ where
     result
 }
 
-/// Whether this request may receive a plain (unencrypted) response.
-///
-/// Only when the route is `/fingerprint` and the caller explicitly asked for it; without the
-/// header the response is encrypted as usual. A fingerprint response carries only a fingerprint
-/// id, so skipping response encryption for it is safe; the request payload is still decrypted and
-/// authenticated as usual.
+/// Whether the caller asked for a plain response on a route that may return one
 fn wants_plain_response(parts: &request::Parts) -> bool {
-    parts.uri.path().ends_with(consts::FINGERPRINT_PATH_SUFFIX)
+    parts.uri.path() == consts::V2_FINGERPRINT_PATH
         && parts
             .headers
             .get(consts::X_FP_RESPONSE_ENCODING)
@@ -92,8 +87,7 @@ pub async fn middleware(
     );
 
     let response = if plain_response {
-        // Echo the encoding so the caller can tell a plain body from an envelope without
-        // sniffing it.
+        // Echoed so the caller can tell a plain body from an envelope.
         parts.headers.append(
             hyper::header::HeaderName::from_static(consts::X_FP_RESPONSE_ENCODING),
             axum::http::HeaderValue::from_static(consts::FP_RESPONSE_ENCODING_PLAIN),

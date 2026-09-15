@@ -15,13 +15,12 @@ pub const X_TENANT_ID: &str = "x-tenant-id";
 pub const X_REQUEST_ID: &str = "x-request-id";
 /// Header key for caller-supplied fingerprint ID (optional)
 pub const X_FINGERPRINT_ID: &str = "x-fingerprint-id";
-/// Header key a caller uses to request a plain (unencrypted) fingerprint response; echoed back
-/// when honoured
+/// Header key to request a plain fingerprint response; echoed back when honoured
 pub const X_FP_RESPONSE_ENCODING: &str = "x-fp-response-encoding";
-/// `x-fp-response-encoding` value requesting a plain JSON response
+/// Header value requesting a plain JSON response
 pub const FP_RESPONSE_ENCODING_PLAIN: &str = "plain";
-/// Path suffix shared by `/cards/fingerprint` and `/api/v2/vault/fingerprint`
-pub const FINGERPRINT_PATH_SUFFIX: &str = "/fingerprint";
+/// Fingerprint route that may return a plain response
+pub const V2_FINGERPRINT_PATH: &str = "/api/v2/vault/fingerprint";
 /// Key written by the Redis health-check probe
 #[cfg(feature = "redis")]
 pub const REDIS_HEALTH_CHECK_KEY: &str = "health_check_redis";
