@@ -1,7 +1,8 @@
 use axum::{
     body::Body,
-    http::{Request, request, response},
+    http::{Request, request},
     middleware::Next,
+    response::{IntoResponse, Response},
 };
 use http_body_util::BodyExt;
 use josekit::jwe;
@@ -13,6 +14,7 @@ use crate::{
     },
     custom_extractors::TenantStateResolver,
     error::{self, ContainerError, ResultContainerExt},
+    storage::consts,
 };
 
 #[cfg(feature = "middleware")]
@@ -36,6 +38,16 @@ where
     result
 }
 
+/// Whether the caller asked for a plain response on a route that may return one
+fn wants_plain_response(parts: &request::Parts) -> bool {
+    parts.uri.path() == consts::V2_FINGERPRINT_PATH
+        && parts
+            .headers
+            .get(consts::X_FP_RESPONSE_ENCODING)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value == consts::FP_RESPONSE_ENCODING_PLAIN)
+}
+
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
 /// card APIs
 pub async fn middleware(
@@ -43,7 +55,9 @@ pub async fn middleware(
     parts: request::Parts,
     axum::Json(jwe_body): axum::Json<jw::JweBody>,
     next: Next,
-) -> Result<(response::Parts, axum::Json<jw::JweBody>), ContainerError<error::ApiError>> {
+) -> Result<Response, ContainerError<error::ApiError>> {
+    let plain_response = wants_plain_response(&parts);
+
     let keys = JWEncryption {
         private_key: state.config.locker_secrets.locker_private_key.clone(),
         public_key: state.config.tenant_secrets.public_key.clone(),
@@ -66,17 +80,29 @@ pub async fn middleware(
         ))?
         .to_bytes();
 
-    let jwe_payload = record_jwe_middleware_operation(
-        async { keys.encrypt(response_body.to_vec()) },
-        "response_encrypt",
-    )
-    .await?;
-
     parts.headers = hyper::HeaderMap::new();
     parts.headers.append(
         hyper::header::CONTENT_TYPE,
         axum::http::HeaderValue::from_static("application/json"),
     );
 
-    Ok((parts, axum::Json(jwe_payload)))
+    let response = if plain_response {
+        // Echoed so the caller can tell a plain body from an envelope.
+        parts.headers.append(
+            hyper::header::HeaderName::from_static(consts::X_FP_RESPONSE_ENCODING),
+            axum::http::HeaderValue::from_static(consts::FP_RESPONSE_ENCODING_PLAIN),
+        );
+
+        (parts, Body::from(response_body)).into_response()
+    } else {
+        let jwe_payload = record_jwe_middleware_operation(
+            async { keys.encrypt(response_body.to_vec()) },
+            "response_encrypt",
+        )
+        .await?;
+
+        (parts, axum::Json(jwe_payload)).into_response()
+    };
+
+    Ok(response)
 }
