@@ -721,15 +721,22 @@ where
         ),
     );
 
-    if let Err(error) = &result {
-        crate::logger::error!(
+    match &result {
+        Ok(_) => crate::logger::debug!(
+            table = table_name,
+            operation = ?operation,
+            pool = ?pool,
+            duration_ms = duration.as_millis(),
+            "Database query completed"
+        ),
+        Err(error) => crate::logger::error!(
             table = table_name,
             operation = ?operation,
             pool = ?pool,
             duration_ms = duration.as_millis(),
             error_message = ?error,
             "Database query failed"
-        );
+        ),
     }
 
     result
