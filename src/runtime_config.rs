@@ -342,11 +342,7 @@ impl RuntimeConfigManager {
                 .find_config(key)
                 .await
                 .inspect_err(|err| {
-                    crate::logger::error!(
-                        ?err,
-                        key,
-                        "Failed to read runtime config from Postgres"
-                    );
+                    crate::logger::error!(?err, key, "Failed to read runtime config from Postgres");
                 })
                 .ok()
                 .flatten()
@@ -641,7 +637,9 @@ mod config_source_tests {
         runtime_config: RuntimeConfig,
     }
 
-    fn seed_of(builder: config::ConfigBuilder<config::builder::DefaultState>) -> Option<KvConfigValues> {
+    fn seed_of(
+        builder: config::ConfigBuilder<config::builder::DefaultState>,
+    ) -> Option<KvConfigValues> {
         match builder.build().ok()?.try_deserialize::<TestDeser>().ok()? {
             TestDeser {
                 runtime_config: RuntimeConfig::Enabled { kv_config, .. },
@@ -674,7 +672,10 @@ mod config_source_tests {
     #[test]
     fn seed_loads_from_env() {
         let env = std::collections::HashMap::from([
-            ("LOCKER__RUNTIME_CONFIG__MODE".to_string(), "enabled".to_string()),
+            (
+                "LOCKER__RUNTIME_CONFIG__MODE".to_string(),
+                "enabled".to_string(),
+            ),
             (
                 "LOCKER__RUNTIME_CONFIG__ADMIN_API_KEY".to_string(),
                 "test_key".to_string(),

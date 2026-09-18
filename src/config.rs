@@ -14,7 +14,6 @@ use hyperswitch_redis_interface::RedisSettings;
 /// still a `[runtime_config]` section of the static config.
 #[cfg(feature = "redis")]
 pub use crate::runtime_config::RuntimeConfig;
-
 use crate::{
     api_client::ApiClientConfig,
     crypto::secrets_manager::{
