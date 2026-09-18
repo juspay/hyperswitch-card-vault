@@ -15,6 +15,12 @@ pub const X_TENANT_ID: &str = "x-tenant-id";
 pub const X_REQUEST_ID: &str = "x-request-id";
 /// Header key for caller-supplied fingerprint ID (optional)
 pub const X_FINGERPRINT_ID: &str = "x-fingerprint-id";
+/// Header key to request a plain fingerprint response; echoed back when honoured
+pub const X_FP_RESPONSE_ENCODING: &str = "x-fp-response-encoding";
+/// Header value requesting a plain JSON response
+pub const FP_RESPONSE_ENCODING_PLAIN: &str = "plain";
+/// Fingerprint route that may return a plain response
+pub const V2_FINGERPRINT_PATH: &str = "/api/v2/vault/fingerprint";
 /// Key written by the Redis health-check probe
 #[cfg(feature = "redis")]
 pub const REDIS_HEALTH_CHECK_KEY: &str = "health_check_redis";
@@ -29,6 +35,15 @@ pub const REDIS_HEALTH_CHECK_EXPIRY: i64 = 5;
 /// invalidate-on-update `DEL` fails (e.g., transient Redis outage).
 #[cfg(feature = "redis")]
 pub const RUNTIME_CONFIG_REDIS_TTL_SECS: i64 = 3600;
+
+/// Default maximum lifetime (seconds) of a pooled DB connection
+pub const DEFAULT_DB_POOL_MAX_LIFETIME_SECS: u64 = 120;
+/// Default minimum number of idle connections maintained in the DB pool
+pub const DEFAULT_DB_POOL_MIN_IDLE: u32 = 2;
+/// Default idle timeout (seconds) for a pooled DB connection
+pub const DEFAULT_DB_POOL_IDLE_TIMEOUT_SECS: u64 = 300;
+/// Default timeout (seconds) for acquiring a connection from the DB pool
+pub const DEFAULT_DB_POOL_CONNECTION_TIMEOUT_SECS: u64 = 10;
 
 /// Header Constants
 pub mod headers {

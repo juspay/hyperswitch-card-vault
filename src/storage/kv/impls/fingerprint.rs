@@ -1,13 +1,13 @@
 //! KV trait impls for the fingerprint table.
 
+use async_bb8_diesel::AsyncRunQueryDsl;
 use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::RunQueryDsl;
 use hyperswitch_masking::{PeekInterface, Secret};
 
 use crate::{
     error::{ContainerError, FingerprintDBError, kv::KvError},
     storage::{
-        DbOperation, Storage,
+        DbOperation, PgPooledConn, Storage,
         kv::{
             PartitionKey, StorageScheme,
             entity::EntityType,
@@ -69,10 +69,15 @@ impl KvResource for Fingerprint {
         new_object.updated_by = Some(scheme);
     }
 
-    fn generate_insert_drainer_query(
+    async fn generate_insert_drainer_query(
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, KvError> {
-        generate_insert_query::<crate::storage::schema::fingerprint::table, _>(new_object.clone())
+        generate_insert_query::<crate::storage::schema::fingerprint::table, _>(
+            conn,
+            new_object.clone(),
+        )
+        .await
     }
 
     async fn storage_insert(
@@ -80,7 +85,7 @@ impl KvResource for Fingerprint {
         store: &Storage,
     ) -> Result<Self::DieselEntity, ContainerError<FingerprintDBError>> {
         // Writes always go to the primary pool, never a read replica.
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
 
         let query = diesel::insert_into(Self::table()).values(new_object);
 
@@ -89,7 +94,7 @@ impl KvResource for Fingerprint {
         crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
         let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
-            query.get_result(conn.get_mut()),
+            query.get_result_async(conn.get()),
             operation,
             pool,
         )
@@ -102,10 +107,10 @@ impl KvResource for Fingerprint {
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self::DieselEntity, ContainerError<FingerprintDBError>> {
         // Read path: route to the read replica when runtime config enables it.
-        let mut conn = store.route_conn().await?;
+        let conn = store.route_conn().await?;
         let query = Self::table().filter(
             crate::storage::schema::fingerprint::fingerprint_hash
-                .eq(pk.fingerprint_hash.peek().as_slice()),
+                .eq(pk.fingerprint_hash.peek().clone()),
         );
 
         let pool = conn.pool();
@@ -113,7 +118,7 @@ impl KvResource for Fingerprint {
         crate::storage::log_db_query::<<Self as HasTable>::Table, _>(&query, operation, pool);
 
         let output: Self = crate::storage::record_db_query::<<Self as HasTable>::Table, _, _, _>(
-            query.get_result(conn.get_mut()),
+            query.get_result_async(conn.get()),
             operation,
             pool,
         )

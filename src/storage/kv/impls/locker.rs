@@ -1,11 +1,11 @@
+use async_bb8_diesel::AsyncRunQueryDsl;
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::RunQueryDsl;
 use hyperswitch_masking::PeekInterface;
 
 use crate::{
     error::{ContainerError, VaultDBError},
     storage::{
-        DbOperation, Storage,
+        DbOperation, PgPooledConn, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -102,16 +102,14 @@ impl KvSecondaryLookupResource for Locker {
         store: &Storage,
         lookup_key: &Self::LookupKeyType,
     ) -> Result<Self, ContainerError<VaultDBError>> {
-        let mut conn = store.route_conn().await?;
+        let conn = store.route_conn().await?;
 
         let query = crate::storage::schema::locker::table.filter(
             crate::storage::schema::locker::hash_id
-                .eq(lookup_key.hash_id.as_str())
+                .eq(lookup_key.hash_id.clone())
+                .and(crate::storage::schema::locker::merchant_id.eq(lookup_key.merchant_id.clone()))
                 .and(
-                    crate::storage::schema::locker::merchant_id.eq(lookup_key.merchant_id.as_str()),
-                )
-                .and(
-                    crate::storage::schema::locker::customer_id.eq(lookup_key.customer_id.as_str()),
+                    crate::storage::schema::locker::customer_id.eq(lookup_key.customer_id.clone()),
                 ),
         );
 
@@ -126,7 +124,7 @@ impl KvSecondaryLookupResource for Locker {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
 
         Ok(output.into())
@@ -156,17 +154,19 @@ impl KvResource for Locker {
         new_object.updated_by = Some(scheme);
     }
 
-    fn generate_insert_drainer_query(
+    async fn generate_insert_drainer_query(
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
-        generate_insert_query::<crate::storage::schema::locker::table, _>(new_object.clone())
+        generate_insert_query::<crate::storage::schema::locker::table, _>(conn, new_object.clone())
+            .await
     }
 
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
 
         let query = diesel::insert_into(crate::storage::schema::locker::table).values(new_object);
 
@@ -181,7 +181,7 @@ impl KvResource for Locker {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
 
         Ok(output)
@@ -191,13 +191,13 @@ impl KvResource for Locker {
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
-        let mut conn = store.route_conn().await?;
+        let conn = store.route_conn().await?;
 
         let query = crate::storage::schema::locker::table.filter(
             crate::storage::schema::locker::locker_id
-                .eq(pk.locker_id.peek().as_str())
-                .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id.as_str()))
-                .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.as_str())),
+                .eq(pk.locker_id.peek().clone())
+                .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id.clone()))
+                .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.clone())),
         );
 
         let pool = conn.pool();
@@ -211,7 +211,7 @@ impl KvResource for Locker {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
 
         Ok(output)
@@ -219,7 +219,8 @@ impl KvResource for Locker {
 }
 
 impl KvDeletableResource for Locker {
-    fn generate_delete_drainer_query(
+    async fn generate_delete_drainer_query(
+        conn: &PgPooledConn,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
         let query = diesel::delete(crate::storage::schema::locker::table).filter(
@@ -229,20 +230,20 @@ impl KvDeletableResource for Locker {
                 .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.clone())),
         );
 
-        generate_delete_query::<_, Self>(query)
+        generate_delete_query::<_, Self>(conn, query).await
     }
 
     async fn storage_delete(
         store: &Storage,
         pk: Self::PrimaryKeyType,
     ) -> Result<usize, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
 
         let query = diesel::delete(LockerInner::table()).filter(
             crate::storage::schema::locker::locker_id
-                .eq(pk.locker_id.peek().as_str())
-                .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id.as_str()))
-                .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id.as_str())),
+                .eq(pk.locker_id.peek().clone())
+                .and(crate::storage::schema::locker::merchant_id.eq(pk.merchant_id))
+                .and(crate::storage::schema::locker::customer_id.eq(pk.customer_id)),
         );
 
         let pool = conn.pool();
@@ -253,7 +254,7 @@ impl KvDeletableResource for Locker {
 
         let output =
             crate::storage::record_db_query_rows::<<LockerInner as HasTable>::Table, _, _>(
-                query.execute(conn.get_mut()),
+                query.execute_async(conn.get()),
                 operation,
                 pool,
             )

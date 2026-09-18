@@ -117,7 +117,15 @@ pub struct Database {
     pub host: String,
     pub port: u16,
     pub dbname: String,
-    pub pool_size: Option<usize>,
+    pub pool_size: Option<u32>,
+    /// Maximum lifetime of a pooled connection, in seconds (default: 120)
+    pub max_lifetime: Option<u64>,
+    /// Minimum number of idle connections maintained in the pool (default: 2)
+    pub min_idle: Option<u32>,
+    /// Idle timeout for a pooled connection, in seconds (default: 300)
+    pub idle_timeout: Option<u64>,
+    /// Timeout for acquiring a connection from the pool, in seconds (default: 10)
+    pub connection_timeout: Option<u64>,
 }
 
 #[cfg(feature = "caching")]
@@ -698,6 +706,40 @@ mod tests {
         match parsed.secrets_management {
             SecretsManagementConfig::HashiCorpVault { hashi_corp_vault } => {
                 assert!(hashi_corp_vault.url == "123" && hashi_corp_vault.token.expose() == "abc")
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[cfg(feature = "kms-gcp")]
+    #[test]
+    fn test_gcp_kms_case() {
+        let data = r#"
+        [secrets_management]
+        secrets_manager = "gcp_kms"
+
+        [secrets_management.gcp_kms]
+        project_id = "my-project"
+        location_id = "global"
+        key_ring_id = "my-key-ring"
+        key_id = "my-key"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.secrets_management {
+            SecretsManagementConfig::GcpKms { gcp_kms } => {
+                assert!(
+                    gcp_kms.project_id == "my-project"
+                        && gcp_kms.location_id == "global"
+                        && gcp_kms.key_ring_id == "my-key-ring"
+                        && gcp_kms.key_id == "my-key"
+                )
             }
             _ => assert!(false),
         }

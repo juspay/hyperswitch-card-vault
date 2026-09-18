@@ -1,11 +1,11 @@
+use async_bb8_diesel::AsyncRunQueryDsl;
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, associations::HasTable};
-use diesel_async::RunQueryDsl;
 use hyperswitch_masking::PeekInterface;
 
 use crate::{
     error::{ContainerError, VaultDBError},
     storage::{
-        DbOperation, Storage,
+        DbOperation, PgPooledConn, Storage,
         kv::{
             StorageScheme,
             entity::EntityType,
@@ -83,17 +83,19 @@ impl KvResource for Vault {
         new_object.set_updated_by(scheme);
     }
 
-    fn generate_insert_drainer_query(
+    async fn generate_insert_drainer_query(
+        conn: &PgPooledConn,
         new_object: &Self::DieselNew,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
-        generate_insert_query::<crate::storage::schema::vault::table, _>(new_object.clone())
+        generate_insert_query::<crate::storage::schema::vault::table, _>(conn, new_object.clone())
+            .await
     }
 
     async fn storage_insert(
         new_object: Self::DieselNew,
         store: &Storage,
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
         let query = diesel::insert_into(VaultInner::table()).values(new_object);
 
         let pool = conn.pool();
@@ -105,7 +107,7 @@ impl KvResource for Vault {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
         Ok(output)
     }
@@ -113,12 +115,12 @@ impl KvResource for Vault {
         store: &Storage,
         pk: &Self::PrimaryKeyType,
     ) -> Result<Self::DieselEntity, ContainerError<VaultDBError>> {
-        let mut conn = store.route_conn().await?;
+        let conn = store.route_conn().await?;
         // A missing row surfaces (via `?`) as `VaultDBError::NotFoundError`.
         let query = VaultInner::table().filter(
             schema::vault::vault_id
-                .eq(pk.vault_id.as_str())
-                .and(schema::vault::entity_id.eq(pk.entity_id.as_str())),
+                .eq(pk.vault_id.clone())
+                .and(schema::vault::entity_id.eq(pk.entity_id.clone())),
         );
 
         let pool = conn.pool();
@@ -130,14 +132,15 @@ impl KvResource for Vault {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
         Ok(output)
     }
 }
 
 impl KvDeletableResource for Vault {
-    fn generate_delete_drainer_query(
+    async fn generate_delete_drainer_query(
+        conn: &PgPooledConn,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
         let query = diesel::delete(crate::storage::schema::vault::table).filter(
@@ -146,18 +149,18 @@ impl KvDeletableResource for Vault {
                 .and(crate::storage::schema::vault::entity_id.eq(pk.entity_id.clone())),
         );
 
-        generate_delete_query::<_, Self::DieselEntity>(query)
+        generate_delete_query::<_, Self::DieselEntity>(conn, query).await
     }
 
     async fn storage_delete(
         store: &Storage,
         pk: Self::PrimaryKeyType,
     ) -> Result<usize, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
         let query = diesel::delete(VaultInner::table()).filter(
             schema::vault::vault_id
-                .eq(pk.vault_id.as_str())
-                .and(schema::vault::entity_id.eq(pk.entity_id.as_str())),
+                .eq(pk.vault_id)
+                .and(schema::vault::entity_id.eq(pk.entity_id)),
         );
 
         let pool = conn.pool();
@@ -165,7 +168,7 @@ impl KvDeletableResource for Vault {
         crate::storage::log_db_query::<<VaultInner as HasTable>::Table, _>(&query, operation, pool);
 
         let output = crate::storage::record_db_query_rows::<<VaultInner as HasTable>::Table, _, _>(
-            query.execute(conn.get_mut()),
+            query.execute_async(conn.get()),
             operation,
             pool,
         )
@@ -183,7 +186,8 @@ impl KvUpdatableResource for Vault {
         update.updated_by = scheme;
     }
 
-    fn generate_update_drainer_query(
+    async fn generate_update_drainer_query(
+        conn: &PgPooledConn,
         update: &Self::DieselUpdate,
         pk: &Self::PrimaryKeyType,
     ) -> error_stack::Result<SerializableQuery, crate::error::kv::KvError> {
@@ -195,7 +199,7 @@ impl KvUpdatableResource for Vault {
             )
             .set(update.clone());
 
-        generate_update_query::<_, Self::DieselEntity>(query)
+        generate_update_query::<_, Self::DieselEntity>(conn, query).await
     }
 
     fn apply_update(update: Self::DieselUpdate, current: Self::DieselEntity) -> Self::DieselEntity {
@@ -207,13 +211,13 @@ impl KvUpdatableResource for Vault {
         update: Self::DieselUpdate,
         pk: Self::PrimaryKeyType,
     ) -> Result<Self, ContainerError<VaultDBError>> {
-        let mut conn = store.get_conn().await?;
+        let conn = store.get_conn().await?;
 
         let query = diesel::update(VaultInner::table())
             .filter(
                 schema::vault::vault_id
-                    .eq(pk.vault_id.as_str())
-                    .and(schema::vault::entity_id.eq(pk.entity_id.as_str())),
+                    .eq(pk.vault_id)
+                    .and(schema::vault::entity_id.eq(pk.entity_id)),
             )
             .set(update);
 
@@ -226,7 +230,7 @@ impl KvUpdatableResource for Vault {
             _,
             _,
             _,
-        >(query.get_result(conn.get_mut()), operation, pool)
+        >(query.get_result_async(conn.get()), operation, pool)
         .await?;
         Ok(output.into())
     }

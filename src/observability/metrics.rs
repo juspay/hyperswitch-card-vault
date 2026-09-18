@@ -172,7 +172,11 @@ pub fn spawn_bg_metrics_collector(
 global_meter!(pub(crate) CARD_VAULT_METER, "card_vault");
 
 // Secret manager
-#[cfg(any(feature = "kms-aws", feature = "kms-hashicorp-vault"))]
+#[cfg(any(
+    feature = "kms-aws",
+    feature = "kms-hashicorp-vault",
+    feature = "kms-gcp"
+))]
 histogram_metric_f64!(
     pub(crate) SECRET_MANAGER_CALL_DURATION, CARD_VAULT_METER,
     name: "secret_manager.call.duration",
