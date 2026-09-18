@@ -81,24 +81,23 @@ Before proceeding with the upgrade, verify:
 - Avoid deployments, schema migrations, and unrelated infrastructure changes
   during the activity.
 
-## Prerequisite: Runtime Config Key Migration
+## Prerequisite: Runtime Config Key Rename
 
-Migration `2026-09-13-000000_rename_runtime_config_key` renames the runtime config row
-key `locker_runtime_config` to `kv_config`. It must be applied to **every tenant schema**
-**before** any pod running the new binary starts.
+The runtime config row key changes from `locker_runtime_config` to `kv_config`. The
+rename must be applied to **every tenant schema** **before** any pod running the new
+binary starts (handled internally, outside this repo).
 
 Order matters. If a new pod boots first, it seeds a fresh `kv_config` row from the static
-config, the migration's `NOT EXISTS` guard then skips the rename, and its `DELETE` removes
-the row holding the live state — silently resetting KV to the seeded value. Apply the
-migration to all tenant schemas, confirm the rename, and only then deploy:
+config before the rename runs, and the rename then finds `kv_config` already present and
+skips it — leaving the row holding the live state under the old key, silently reset to
+the seeded value once it is dropped. Apply the rename to all tenant schemas, confirm it,
+and only then deploy:
 
 ```bash
 # per tenant schema
 psql "$DATABASE_URL" -c "SET search_path TO ${TENANT_SCHEMA}; SELECT key FROM configs;"
 # expect: kv_config   (and no locker_runtime_config)
 ```
-
-The migration is idempotent and safe to re-run.
 
 ## Updating Runtime Config
 
