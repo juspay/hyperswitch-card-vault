@@ -13,7 +13,7 @@ use hyperswitch_masking::PeekInterface;
 
 use crate::{
     error::{self, ContainerError},
-    storage::{self, ConfigInterface, KvConfigValues, consts},
+    storage::{self, ConfigInterface, KvRuntimeConfigValues, consts},
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -193,7 +193,7 @@ macro_rules! runtime_configs {
 
 runtime_configs! {
     /// KV master switch and read-replica routing.
-    kv_config: KvConfigValues = "kv_config" => validate_kv_config,
+    kv_config: KvRuntimeConfigValues = "kv_config" => validate_kv_config,
 
     // Add a runtime config by adding one line here. The seed field, the
     // `RuntimeConfigEntry` impl, the update variant, the update dispatch, seeding and
@@ -392,7 +392,7 @@ impl RuntimeConfigManager {
         use storage::kv::KvState;
 
         let current = self
-            .get::<KvConfigValues>(store)
+            .get::<KvRuntimeConfigValues>(store)
             .await
             .map(|values| values.enable_kv)
             .unwrap_or(KvState::Disabled);
@@ -512,9 +512,9 @@ pub fn disabled_status() -> HashMap<&'static str, RuntimeConfigStatus> {
         .collect()
 }
 
-/// Validation for [`KvConfigValues`], wired in by the `runtime_configs!` declaration.
+/// Validation for [`KvRuntimeConfigValues`], wired in by the `runtime_configs!` declaration.
 async fn validate_kv_config(
-    value: &KvConfigValues,
+    value: &KvRuntimeConfigValues,
     store: &storage::Storage,
     manager: &RuntimeConfigManager,
 ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
@@ -542,7 +542,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{REGISTERED_KEYS, RuntimeConfigEntry, RuntimeConfigUpdate};
-    use crate::storage::KvConfigValues;
+    use crate::storage::KvRuntimeConfigValues;
 
     /// Round-trip a request body and read one field back out, without unwrapping —
     /// `expect`/`panic` are clippy-warned crate-wide, tests included.
@@ -557,14 +557,14 @@ mod tests {
     /// all at once — every consumer depends on those being the same string.
     #[test]
     fn update_tag_matches_entry_key() {
-        let tag = serde_json::to_value(RuntimeConfigUpdate::KvConfigValues(
-            KvConfigValues::default(),
+        let tag = serde_json::to_value(RuntimeConfigUpdate::KvRuntimeConfigValues(
+            KvRuntimeConfigValues::default(),
         ))
         .ok()
         .map(|json| json["key"].clone());
 
-        assert_eq!(tag, Some(serde_json::Value::from(KvConfigValues::KEY)));
-        assert!(REGISTERED_KEYS.contains(&KvConfigValues::KEY));
+        assert_eq!(tag, Some(serde_json::Value::from(KvRuntimeConfigValues::KEY)));
+        assert!(REGISTERED_KEYS.contains(&KvRuntimeConfigValues::KEY));
     }
 
     #[test]
@@ -630,7 +630,7 @@ mod tests {
 #[cfg(test)]
 mod config_source_tests {
     use super::RuntimeConfig;
-    use crate::storage::KvConfigValues;
+    use crate::storage::KvRuntimeConfigValues;
 
     #[derive(serde::Deserialize)]
     struct TestDeser {
@@ -639,7 +639,7 @@ mod config_source_tests {
 
     fn seed_of(
         builder: config::ConfigBuilder<config::builder::DefaultState>,
-    ) -> Option<KvConfigValues> {
+    ) -> Option<KvRuntimeConfigValues> {
         match builder.build().ok()?.try_deserialize::<TestDeser>().ok()? {
             TestDeser {
                 runtime_config: RuntimeConfig::Enabled { kv_config, .. },

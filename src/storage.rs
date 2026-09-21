@@ -34,7 +34,7 @@ use crate::{
 #[cfg(feature = "redis")]
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct KvConfigValues {
+pub struct KvRuntimeConfigValues {
     #[cfg(feature = "kv")]
     #[serde(default)]
     pub enable_kv: kv::KvState,
@@ -43,21 +43,13 @@ pub struct KvConfigValues {
 }
 
 /// Status response for `GET /health/runtime-config`: one entry per registered runtime
-/// config keyed by its config key, plus the effective routing state it produces.
+/// config keyed by its config key. Each entry's `config` already carries the effective
+/// routing state (`use_replica`, `enable_kv`) — nothing further to report at the top level.
 #[cfg(feature = "redis")]
 #[derive(Debug, serde::Serialize)]
 pub struct StorageRuntimeConfigStatus {
     pub runtime_config:
         std::collections::HashMap<&'static str, crate::runtime_config::RuntimeConfigStatus>,
-    pub storage: StorageRuntimeConfigState,
-}
-
-#[cfg(feature = "redis")]
-#[derive(Debug, serde::Serialize)]
-pub struct StorageRuntimeConfigState {
-    pub use_replica: bool,
-    #[cfg(feature = "kv")]
-    pub kv_state: String,
 }
 
 /// Storage State that is to be passed though the application
@@ -279,14 +271,7 @@ impl Storage {
             None => crate::runtime_config::disabled_status(),
         };
 
-        StorageRuntimeConfigStatus {
-            runtime_config,
-            storage: StorageRuntimeConfigState {
-                use_replica: self.should_use_replica().await,
-                #[cfg(feature = "kv")]
-                kv_state: self.kv_settings().await.to_string(),
-            },
-        }
+        StorageRuntimeConfigStatus { runtime_config }
     }
 
     /// Returns `true` when the tenant's runtime config enables replica reads and a
@@ -340,9 +325,9 @@ impl Storage {
     /// `None` is returned and callers fail closed (`use_replica: false`, KV `Disabled`)
     /// without touching Postgres or Redis.
     #[cfg(feature = "redis")]
-    pub(crate) async fn runtime_config_values(&self) -> Option<KvConfigValues> {
+    pub(crate) async fn runtime_config_values(&self) -> Option<KvRuntimeConfigValues> {
         match self.runtime_config_manager() {
-            Some(manager) => manager.get::<KvConfigValues>(self).await,
+            Some(manager) => manager.get::<KvRuntimeConfigValues>(self).await,
             None => None,
         }
     }
