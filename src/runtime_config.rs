@@ -560,7 +560,10 @@ mod tests {
         .ok()
         .map(|json| json["key"].clone());
 
-        assert_eq!(tag, Some(serde_json::Value::from(KvRuntimeConfigValues::KEY)));
+        assert_eq!(
+            tag,
+            Some(serde_json::Value::from(KvRuntimeConfigValues::KEY))
+        );
         assert!(REGISTERED_KEYS.contains(&KvRuntimeConfigValues::KEY));
     }
 
