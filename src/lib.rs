@@ -10,6 +10,7 @@ pub mod logger;
 pub mod middleware;
 pub mod observability;
 pub mod routes;
+#[cfg(feature = "redis")]
 pub mod runtime_config;
 pub mod storage;
 pub mod tenant;

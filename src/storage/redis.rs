@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use hyperswitch_redis_interface::{RedisConnectionPool, RedisSettings, errors::RedisError};
 use tracing::Instrument;
@@ -91,5 +91,72 @@ impl RedisStore {
         }
         redis_conn.delete_key(&key).await.map_err(into_report)?;
         Ok(())
+    }
+
+    /// Read-through cache helper.
+    ///
+    /// Tries `GET key` first; on a hit returns the cached string immediately.
+    /// On a miss (or Redis error — fail-open) it calls `fetch` to produce the
+    /// value, then best-effort populates Redis with `SETEX key ttl value`
+    /// so subsequent reads hit the cache. Returns `None` when both Redis and
+    /// the `fetch` fallback yield nothing.
+    pub(crate) async fn get_or_populate<F, Fut>(
+        &self,
+        key: &str,
+        ttl_secs: i64,
+        fetch: F,
+    ) -> Option<String>
+    where
+        F: FnOnce() -> Fut + Send,
+        Fut: Future<Output = Option<String>> + Send,
+    {
+        let redis_conn = self.get_redis_conn();
+        let redis_key = key.into();
+
+        match redis_conn.get_key::<Option<String>>(&redis_key).await {
+            Ok(Some(value)) => {
+                crate::logger::debug!(redis_key = %key, "Runtime config cache hit");
+                return Some(value);
+            }
+            Ok(None) => {
+                crate::logger::debug!(redis_key = %key, "Runtime config cache miss");
+            }
+            Err(err) => {
+                crate::logger::warn!(
+                    ?err,
+                    redis_key = %key,
+                    "Redis GET failed for runtime config, falling back to fetch"
+                );
+            }
+        }
+
+        let value = fetch().await?;
+
+        if let Err(err) = redis_conn
+            .set_key_with_expiry(&redis_key, value.clone(), ttl_secs)
+            .await
+        {
+            crate::logger::warn!(
+                ?err,
+                redis_key = %key,
+                "Failed to populate Redis cache for runtime config"
+            );
+        }
+
+        Some(value)
+    }
+
+    /// Invalidate (DEL) a cached key. The Redis TTL bounds staleness if this
+    /// fails, so errors are logged as warnings rather than propagated.
+    pub(crate) async fn invalidate(&self, key: &str) {
+        let redis_conn = self.get_redis_conn();
+        let redis_key = key.into();
+        if let Err(err) = redis_conn.delete_key(&redis_key).await {
+            crate::logger::warn!(
+                ?err,
+                redis_key = %key,
+                "Failed to invalidate Redis cache for runtime config; TTL bounds staleness"
+            );
+        }
     }
 }

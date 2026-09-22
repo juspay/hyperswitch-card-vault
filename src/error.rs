@@ -70,6 +70,35 @@ pub enum StorageError {
     UpdateError,
     #[error("Read replica pool is not configured")]
     ReplicaPoolNotConfigured,
+    #[error("Storage initialization failed: {0}")]
+    InitializationError(&'static str),
+}
+
+/// Errors from the runtime-config manager (`configs` table + Redis cache).
+#[cfg(feature = "redis")]
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeConfigError {
+    /// The runtime-config payload could not be (de)serialized.
+    #[error("Invalid runtime config value: {0}")]
+    InvalidValue(String),
+    /// Illegal `enable_kv` state transition for the currently persisted state.
+    #[error("Invalid KV state transition: {0}")]
+    InvalidStateTransition(String),
+    /// `use_replica: true` was requested but no read replica pool is configured.
+    #[error("Cannot enable use_replica: no read replica is configured")]
+    NoReplicaConfigured,
+    /// `use_replica: true` was requested but the read replica is unreachable.
+    #[error("Cannot enable use_replica: read replica is unreachable")]
+    ReplicaUnreachable,
+    /// The backing store (Postgres/Redis) errored — see attached report.
+    #[error("Runtime config storage operation failed")]
+    StorageError,
+    /// The requested config row was not found in the `configs` table.
+    #[error("Runtime config not found")]
+    NotFound,
+    /// A config row with the same key already exists in the `configs` table.
+    #[error("Runtime config already exists")]
+    Duplicate,
 }
 
 #[derive(Debug, Copy, Clone, thiserror::Error)]
@@ -130,6 +159,12 @@ pub enum ApiError {
 
     #[error("Key manager error: {0}")]
     KeyManagerError(&'static str),
+
+    #[error("Unauthorized")]
+    Unauthorized,
+
+    #[error("Bad request: {0}")]
+    BadRequest(&'static str),
 }
 
 /// Errors that could occur during KMS operations.
@@ -408,6 +443,24 @@ impl axum::response::IntoResponse for ApiError {
                 hyper::StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(ApiErrorResponse::new(
                     error_codes::TE_02,
+                    format!("{}", data),
+                    None,
+                )),
+            )
+                .into_response(),
+            data @ Self::Unauthorized => (
+                hyper::StatusCode::UNAUTHORIZED,
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_00,
+                    format!("{}", data),
+                    None,
+                )),
+            )
+                .into_response(),
+            data @ Self::BadRequest(_) => (
+                hyper::StatusCode::BAD_REQUEST,
+                axum::Json(ApiErrorResponse::new(
+                    error_codes::TE_03,
                     format!("{}", data),
                     None,
                 )),

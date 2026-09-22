@@ -34,7 +34,8 @@ impl<'a> From<&'a super::StorageError> for super::MerchantDBError {
         match value {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
-            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            | super::StorageError::ReplicaPoolNotConfigured
+            | super::StorageError::InitializationError(_) => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
@@ -53,7 +54,8 @@ impl<'a> From<&'a super::StorageError> for super::VaultDBError {
         match value {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
-            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            | super::StorageError::ReplicaPoolNotConfigured
+            | super::StorageError::InitializationError(_) => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError | super::StorageError::EncryptionError => {
                 Self::UnknownError
@@ -73,7 +75,8 @@ impl<'a> From<&'a super::StorageError> for super::HashDBError {
         match value {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
-            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            | super::StorageError::ReplicaPoolNotConfigured
+            | super::StorageError::InitializationError(_) => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::DecryptionError
             | super::StorageError::EncryptionError
@@ -102,6 +105,7 @@ impl<'a> From<&'a super::StorageError> for super::TestDBError {
             | super::StorageError::EncryptionError
             | super::StorageError::NotFoundError => Self::UnknownError,
             super::StorageError::ReplicaPoolNotConfigured => Self::DBReplicaNotConfigured,
+            super::StorageError::InitializationError(_) => Self::UnknownError,
         }
     }
 }
@@ -112,7 +116,8 @@ impl<'a> From<&'a super::StorageError> for super::FingerprintDBError {
         match value {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
-            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            | super::StorageError::ReplicaPoolNotConfigured
+            | super::StorageError::InitializationError(_) => Self::DBError,
             super::StorageError::FindError | super::StorageError::NotFoundError => {
                 Self::DBFilterError
             }
@@ -258,7 +263,8 @@ impl<'a> From<&'a super::StorageError> for super::EntityDBError {
         match value {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
-            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            | super::StorageError::ReplicaPoolNotConfigured
+            | super::StorageError::InitializationError(_) => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::NotFoundError => Self::NotFoundError,
             super::StorageError::DecryptionError
@@ -306,7 +312,8 @@ impl<'a> From<&'a super::StorageError> for super::ReverseLookupDBError {
         match value {
             super::StorageError::DBPoolError
             | super::StorageError::PoolClientFailure
-            | super::StorageError::ReplicaPoolNotConfigured => Self::DBError,
+            | super::StorageError::ReplicaPoolNotConfigured
+            | super::StorageError::InitializationError(_) => Self::DBError,
             super::StorageError::FindError => Self::DBFilterError,
             super::StorageError::NotFoundError => Self::NotFoundError,
             super::StorageError::DecryptionError
@@ -333,6 +340,29 @@ impl<'a> From<&'a super::ReverseLookupDBError> for super::ApiError {
             super::ReverseLookupDBError::Duplicate => Self::DatabaseInsertFailed("reverse lookup"),
             super::ReverseLookupDBError::NotFoundError => Self::NotFoundError,
             super::ReverseLookupDBError::UnknownError => Self::UnknownError,
+        }
+    }
+}
+
+#[cfg(feature = "redis")]
+error_transform!(super::RuntimeConfigError => super::ApiError);
+#[cfg(feature = "redis")]
+impl<'a> From<&'a super::RuntimeConfigError> for super::ApiError {
+    fn from(value: &'a super::RuntimeConfigError) -> Self {
+        match value {
+            super::RuntimeConfigError::InvalidValue(_) => {
+                Self::BadRequest("Invalid runtime config value")
+            }
+            super::RuntimeConfigError::InvalidStateTransition(_) => {
+                Self::BadRequest("Invalid KV state transition")
+            }
+            super::RuntimeConfigError::NoReplicaConfigured
+            | super::RuntimeConfigError::ReplicaUnreachable => {
+                Self::BadRequest("Cannot enable use_replica")
+            }
+            super::RuntimeConfigError::StorageError
+            | super::RuntimeConfigError::NotFound
+            | super::RuntimeConfigError::Duplicate => Self::DatabaseError,
         }
     }
 }
