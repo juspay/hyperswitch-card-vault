@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use hyperswitch_masking::{Secret, StrongSecret};
 
 use crate::{
@@ -151,11 +153,24 @@ pub struct DeleteCardResponse {
 pub struct FingerprintRequest {
     pub data: Secret<String>,
     pub key: Secret<String>,
+    /// Omitted by older callers.
+    pub additional: Option<Vec<AdditionalFingerprint>>,
+}
+
+/// `label` is opaque to the vault and echoed back on the response.
+#[derive(serde::Deserialize)]
+pub struct AdditionalFingerprint {
+    pub label: String,
+    pub data: Secret<String>,
+    pub key: Secret<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct FingerprintResponse {
     pub fingerprint_id: Secret<String>,
+    /// Keyed by the caller's label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional: Option<HashMap<String, Secret<String>>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]

@@ -64,6 +64,7 @@ impl From<storage::types::Fingerprint> for super::types::FingerprintResponse {
     fn from(value: storage::types::Fingerprint) -> Self {
         Self {
             fingerprint_id: value.fingerprint_id,
+            additional: None,
         }
     }
 }
