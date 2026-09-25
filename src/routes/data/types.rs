@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use hyperswitch_masking::{Secret, StrongSecret};
 
 use crate::{
@@ -151,11 +153,24 @@ pub struct DeleteCardResponse {
 pub struct FingerprintRequest {
     pub data: Secret<String>,
     pub key: Secret<String>,
+    /// Omitted by older callers.
+    pub additional: Option<Vec<AdditionalFingerprint>>,
+}
+
+/// `label` is opaque to the vault and echoed back on the response.
+#[derive(serde::Deserialize)]
+pub struct AdditionalFingerprint {
+    pub label: String,
+    pub data: Secret<String>,
+    pub key: Secret<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct FingerprintResponse {
     pub fingerprint_id: Secret<String>,
+    /// Keyed by the caller's label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional: Option<HashMap<String, Secret<String>>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
@@ -185,6 +200,31 @@ impl Validation for StoreCardRequest {
         match &self.data {
             Data::EncData { .. } => Ok(()),
             Data::Card { card } => card.card_number.validate(),
+        }
+    }
+}
+
+impl Validation for FingerprintRequest {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        let additional = self.additional.as_deref().unwrap_or_default();
+        let labels = additional
+            .iter()
+            .map(|entry| entry.label.as_str())
+            .collect::<HashSet<_>>();
+
+        match (
+            additional.len() > storage::consts::MAX_ADDITIONAL_FINGERPRINTS,
+            labels.len() != additional.len(),
+        ) {
+            (true, _) => Err(error::ApiError::ValidationError(
+                "too many additional fingerprints requested",
+            )),
+            (_, true) => Err(error::ApiError::ValidationError(
+                "additional fingerprint labels must be unique",
+            )),
+            (false, false) => Ok(()),
         }
     }
 }

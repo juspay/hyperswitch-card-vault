@@ -256,17 +256,42 @@ pub async fn retrieve_card(
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
+///
+/// Additional fingerprints are independent of the primary one, so all are derived concurrently.
 #[tracing::instrument(skip_all)]
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     OptionalFingerprintId(fingerprint_id): OptionalFingerprintId,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
-    let fingerprint =
-        fingerprint::get_or_insert(&tenant_app_state, request.data, request.key, fingerprint_id)
-            .await?;
+    request.validate()?;
 
-    let response = Json(fingerprint.into());
+    let primary =
+        fingerprint::get_or_insert(&tenant_app_state, request.data, request.key, fingerprint_id);
+
+    let additional = request.additional.unwrap_or_default();
+    let labels = additional
+        .iter()
+        .map(|entry| entry.label.clone())
+        .collect::<Vec<_>>();
+
+    let additional =
+        futures::future::try_join_all(additional.into_iter().map(|entry| {
+            fingerprint::get_or_insert(&tenant_app_state, entry.data, entry.key, None)
+        }));
+
+    let (primary, additional) = tokio::join!(primary, additional);
+
+    let additional = labels
+        .into_iter()
+        .zip(additional?)
+        .map(|(label, fingerprint)| (label, fingerprint.fingerprint_id))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let response = Json(types::FingerprintResponse {
+        fingerprint_id: primary?.fingerprint_id,
+        additional: (!additional.is_empty()).then_some(additional),
+    });
     logger::info!(fingerprint_response=?response);
 
     Ok(response)
