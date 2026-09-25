@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use hyperswitch_masking::{Secret, StrongSecret};
 
@@ -200,6 +200,31 @@ impl Validation for StoreCardRequest {
         match &self.data {
             Data::EncData { .. } => Ok(()),
             Data::Card { card } => card.card_number.validate(),
+        }
+    }
+}
+
+impl Validation for FingerprintRequest {
+    type Error = error::ApiError;
+
+    fn validate(&self) -> Result<(), Self::Error> {
+        let additional = self.additional.as_deref().unwrap_or_default();
+        let labels = additional
+            .iter()
+            .map(|entry| entry.label.as_str())
+            .collect::<HashSet<_>>();
+
+        match (
+            additional.len() > storage::consts::MAX_ADDITIONAL_FINGERPRINTS,
+            labels.len() != additional.len(),
+        ) {
+            (true, _) => Err(error::ApiError::ValidationError(
+                "too many additional fingerprints requested",
+            )),
+            (_, true) => Err(error::ApiError::ValidationError(
+                "additional fingerprint labels must be unique",
+            )),
+            (false, false) => Ok(()),
         }
     }
 }

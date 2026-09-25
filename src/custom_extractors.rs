@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 use hyperswitch_masking::Secret;
@@ -60,41 +60,10 @@ impl FromRequestParts<Arc<GlobalAppState>> for TenantId {
 }
 
 /// Optionally reads `x-fingerprint-id` from request headers.
-///
-/// A bare value is the primary id; `label=value` pairs address additional fingerprints by the
-/// labels in the request body, so ids resolve by label rather than by position:
-///
-/// ```text
-/// x-fingerprint-id: wyH7yWdtaRhxDkVE1cvs
-/// x-fingerprint-id: first=DzqaW1Vvvp2JlY2do68u,second=Kp3xRt9wQm2vLd8nYs5c
-/// ```
-///
-/// Every value must be exactly 20 alphanumeric (0-9 a-z A-Z) characters, matching the format of
-/// server-generated fingerprint IDs.
-#[derive(Debug, Default)]
-pub struct OptionalFingerprintId {
-    primary: Option<Secret<String>>,
-    named: HashMap<String, Secret<String>>,
-}
-
-impl OptionalFingerprintId {
-    pub fn primary(&self) -> Option<Secret<String>> {
-        self.primary.clone()
-    }
-
-    pub fn named(&self, label: &str) -> Option<Secret<String>> {
-        self.named.get(label).cloned()
-    }
-}
-
-fn validated_fingerprint_id(value: &str) -> Result<Secret<String>, ContainerError<ApiError>> {
-    match value.len() == consts::ID_LENGTH && value.chars().all(|c| c.is_ascii_alphanumeric()) {
-        true => Ok(Secret::new(value.to_string())),
-        false => Err(ContainerError::from(ApiError::ValidationError(
-            "x-fingerprint-id values must be exactly 20 alphanumeric characters",
-        ))),
-    }
-}
+/// If present, the value must be exactly 20 alphanumeric (0-9 a-z A-Z) characters,
+/// matching the format of server-generated fingerprint IDs.
+#[derive(Debug)]
+pub struct OptionalFingerprintId(pub Option<Secret<String>>);
 
 #[async_trait]
 impl FromRequestParts<Arc<GlobalAppState>> for OptionalFingerprintId {
@@ -104,25 +73,21 @@ impl FromRequestParts<Arc<GlobalAppState>> for OptionalFingerprintId {
         parts: &mut Parts,
         _state: &Arc<GlobalAppState>,
     ) -> Result<Self, Self::Rejection> {
-        let header = parts
+        let fingerprint_id = parts
             .headers
             .get(consts::X_FINGERPRINT_ID)
-            .and_then(|h| h.to_str().ok());
-
-        let mut resolved = Self::default();
-
-        for entry in header.into_iter().flat_map(|value| value.split(',')) {
-            let entry = entry.trim();
-            match entry.split_once('=') {
-                Some((name, value)) => {
-                    resolved
-                        .named
-                        .insert(name.trim().to_string(), validated_fingerprint_id(value.trim())?);
+            .and_then(|h| h.to_str().ok())
+            .map(|s| -> Result<Secret<String>, ContainerError<ApiError>> {
+                if s.len() != consts::ID_LENGTH || !s.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    Err(ContainerError::from(ApiError::ValidationError(
+                        "x-fingerprint-id must be exactly 20 alphanumeric characters",
+                    )))
+                } else {
+                    Ok(Secret::new(s.to_string()))
                 }
-                None => resolved.primary = Some(validated_fingerprint_id(entry)?),
-            }
-        }
+            })
+            .transpose()?;
 
-        Ok(resolved)
+        Ok(Self(fingerprint_id))
     }
 }

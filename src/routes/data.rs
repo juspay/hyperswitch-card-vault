@@ -261,15 +261,13 @@ pub async fn retrieve_card(
 #[tracing::instrument(skip_all)]
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
-    fingerprint_ids: OptionalFingerprintId,
+    OptionalFingerprintId(fingerprint_id): OptionalFingerprintId,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
-    let primary = fingerprint::get_or_insert(
-        &tenant_app_state,
-        request.data,
-        request.key,
-        fingerprint_ids.primary(),
-    );
+    request.validate()?;
+
+    let primary =
+        fingerprint::get_or_insert(&tenant_app_state, request.data, request.key, fingerprint_id);
 
     let additional = request.additional.unwrap_or_default();
     let labels = additional
@@ -277,14 +275,10 @@ pub async fn get_or_insert_fingerprint(
         .map(|entry| entry.label.clone())
         .collect::<Vec<_>>();
 
-    let additional = futures::future::try_join_all(additional.into_iter().map(|entry| {
-        fingerprint::get_or_insert(
-            &tenant_app_state,
-            entry.data,
-            entry.key,
-            fingerprint_ids.named(&entry.label),
-        )
-    }));
+    let additional =
+        futures::future::try_join_all(additional.into_iter().map(|entry| {
+            fingerprint::get_or_insert(&tenant_app_state, entry.data, entry.key, None)
+        }));
 
     let (primary, additional) = tokio::join!(primary, additional);
 
