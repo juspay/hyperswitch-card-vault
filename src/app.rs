@@ -201,6 +201,10 @@ pub async fn server_builder(
                 .route(
                     "/fingerprint",
                     post(routes::data::get_or_insert_fingerprint),
+                )
+                .route(
+                    "/fingerprint/batch",
+                    post(routes::data::get_or_insert_fingerprints),
                 ),
         )
         // Explicit provisioning endpoint. Config decides the backing table: `merchant` under the

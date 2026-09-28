@@ -153,24 +153,29 @@ pub struct DeleteCardResponse {
 pub struct FingerprintRequest {
     pub data: Secret<String>,
     pub key: Secret<String>,
-    /// Omitted by older callers.
-    pub additional: Option<Vec<AdditionalFingerprint>>,
 }
 
-/// `label` is opaque to the vault and echoed back on the response.
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct FingerprintResponse {
+    pub fingerprint_id: Secret<String>,
+}
+
 #[derive(serde::Deserialize)]
-pub struct AdditionalFingerprint {
+pub struct BatchFingerprintRequest {
+    pub fingerprints: Vec<BatchFingerprintEntry>,
+}
+
+/// `label` is opaque to the vault and keys the entry's fingerprint in the response.
+#[derive(serde::Deserialize)]
+pub struct BatchFingerprintEntry {
     pub label: String,
     pub data: Secret<String>,
     pub key: Secret<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct FingerprintResponse {
-    pub fingerprint_id: Secret<String>,
-    /// Keyed by the caller's label.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub additional: Option<HashMap<String, Secret<String>>>,
+pub struct BatchFingerprintResponse {
+    pub fingerprints: HashMap<String, Secret<String>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
@@ -204,27 +209,31 @@ impl Validation for StoreCardRequest {
     }
 }
 
-impl Validation for FingerprintRequest {
+impl Validation for BatchFingerprintRequest {
     type Error = error::ApiError;
 
     fn validate(&self) -> Result<(), Self::Error> {
-        let additional = self.additional.as_deref().unwrap_or_default();
-        let labels = additional
+        let labels = self
+            .fingerprints
             .iter()
             .map(|entry| entry.label.as_str())
             .collect::<HashSet<_>>();
 
         match (
-            additional.len() > storage::consts::MAX_ADDITIONAL_FINGERPRINTS,
-            labels.len() != additional.len(),
+            self.fingerprints.is_empty(),
+            self.fingerprints.len() > storage::consts::MAX_BATCH_FINGERPRINTS,
+            labels.len() != self.fingerprints.len(),
         ) {
-            (true, _) => Err(error::ApiError::ValidationError(
-                "too many additional fingerprints requested",
+            (true, _, _) => Err(error::ApiError::ValidationError(
+                "at least one fingerprint must be requested",
             )),
-            (_, true) => Err(error::ApiError::ValidationError(
-                "additional fingerprint labels must be unique",
+            (_, true, _) => Err(error::ApiError::ValidationError(
+                "too many fingerprints requested",
             )),
-            (false, false) => Ok(()),
+            (_, _, true) => Err(error::ApiError::ValidationError(
+                "fingerprint labels must be unique",
+            )),
+            (false, false, false) => Ok(()),
         }
     }
 }

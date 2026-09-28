@@ -80,7 +80,8 @@ pub fn serve(
         .route("/delete", delete_route)
         .route("/add", post(add_card))
         .route("/retrieve", post(retrieve_card))
-        .route("/fingerprint", post(get_or_insert_fingerprint));
+        .route("/fingerprint", post(get_or_insert_fingerprint))
+        .route("/fingerprint/batch", post(get_or_insert_fingerprints));
 
     router
 }
@@ -256,43 +257,43 @@ pub async fn retrieve_card(
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
-///
-/// Additional fingerprints are independent of the primary one, so all are derived concurrently.
 #[tracing::instrument(skip_all)]
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     OptionalFingerprintId(fingerprint_id): OptionalFingerprintId,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
+    let fingerprint =
+        fingerprint::get_or_insert(&tenant_app_state, request.data, request.key, fingerprint_id)
+            .await?;
+
+    let response = Json(fingerprint.into());
+    logger::info!(fingerprint_response=?response);
+
+    Ok(response)
+}
+
+/// `/cards/fingerprint/batch` handling several independent fingerprints, derived concurrently
+#[tracing::instrument(skip_all)]
+pub async fn get_or_insert_fingerprints(
+    TenantStateResolver(tenant_app_state): TenantStateResolver,
+    Json(request): Json<types::BatchFingerprintRequest>,
+) -> Result<Json<types::BatchFingerprintResponse>, ContainerError<error::ApiError>> {
     request.validate()?;
 
-    let primary =
-        fingerprint::get_or_insert(&tenant_app_state, request.data, request.key, fingerprint_id);
+    let state = &tenant_app_state;
+    let fingerprints =
+        futures::future::try_join_all(request.fingerprints.into_iter().map(|entry| async move {
+            fingerprint::get_or_insert(state, entry.data, entry.key, None)
+                .await
+                .map(|fingerprint| (entry.label, fingerprint.fingerprint_id))
+        }))
+        .await?;
 
-    let additional = request.additional.unwrap_or_default();
-    let labels = additional
-        .iter()
-        .map(|entry| entry.label.clone())
-        .collect::<Vec<_>>();
-
-    let additional =
-        futures::future::try_join_all(additional.into_iter().map(|entry| {
-            fingerprint::get_or_insert(&tenant_app_state, entry.data, entry.key, None)
-        }));
-
-    let (primary, additional) = tokio::join!(primary, additional);
-
-    let additional = labels
-        .into_iter()
-        .zip(additional?)
-        .map(|(label, fingerprint)| (label, fingerprint.fingerprint_id))
-        .collect::<std::collections::HashMap<_, _>>();
-
-    let response = Json(types::FingerprintResponse {
-        fingerprint_id: primary?.fingerprint_id,
-        additional: (!additional.is_empty()).then_some(additional),
+    let response = Json(types::BatchFingerprintResponse {
+        fingerprints: fingerprints.into_iter().collect(),
     });
-    logger::info!(fingerprint_response=?response);
+    logger::info!(batch_fingerprint_response=?response);
 
     Ok(response)
 }
