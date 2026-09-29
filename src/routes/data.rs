@@ -256,17 +256,39 @@ pub async fn retrieve_card(
 }
 
 /// `/cards/fingerprint` handling the creation and retrieval of card fingerprint
+///
+/// A batched request derives its fingerprints concurrently; `x-fingerprint-id` applies only to a
+/// single one.
 #[tracing::instrument(skip_all)]
 pub async fn get_or_insert_fingerprint(
     TenantStateResolver(tenant_app_state): TenantStateResolver,
     OptionalFingerprintId(fingerprint_id): OptionalFingerprintId,
     Json(request): Json<types::FingerprintRequest>,
 ) -> Result<Json<types::FingerprintResponse>, ContainerError<error::ApiError>> {
-    let fingerprint =
-        fingerprint::get_or_insert(&tenant_app_state, request.data, request.key, fingerprint_id)
-            .await?;
+    let response: types::FingerprintResponse = match types::FingerprintMode::try_from(request)? {
+        types::FingerprintMode::Single { data, key } => {
+            fingerprint::get_or_insert(&tenant_app_state, data, key, fingerprint_id)
+                .await?
+                .into()
+        }
+        types::FingerprintMode::Batch(entries) => {
+            let state = &tenant_app_state;
+            let fingerprints =
+                futures::future::try_join_all(entries.into_iter().map(|entry| async move {
+                    fingerprint::get_or_insert(state, entry.data, entry.key, None)
+                        .await
+                        .map(|fingerprint| (entry.label, fingerprint.fingerprint_id))
+                }))
+                .await?;
 
-    let response = Json(fingerprint.into());
+            types::FingerprintResponse {
+                fingerprint_id: None,
+                fingerprints: Some(fingerprints.into_iter().collect()),
+            }
+        }
+    };
+
+    let response = Json(response);
     logger::info!(fingerprint_response=?response);
 
     Ok(response)

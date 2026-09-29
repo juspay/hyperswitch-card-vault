@@ -9,6 +9,9 @@ pub(crate) const ALPHABETS: [char; 62] = [
 /// Number of characters in a generated ID
 pub const ID_LENGTH: usize = 20;
 
+/// Maximum number of fingerprints in a single batched fingerprint request
+pub const MAX_BATCH_FINGERPRINTS: usize = 5;
+
 /// Header key for tenant ID
 pub const X_TENANT_ID: &str = "x-tenant-id";
 /// Header key for request ID
