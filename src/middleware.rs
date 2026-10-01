@@ -40,7 +40,7 @@ where
 
 /// Whether the caller asked for a plain response on a route that may return one
 fn wants_plain_response(parts: &request::Parts) -> bool {
-    [consts::V2_FINGERPRINT_PATH, consts::V2_BATCH_FINGERPRINT_PATH].contains(&parts.uri.path())
+    parts.uri.path() == consts::V2_FINGERPRINT_PATH
         && parts
             .headers
             .get(consts::X_FP_RESPONSE_ENCODING)

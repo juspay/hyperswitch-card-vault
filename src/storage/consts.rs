@@ -9,7 +9,7 @@ pub(crate) const ALPHABETS: [char; 62] = [
 /// Number of characters in a generated ID
 pub const ID_LENGTH: usize = 20;
 
-/// Maximum number of fingerprints in a single batch fingerprint request
+/// Maximum number of fingerprints in a single batched fingerprint request
 pub const MAX_BATCH_FINGERPRINTS: usize = 5;
 
 /// Header key for tenant ID
@@ -24,8 +24,6 @@ pub const X_FP_RESPONSE_ENCODING: &str = "x-fp-response-encoding";
 pub const FP_RESPONSE_ENCODING_PLAIN: &str = "plain";
 /// Fingerprint route that may return a plain response
 pub const V2_FINGERPRINT_PATH: &str = "/api/v2/vault/fingerprint";
-/// Path of the v2 batch fingerprint route
-pub const V2_BATCH_FINGERPRINT_PATH: &str = "/api/v2/vault/fingerprint/batch";
 /// Key written by the Redis health-check probe
 #[cfg(feature = "redis")]
 pub const REDIS_HEALTH_CHECK_KEY: &str = "health_check_redis";
