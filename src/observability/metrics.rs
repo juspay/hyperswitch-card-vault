@@ -175,7 +175,8 @@ global_meter!(pub(crate) CARD_VAULT_METER, "card_vault");
 #[cfg(any(
     feature = "kms-aws",
     feature = "kms-hashicorp-vault",
-    feature = "kms-gcp"
+    feature = "kms-gcp",
+    feature = "kms-oci"
 ))]
 histogram_metric_f64!(
     pub(crate) SECRET_MANAGER_CALL_DURATION, CARD_VAULT_METER,

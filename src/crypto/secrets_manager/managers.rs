@@ -5,3 +5,5 @@ pub mod gcp_kms;
 #[cfg(feature = "kms-hashicorp-vault")]
 pub mod hcvault;
 pub mod hollow;
+#[cfg(feature = "kms-oci")]
+pub mod oci_kms;
