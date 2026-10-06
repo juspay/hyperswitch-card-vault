@@ -189,17 +189,21 @@ impl TryFrom<FingerprintRequest> for FingerprintMode {
                     entries.is_empty(),
                     entries.len() > storage::consts::MAX_BATCH_FINGERPRINTS,
                     labels.len() != entries.len(),
+                    entries.iter().any(|entry| entry.label.trim().is_empty()),
                 ) {
-                    (true, _, _) => Err(error::ApiError::ValidationError(
+                    (true, _, _, _) => Err(error::ApiError::ValidationError(
                         "batch_data must not be empty",
                     )),
-                    (_, true, _) => {
+                    (_, true, _, _) => {
                         Err(error::ApiError::ValidationError("too many batch requests"))
                     }
-                    (_, _, true) => Err(error::ApiError::ValidationError(
+                    (_, _, true, _) => Err(error::ApiError::ValidationError(
                         "fingerprint labels must be unique",
                     )),
-                    (false, false, false) => Ok(Self::Batch(entries)),
+                    (_, _, _, true) => Err(error::ApiError::ValidationError(
+                        "fingerprint labels must not be blank",
+                    )),
+                    (false, false, false, false) => Ok(Self::Batch(entries)),
                 }
             }
             _ => Err(error::ApiError::ValidationError(
