@@ -149,12 +149,12 @@ pub struct DeleteCardResponse {
     pub status: Status,
 }
 
-/// Either a single fingerprint (`data` and `key`) or a batch of them (`fingerprints`), never both.
+/// Either a single fingerprint (`data` and `key`) or `batch_data`, never both.
 #[derive(serde::Deserialize)]
 pub struct FingerprintRequest {
     pub data: Option<Secret<String>>,
     pub key: Option<Secret<String>>,
-    pub fingerprints: Option<Vec<FingerprintEntry>>,
+    pub batch_data: Option<Vec<FingerprintEntry>>,
 }
 
 /// `label` is opaque to the vault and keys the entry's fingerprint in the response.
@@ -177,7 +177,7 @@ impl TryFrom<FingerprintRequest> for FingerprintMode {
     type Error = error::ApiError;
 
     fn try_from(request: FingerprintRequest) -> Result<Self, Self::Error> {
-        match (request.data, request.key, request.fingerprints) {
+        match (request.data, request.key, request.batch_data) {
             (Some(data), Some(key), None) => Ok(Self::Single { data, key }),
             (None, None, Some(entries)) => {
                 let labels = entries
@@ -191,10 +191,10 @@ impl TryFrom<FingerprintRequest> for FingerprintMode {
                     labels.len() != entries.len(),
                 ) {
                     (true, _, _) => Err(error::ApiError::ValidationError(
-                        "fingerprints must not be empty",
+                        "batch_data must not be empty",
                     )),
                     (_, true, _) => Err(error::ApiError::ValidationError(
-                        "too many fingerprints requested",
+                        "too many batch requests",
                     )),
                     (_, _, true) => Err(error::ApiError::ValidationError(
                         "fingerprint labels must be unique",
@@ -203,7 +203,7 @@ impl TryFrom<FingerprintRequest> for FingerprintMode {
                 }
             }
             _ => Err(error::ApiError::ValidationError(
-                "either data and key, or fingerprints, must be provided",
+                "either data and key, or batch_data, must be provided",
             )),
         }
     }
