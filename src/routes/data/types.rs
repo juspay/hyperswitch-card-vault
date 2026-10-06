@@ -193,9 +193,9 @@ impl TryFrom<FingerprintRequest> for FingerprintMode {
                     (true, _, _) => Err(error::ApiError::ValidationError(
                         "batch_data must not be empty",
                     )),
-                    (_, true, _) => Err(error::ApiError::ValidationError(
-                        "too many batch requests",
-                    )),
+                    (_, true, _) => {
+                        Err(error::ApiError::ValidationError("too many batch requests"))
+                    }
                     (_, _, true) => Err(error::ApiError::ValidationError(
                         "fingerprint labels must be unique",
                     )),
