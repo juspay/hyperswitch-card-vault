@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use hyperswitch_masking::{Secret, StrongSecret};
 
 use crate::{
@@ -147,15 +149,78 @@ pub struct DeleteCardResponse {
     pub status: Status,
 }
 
+/// Either a single fingerprint (`data` and `key`) or `batch_data`, never both.
 #[derive(serde::Deserialize)]
 pub struct FingerprintRequest {
+    pub data: Option<Secret<String>>,
+    pub key: Option<Secret<String>>,
+    pub batch_data: Option<Vec<FingerprintEntry>>,
+}
+
+/// `label` is opaque to the vault and keys the entry's fingerprint in the response.
+#[derive(serde::Deserialize)]
+pub struct FingerprintEntry {
+    pub label: String,
     pub data: Secret<String>,
     pub key: Secret<String>,
 }
 
+pub enum FingerprintMode {
+    Single {
+        data: Secret<String>,
+        key: Secret<String>,
+    },
+    Batch(Vec<FingerprintEntry>),
+}
+
+impl TryFrom<FingerprintRequest> for FingerprintMode {
+    type Error = error::ApiError;
+
+    fn try_from(request: FingerprintRequest) -> Result<Self, Self::Error> {
+        match (request.data, request.key, request.batch_data) {
+            (Some(data), Some(key), None) => Ok(Self::Single { data, key }),
+            (None, None, Some(entries)) => {
+                let labels = entries
+                    .iter()
+                    .map(|entry| entry.label.as_str())
+                    .collect::<HashSet<_>>();
+
+                match (
+                    entries.is_empty(),
+                    entries.len() > storage::consts::MAX_BATCH_FINGERPRINTS,
+                    labels.len() != entries.len(),
+                    entries.iter().any(|entry| entry.label.trim().is_empty()),
+                ) {
+                    (true, _, _, _) => Err(error::ApiError::ValidationError(
+                        "batch_data must not be empty",
+                    )),
+                    (_, true, _, _) => {
+                        Err(error::ApiError::ValidationError("too many batch requests"))
+                    }
+                    (_, _, true, _) => Err(error::ApiError::ValidationError(
+                        "fingerprint labels must be unique",
+                    )),
+                    (_, _, _, true) => Err(error::ApiError::ValidationError(
+                        "fingerprint labels must not be blank",
+                    )),
+                    (false, false, false, false) => Ok(Self::Batch(entries)),
+                }
+            }
+            _ => Err(error::ApiError::ValidationError(
+                "either data and key, or batch_data, must be provided",
+            )),
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct FingerprintResponse {
-    pub fingerprint_id: Secret<String>,
+    /// Absent on a batched request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint_id: Option<Secret<String>>,
+    /// Keyed by the caller's label; present only on a batched request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprints: Option<HashMap<String, Secret<String>>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
