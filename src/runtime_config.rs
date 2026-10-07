@@ -9,6 +9,13 @@
 //! last of which is an exhaustive match, so the compiler points at what is missing.
 //! [`RuntimeConfigEntry`] also requires [`RuntimeConfigValidate`] as a supertrait, so a
 //! config type must implement validation by hand — there is no default.
+//!
+//! This module holds only that registry machinery, which has to name every config. The
+//! per-config halves — the key binding and the validation — live in a child module each,
+//! so the registry does not grow a config's own logic: `kv_config`'s half lives in the
+//! `kv_runtime_config` child module.
+
+mod kv_runtime_config;
 
 use std::{collections::HashMap, future::Future, time::Instant};
 
@@ -88,10 +95,6 @@ pub enum RuntimeConfig {
         #[serde(default)]
         kv_config: KvRuntimeConfigValues,
     },
-}
-
-impl RuntimeConfigEntry for KvRuntimeConfigValues {
-    const KEY: &'static str = "kv_config";
 }
 
 /// Every registered config key, for operations that span all of them
@@ -343,79 +346,6 @@ impl RuntimeConfigManager {
         result
     }
 
-    /// Reject illegal KV state transitions against the currently persisted state.
-    ///
-    /// `Disabled → Enabled` additionally requires a reachable Redis backend, since KV
-    /// writes go through Redis.
-    #[cfg(feature = "kv")]
-    async fn validate_kv_transition(
-        &self,
-        store: &storage::Storage,
-        requested: storage::kv::KvState,
-    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
-        use storage::kv::KvState;
-
-        let current = self
-            .get::<KvRuntimeConfigValues>(store)
-            .await
-            .map(|values| values.enable_kv)
-            .unwrap_or(KvState::Disabled);
-
-        let can_enable_kv = match store.get_redis_store() {
-            Some(redis) => redis
-                .test()
-                .await
-                .inspect_err(|err| {
-                    crate::logger::error!(
-                        ?err,
-                        "Redis health check failed while validating KV enablement"
-                    );
-                })
-                .is_ok(),
-            None => false,
-        };
-
-        if current.is_valid_transition(requested, can_enable_kv) {
-            return Ok(());
-        }
-
-        crate::logger::warn!(
-            current = %current,
-            requested = %requested,
-            "KV state transition rejected"
-        );
-        Err(ContainerError::from(
-            error::RuntimeConfigError::InvalidStateTransition(format!("{current} -> {requested}")),
-        ))
-    }
-
-    /// Reject enabling replica reads when no replica pool is configured or the replica
-    /// is unreachable. Mirrors the previous global-state refresh behaviour, enforced at
-    /// the only write path now (no in-process state to consult).
-    async fn validate_replica_enablement(
-        &self,
-        store: &storage::Storage,
-        requested_use_replica: bool,
-    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
-        if !requested_use_replica {
-            return Ok(());
-        }
-
-        if !store.has_replica() {
-            return Err(ContainerError::from(
-                error::RuntimeConfigError::NoReplicaConfigured,
-            ));
-        }
-
-        store.get_replica_conn().await.map(|_| ()).map_err(|err| {
-            crate::logger::error!(
-                ?err,
-                "Replica health check failed while validating use_replica"
-            );
-            ContainerError::from(error::RuntimeConfigError::ReplicaUnreachable)
-        })
-    }
-
     /// Returns the current status of every registered runtime config, keyed by its
     /// config key, without side effects.
     pub async fn status(
@@ -474,24 +404,6 @@ pub fn disabled_status() -> HashMap<&'static str, RuntimeConfigStatus> {
             )
         })
         .collect()
-}
-
-/// Required by `RuntimeConfigEntry`'s supertrait bound.
-impl RuntimeConfigValidate for KvRuntimeConfigValues {
-    async fn validate(
-        &self,
-        store: &storage::Storage,
-        manager: &RuntimeConfigManager,
-    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
-        #[cfg(feature = "kv")]
-        manager
-            .validate_kv_transition(store, self.enable_kv)
-            .await?;
-
-        manager
-            .validate_replica_enablement(store, self.use_replica)
-            .await
-    }
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
