@@ -8,14 +8,14 @@ All notable changes to hyperswitch-card-vault will be documented here.
 
 ### Breaking Changes
 
-- **runtime-config:** Replace HTTP polling with per-tenant Postgres + Redis store (no polling). The runtime config source of truth is now the `configs` table in each tenant schema (migration `2026-08-17-120000_create_configs_table`), read-through a per-tenant Redis cache. All TOML `runtime_config.endpoint.*` config keys are replaced by a single `runtime_config.admin_api_key` (env: `LOCKER__RUNTIME_CONFIG__ADMIN_API_KEY`).
-- **runtime-config:** On startup, if `configs` row is missing, seed `{ "use_replica": false, "enable_kv": "disabled" }` and apply the resulting KV / replica transitions. Subsequent changes go through a new authenticated admin endpoint:
+- **runtime-config:** Replace HTTP polling with per-tenant Postgres + Redis store (no polling). The runtime config source of truth is now the `configs` table in each tenant schema (migration `2026-08-17-120000_create_configs_table`), holding one row per runtime config keyed by its config key, read through a per-tenant Redis cache. All TOML `runtime_config.endpoint.*` keys are replaced by `runtime_config.mode`, `runtime_config.admin_api_key` (env: `LOCKER__RUNTIME_CONFIG__ADMIN_API_KEY`), and an optional seed section per config (`runtime_config.kv_config.*`).
+- **runtime-config:** On startup, any config whose row is missing is seeded from its TOML section, or from the struct default when that is absent (KV disabled, replica off). A seed never overwrites a live row and is never a read-path fallback. Subsequent changes go through a new authenticated admin endpoint:
   ```
   POST /runtime-config
   Headers: x-tenant-id: <tenant>, x-internal-api-key: <admin_api_key>
-  Body:    {"value": {"use_replica": true, "enable_kv": "enabled"}}
+  Body:    {"key": "kv_config", "value": {"use_replica": true, "enable_kv": "enabled"}}
   ```
-  The endpoint upserts Postgres (the source of truth), invalidates the tenant's Redis cache entry (`DEL` — the TTL bounds staleness on failure), and applies KV / replica state transitions. `GET /health/runtime-config` remains the read-only check.
+  `key` selects which config is written and fixes the struct `value` must match; both are rejected at deserialization. The endpoint validates the request against the persisted state (illegal KV transitions and `use_replica` without a reachable replica are refused), upserts Postgres, then invalidates the tenant's Redis entry (`DEL` — the TTL bounds staleness on failure). No in-process state is applied: every consumer reads the config per operation. `GET /health/runtime-config` remains the read-only check.
 
 - - -
 

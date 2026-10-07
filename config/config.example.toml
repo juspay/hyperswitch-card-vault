@@ -183,7 +183,7 @@ background_metrics_collection_interval_secs = 15 # How often to collect metrics 
 # The runtime config source of truth is the per-tenant `configs` table
 # (created by migration 2026-08-17-120000_create_configs_table), which holds one row
 # per runtime config keyed by its config key. Every key and its value struct are fixed
-# at compile time by the `runtime_configs!` registry in `src/runtime_config.rs`.
+# at compile time by the `RuntimeConfigKind` registry in `src/runtime_config.rs`.
 #
 # Enabled mode adds the admin API key that guards the `POST /runtime-config` update
 # endpoint, plus one optional seed section per runtime config. A seed is written at
