@@ -20,7 +20,7 @@ use crate::{
 ///
 /// Body: `{"key": "<config key>", "value": {...}}`. The key selects which runtime config
 /// is written and, with it, the struct `value` must match — both are fixed at compile
-/// time by the `runtime_configs!` registry, so an unknown key or an unknown field inside
+/// time by the `RuntimeConfigUpdate` enum, so an unknown key or an unknown field inside
 /// `value` is rejected during deserialization, before any storage call.
 ///
 /// Auth:

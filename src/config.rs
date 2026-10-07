@@ -9,9 +9,9 @@ use hyperswitch_masking::{ExposeInterface, Secret};
 #[cfg(feature = "redis")]
 use hyperswitch_redis_interface::RedisSettings;
 
-/// Runtime configuration is declared by the `runtime_configs!` registry so that each
-/// config's key and struct are bound at compile time; re-exported here because it is
-/// still a `[runtime_config]` section of the static config.
+/// Runtime configuration lives in `crate::runtime_config`, where each config's key and
+/// struct are bound at compile time; re-exported here because it is still a
+/// `[runtime_config]` section of the static config.
 #[cfg(feature = "redis")]
 pub use crate::runtime_config::RuntimeConfig;
 use crate::{
