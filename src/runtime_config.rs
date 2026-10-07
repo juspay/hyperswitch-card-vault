@@ -148,13 +148,29 @@ impl RuntimeConfig {
         matches!(self, Self::Enabled { .. })
     }
 
-    pub fn validate(&self) -> Result<(), crate::error::ConfigurationError> {
-        if let Self::Enabled { admin_api_key, .. } = self
-            && admin_api_key.peek().trim().is_empty()
-        {
+    /// Enabled mode needs an admin key to guard the update endpoint and a Redis backend,
+    /// since every read goes through the per-tenant cache. Disabled mode needs neither, so
+    /// both checks hang off the one `Enabled` match.
+    pub fn validate(
+        &self,
+        redis: Option<&hyperswitch_redis_interface::RedisSettings>,
+    ) -> Result<(), crate::error::ConfigurationError> {
+        let Self::Enabled { admin_api_key, .. } = self else {
+            return Ok(());
+        };
+
+        if admin_api_key.peek().trim().is_empty() {
             return Err(
                 crate::error::ConfigurationError::InvalidConfigurationValueError(
                     r#"runtime_config.admin_api_key is required when mode is "enabled""#.into(),
+                ),
+            );
+        }
+
+        if redis.is_none() {
+            return Err(
+                crate::error::ConfigurationError::InvalidConfigurationValueError(
+                    "runtime_config is enabled but `[redis]` is not configured".into(),
                 ),
             );
         }

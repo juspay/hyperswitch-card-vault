@@ -387,10 +387,7 @@ impl GlobalConfig {
     pub fn validate(&self) -> error_stack::Result<(), error::ConfigurationError> {
         self.secrets_management.validate()?;
         #[cfg(feature = "redis")]
-        {
-            self.runtime_config.validate()?;
-            self.validate_runtime_config_redis()?;
-        }
+        self.runtime_config.validate(self.redis.as_ref())?;
         #[cfg(feature = "kv")]
         {
             self.kv.validate()?;
@@ -404,18 +401,6 @@ impl GlobalConfig {
         }
         self.metrics.validate()?;
 
-        Ok(())
-    }
-
-    /// Runtime config is read-through a per-tenant Redis cache — it cannot operate
-    /// without Redis configured.
-    #[cfg(feature = "redis")]
-    fn validate_runtime_config_redis(&self) -> Result<(), error::ConfigurationError> {
-        if self.runtime_config.is_enabled() && self.redis.is_none() {
-            return Err(error::ConfigurationError::InvalidConfigurationValueError(
-                "runtime_config is enabled but `[redis]` is not configured".into(),
-            ));
-        }
         Ok(())
     }
 
