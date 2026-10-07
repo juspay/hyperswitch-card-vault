@@ -1,25 +1,29 @@
 //! Runtime configuration: a compile-time registry of per-tenant config entries.
 //!
-//! Each runtime config binds its `configs` row key to a Rust struct through
-//! [`RuntimeConfigEntry`]. Adding one means writing every piece that depends on that
-//! pairing: the static-config seed field on `RuntimeConfig::Enabled`, the
-//! [`RuntimeConfigEntry`] impl, the [`REGISTERED_KEYS`] entry, the [`RuntimeConfigSeeds`]
-//! field, the [`RuntimeConfigUpdate`] variant, and the arms in
-//! [`RuntimeConfigManager::new`], `seed_all` and [`RuntimeConfigManager::update`] — the
-//! last of which is an exhaustive match, so the compiler points at what is missing.
-//! [`RuntimeConfigEntry`] also requires [`RuntimeConfigValidate`] as a supertrait, so a
-//! config type must implement validation by hand — there is no default.
+//! [`RuntimeConfigKind`] is the registry — one variant per config. Rust checks
+//! exhaustiveness where a `match` consumes an enum but not where code enumerates its
+//! variants, so enumeration comes from `strum::EnumIter` and the rest is exhaustive
+//! matching. Adding a variant is the trigger; this is how the remaining steps surface:
 //!
-//! This module holds only that registry machinery, which has to name every config. The
-//! per-config halves — the key binding and the validation — live in a child module each,
-//! so the registry does not grow a config's own logic: `kv_config`'s half lives in the
-//! `kv_runtime_config` child module.
+//! | step | if forgotten |
+//! |---|---|
+//! | [`RuntimeConfigKind::key`] arm | compile error — non-exhaustive match |
+//! | `seed_all` arm | compile error — non-exhaustive match |
+//! | [`RuntimeConfigEntry`] + [`RuntimeConfigValidate`] impls | compile error — `seed::<T>`'s bound |
+//! | seed field on `RuntimeConfig::Enabled` | compile error — `new`'s struct pattern |
+//! | [`RuntimeConfigSeeds`] field | compile error — `new`'s struct literal |
+//! | [`RuntimeConfigUpdate`] variant | test failure — `every_kind_is_updatable` |
+//! | [`RuntimeConfigKind::registered_keys`], `status`, `disabled_status`, cache warming | *nothing — derived* |
+//!
+//! Only registry machinery lives here. Each config's own halves — key binding and
+//! validation — live in a child module: `kv_config`'s in `kv_runtime_config`.
 
 mod kv_runtime_config;
 
 use std::{collections::HashMap, future::Future, time::Instant};
 
 use hyperswitch_masking::PeekInterface;
+use strum::IntoEnumIterator;
 
 use crate::{
     error::{self, ContainerError},
@@ -42,13 +46,11 @@ pub enum RuntimeConfigStatusKind {
     Invalid,
 }
 
-/// Every runtime config must validate itself against the currently persisted state
-/// before a new value is written — there is no default. Implement this directly on the
-/// config struct; [`RuntimeConfigEntry`] requires it as a supertrait, so a type cannot
-/// be registered without one.
+/// Validates a requested value against the currently persisted state. No default:
+/// [`RuntimeConfigEntry`] requires it as a supertrait, so no config can skip it.
 pub trait RuntimeConfigValidate {
-    /// Desugared rather than written as `async fn` so the `Send` bound can be stated:
-    /// the returned future is awaited inside axum handlers, which require it.
+    /// Desugared rather than `async fn` so the `Send` bound can be stated — axum
+    /// handlers require it.
     fn validate(
         &self,
         store: &storage::Storage,
@@ -58,9 +60,9 @@ pub trait RuntimeConfigValidate {
 
 /// One runtime config's `configs` row key, bound to its struct at compile time.
 ///
-/// `KEY` is the single source of truth for that pairing: it must be the same string as
-/// the `#[serde(rename = ...)]` tag on the type's [`RuntimeConfigUpdate`] variant and the
-/// [`REGISTERED_KEYS`] entry, which `update_tag_matches_entry_key` asserts.
+/// `KEY` is the source of truth: [`RuntimeConfigKind::key`] defers to it, leaving the
+/// `#[serde(rename)]` tag on the [`RuntimeConfigUpdate`] variant as the only other copy —
+/// `update_tag_matches_entry_key` asserts they agree.
 pub trait RuntimeConfigEntry:
     RuntimeConfigValidate
     + serde::Serialize
@@ -72,18 +74,17 @@ pub trait RuntimeConfigEntry:
     + Sync
     + Sized
 {
-    /// Primary key of this config's row in the `configs` table, and its Redis cache key
-    /// (the per-tenant prefix is added by `TenantAwareRedisStore`).
+    /// This config's `configs` row key, and its Redis cache key (the per-tenant prefix is
+    /// added by `TenantAwareRedisStore`).
     const KEY: &'static str;
 }
 
 /// Runtime configuration source.
 ///
-/// When enabled, each runtime config lives in its own row of the per-tenant `configs`
-/// Postgres table, read through a per-tenant Redis cache. The values carried here are
-/// *seeds*: written at startup only when the row is absent (see
-/// [`RuntimeConfigManager::init`]), never used as a read-path fallback. The
-/// `admin_api_key` guards the `POST /runtime-config` update endpoint.
+/// When enabled, each config lives in its own row of the per-tenant `configs` table, read
+/// through a per-tenant Redis cache. The values here are *seeds* — written at startup only
+/// when the row is absent (see [`RuntimeConfigManager::init`]), never a read-path fallback.
+/// `admin_api_key` guards `POST /runtime-config`.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum RuntimeConfig {
@@ -97,9 +98,30 @@ pub enum RuntimeConfig {
     },
 }
 
-/// Every registered config key, for operations that span all of them
-/// ([`RuntimeConfigManager::status`], cache warming).
-pub const REGISTERED_KEYS: &[&str] = &[KvRuntimeConfigValues::KEY];
+/// Every runtime config the binary knows about — the registry itself; the module docs
+/// table lists what adding a variant obliges you to write.
+///
+/// No serde derive: it is never read off the wire ([`RuntimeConfigUpdate`] does that), so
+/// [`Self::key`] can defer to [`RuntimeConfigEntry::KEY`] instead of repeating the string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter)]
+pub enum RuntimeConfigKind {
+    KvConfig,
+}
+
+impl RuntimeConfigKind {
+    /// This kind's `configs` row key.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::KvConfig => KvRuntimeConfigValues::KEY,
+        }
+    }
+
+    /// Every registered key, for [`RuntimeConfigManager::status`] and cache warming.
+    /// Derived from the variants, so a new config needs no edit here.
+    pub fn registered_keys() -> impl Iterator<Item = &'static str> {
+        Self::iter().map(Self::key)
+    }
+}
 
 /// Seed values lifted out of `RuntimeConfig::Enabled` so the manager can hold them.
 #[derive(Debug, Clone, Default)]
@@ -109,11 +131,11 @@ pub struct RuntimeConfigSeeds {
 
 /// Body of `POST /runtime-config`: `{"key": "<key>", "value": {...}}`.
 ///
-/// serde performs the key → struct dispatch, so an unknown key and an unknown field
-/// inside `value` are both rejected before any storage call happens. Each variant is
-/// named after its config struct, and its `rename` repeats that struct's
-/// [`RuntimeConfigEntry::KEY`] as a literal because serde cannot read an associated
-/// const.
+/// serde does the key → struct dispatch, so an unknown key or unknown field in `value` is
+/// rejected before any storage call, and the handler cannot pair a key with the wrong
+/// struct. The `rename` repeats [`RuntimeConfigEntry::KEY`] because serde cannot read an
+/// associated const. This is the one list [`RuntimeConfigKind`] cannot force the compiler
+/// to check — `every_kind_is_updatable` covers it.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "key", content = "value", deny_unknown_fields)]
 pub enum RuntimeConfigUpdate {
@@ -141,22 +163,18 @@ impl RuntimeConfig {
     }
 }
 
-/// Manages runtime configuration backed by the per-tenant `configs` Postgres table with a
-/// read-through per-tenant Redis cache.
-///
-/// No polling: every `get()` fetches the latest value from Redis (or Postgres on a cache
-/// miss). `update()` upserts to Postgres and invalidates the Redis cache entry.
+/// Runtime configuration backed by the per-tenant `configs` table with a read-through
+/// Redis cache. No polling: every `get()` fetches the latest value, and `update()` upserts
+/// to Postgres then invalidates the cache entry.
 pub struct RuntimeConfigManager {
     admin_api_key: hyperswitch_masking::Secret<String>,
     seeds: RuntimeConfigSeeds,
 }
 
 impl RuntimeConfigManager {
-    /// Construct a manager from the global `RuntimeConfig` settings, capturing the
-    /// configured seeds. Returns `None` when runtime config is disabled — a manager
-    /// only exists when the feature is enabled, so its `admin_api_key` is always
-    /// present. The owning tenant's `Storage` is passed to each method; the manager
-    /// holds no storage handle of its own.
+    /// Capture the configured seeds. `None` when runtime config is disabled, so a
+    /// manager's `admin_api_key` is always present. The tenant's `Storage` is passed per
+    /// call; the manager holds no handle of its own.
     pub fn new(config: &RuntimeConfig) -> Option<Self> {
         match config {
             RuntimeConfig::Enabled {
@@ -172,12 +190,11 @@ impl RuntimeConfigManager {
         }
     }
 
-    /// Bootstrap: ensure every registered config has a `configs` row (seeding from the
-    /// static config when missing) and warm the Redis cache.
+    /// Bootstrap: ensure every registered config has a `configs` row (seeding when
+    /// missing), then warm the Redis cache.
     ///
-    /// Fails when a seed read or upsert errors — the tenant must not start serving with a
-    /// missing runtime-config row. The Redis warm is best-effort only: a failed warm
-    /// self-heals on the next read (read-through populate, TTL-bounded).
+    /// A failed seed read or upsert is fatal — a tenant must not serve with a missing row.
+    /// The warm is best-effort: a failure self-heals on the next read.
     pub async fn init(
         &self,
         store: &storage::Storage,
@@ -185,7 +202,7 @@ impl RuntimeConfigManager {
         self.seed_all(store).await?;
 
         // Warm the Redis cache (read-through populates Redis on a miss).
-        for key in REGISTERED_KEYS {
+        for key in RuntimeConfigKind::registered_keys() {
             let _ = self.get_raw(store, key).await;
         }
 
@@ -193,12 +210,23 @@ impl RuntimeConfigManager {
     }
 
     /// Seed every registered config whose row is missing.
+    ///
+    /// The match is exhaustive over [`RuntimeConfigKind`], and the arm's [`Self::seed`]
+    /// call is bound on [`RuntimeConfigEntry`] — so a new config cannot be registered
+    /// without both a seed path and its [`RuntimeConfigValidate`] impl.
     async fn seed_all(
         &self,
         store: &storage::Storage,
     ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
-        self.seed::<KvRuntimeConfigValues>(store, &self.seeds.kv_config)
-            .await?;
+        for kind in RuntimeConfigKind::iter() {
+            match kind {
+                RuntimeConfigKind::KvConfig => {
+                    self.seed::<KvRuntimeConfigValues>(store, &self.seeds.kv_config)
+                        .await?;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -259,9 +287,8 @@ impl RuntimeConfigManager {
         Ok(())
     }
 
-    /// Apply an update: validate against the persisted state → PG upsert →
-    /// Redis invalidate. The match is exhaustive over every registered config,
-    /// so a new entry cannot be added without an update path.
+    /// Apply an update: validate against the persisted state → PG upsert → Redis
+    /// invalidate.
     pub async fn update(
         &self,
         store: &storage::Storage,
@@ -299,9 +326,8 @@ impl RuntimeConfigManager {
         }
     }
 
-    /// Fetch a config's raw JSON string, going through the read-through Redis cache.
-    /// The only place a key is passed as a string rather than derived from a type —
-    /// used by [`Self::status`], which reports on all keys uniformly.
+    /// Fetch a config's raw JSON through the read-through Redis cache. The only place a
+    /// key is a string rather than derived from a type — [`Self::status`] spans all keys.
     async fn get_raw(&self, store: &storage::Storage, key: &str) -> Option<String> {
         let start = Instant::now();
         let fetch_from_pg = || async {
@@ -346,15 +372,14 @@ impl RuntimeConfigManager {
         result
     }
 
-    /// Returns the current status of every registered runtime config, keyed by its
-    /// config key, without side effects.
+    /// Current status of every registered config, keyed by its config key. No side effects.
     pub async fn status(
         &self,
         store: &storage::Storage,
     ) -> HashMap<&'static str, RuntimeConfigStatus> {
-        let mut statuses = HashMap::with_capacity(REGISTERED_KEYS.len());
+        let mut statuses = HashMap::with_capacity(RuntimeConfigKind::registered_keys().count());
 
-        for key in REGISTERED_KEYS {
+        for key in RuntimeConfigKind::registered_keys() {
             let status = match self.get_raw(store, key).await {
                 None => RuntimeConfigStatus {
                     status: RuntimeConfigStatusKind::NotConfigured,
@@ -375,7 +400,7 @@ impl RuntimeConfigManager {
                 },
             };
 
-            statuses.insert(*key, status);
+            statuses.insert(key, status);
         }
 
         statuses
@@ -389,14 +414,13 @@ impl RuntimeConfigManager {
     }
 }
 
-/// Status map reported when runtime config is disabled for a tenant: every registered
-/// config reports `disabled`, so the response shape does not depend on the mode.
+/// Status map for a tenant with runtime config disabled: every registered config reports
+/// `disabled`, so the response shape does not depend on the mode.
 pub fn disabled_status() -> HashMap<&'static str, RuntimeConfigStatus> {
-    REGISTERED_KEYS
-        .iter()
+    RuntimeConfigKind::registered_keys()
         .map(|key| {
             (
-                *key,
+                key,
                 RuntimeConfigStatus {
                     status: RuntimeConfigStatusKind::Disabled,
                     config: None,
@@ -419,7 +443,9 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{REGISTERED_KEYS, RuntimeConfigEntry, RuntimeConfigUpdate};
+    use strum::IntoEnumIterator;
+
+    use super::{RuntimeConfigEntry, RuntimeConfigKind, RuntimeConfigUpdate};
     use crate::storage::KvRuntimeConfigValues;
 
     /// Round-trip a request body and read one field back out, without unwrapping —
@@ -445,7 +471,25 @@ mod tests {
             tag,
             Some(serde_json::Value::from(KvRuntimeConfigValues::KEY))
         );
-        assert!(REGISTERED_KEYS.contains(&KvRuntimeConfigValues::KEY));
+        assert!(RuntimeConfigKind::registered_keys().any(|key| key == KvRuntimeConfigValues::KEY));
+    }
+
+    /// The one link the compiler cannot check: a kind with no `RuntimeConfigUpdate`
+    /// variant is seeded and reported but not updatable.
+    ///
+    /// An empty `value` reaches the key dispatch because every config's fields are
+    /// `#[serde(default)]`; a future config with a required field needs its own case.
+    #[test]
+    fn every_kind_is_updatable() {
+        for kind in RuntimeConfigKind::iter() {
+            let body = serde_json::json!({ "key": kind.key(), "value": {} });
+
+            assert!(
+                serde_json::from_value::<RuntimeConfigUpdate>(body).is_ok(),
+                "{} has no RuntimeConfigUpdate variant, so it cannot be updated",
+                kind.key(),
+            );
+        }
     }
 
     #[test]

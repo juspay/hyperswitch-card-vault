@@ -1,11 +1,6 @@
-//! The `kv_config` runtime config: everything that pairs [`KvRuntimeConfigValues`] with
-//! its `configs` row key and validates a requested value against the persisted one.
-//!
-//! The parent module owns the registry machinery that must name every config
-//! (`RuntimeConfig`, `REGISTERED_KEYS`, `RuntimeConfigSeeds`, `RuntimeConfigUpdate` and
-//! the manager's dispatch arms); what lives here is specific to this one config — its
-//! [`RuntimeConfigEntry`] key binding, its [`RuntimeConfigValidate`] impl, and the two
-//! checks that impl runs.
+//! The `kv_config` runtime config: [`KvRuntimeConfigValues`]'s key binding, its
+//! [`RuntimeConfigValidate`] impl, and the two checks that impl runs. The registry
+//! machinery that must name every config stays in the parent module.
 
 use super::{RuntimeConfigEntry, RuntimeConfigManager, RuntimeConfigValidate};
 use crate::{
@@ -35,9 +30,8 @@ impl RuntimeConfigValidate for KvRuntimeConfigValues {
     }
 }
 
-/// The checks behind this config's `validate`. Written against `RuntimeConfigManager`
-/// rather than as free functions because both read the persisted state through
-/// [`RuntimeConfigManager::get`].
+/// The checks behind this config's `validate` — methods rather than free functions
+/// because both read the persisted state through [`RuntimeConfigManager::get`].
 impl RuntimeConfigManager {
     /// Reject illegal KV state transitions against the currently persisted state.
     ///
@@ -85,9 +79,8 @@ impl RuntimeConfigManager {
         ))
     }
 
-    /// Reject enabling replica reads when no replica pool is configured or the replica
-    /// is unreachable. Mirrors the previous global-state refresh behaviour, enforced at
-    /// the only write path now (no in-process state to consult).
+    /// Reject enabling replica reads with no replica pool configured, or an unreachable
+    /// one. Enforced at the write path, there being no in-process state to consult.
     async fn validate_replica_enablement(
         &self,
         store: &storage::Storage,

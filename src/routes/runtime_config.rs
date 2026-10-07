@@ -21,7 +21,9 @@ use crate::{
 /// Body: `{"key": "<config key>", "value": {...}}`. The key selects which runtime config
 /// is written and, with it, the struct `value` must match — both are fixed at compile
 /// time by the `RuntimeConfigUpdate` enum, so an unknown key or an unknown field inside
-/// `value` is rejected during deserialization, before any storage call.
+/// `value` is rejected during deserialization, before any storage call. Every registered
+/// `RuntimeConfigKind` is covered by a variant there, which `every_kind_is_updatable`
+/// asserts.
 ///
 /// Auth:
 ///   - `x-tenant-id`        → tenant whose config table is updated
