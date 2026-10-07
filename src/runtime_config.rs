@@ -346,7 +346,7 @@ impl RuntimeConfigManager {
     /// key is a string rather than derived from a type — [`Self::status`] spans all keys.
     async fn get_raw(&self, store: &storage::Storage, key: &str) -> Option<String> {
         let start = Instant::now();
-        let fetch_from_pg = || async {
+        let fetch_from_pg = async {
             store
                 .find_config(key)
                 .await
@@ -370,7 +370,7 @@ impl RuntimeConfigManager {
                     key,
                     "Redis not configured, reading runtime config from Postgres"
                 );
-                ("postgres", fetch_from_pg().await)
+                ("postgres", fetch_from_pg.await)
             }
         };
 

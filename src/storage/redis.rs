@@ -96,20 +96,16 @@ impl RedisStore {
     /// Read-through cache helper.
     ///
     /// Tries `GET key` first; on a hit returns the cached string immediately.
-    /// On a miss (or Redis error — fail-open) it calls `fetch` to produce the
-    /// value, then best-effort populates Redis with `SETEX key ttl value`
-    /// so subsequent reads hit the cache. Returns `None` when both Redis and
-    /// the `fetch` fallback yield nothing.
-    pub(crate) async fn get_or_populate<F, Fut>(
+    /// On a miss (or Redis error — fail-open) it awaits `fetch` for the value,
+    /// then best-effort populates Redis with `SETEX key ttl value` so subsequent
+    /// reads hit the cache. Returns `None` when both Redis and the `fetch`
+    /// fallback yield nothing.
+    pub(crate) async fn get_or_populate(
         &self,
         key: &str,
         ttl_secs: i64,
-        fetch: F,
-    ) -> Option<String>
-    where
-        F: FnOnce() -> Fut + Send,
-        Fut: Future<Output = Option<String>> + Send,
-    {
+        fetch: impl Future<Output = Option<String>> + Send,
+    ) -> Option<String> {
         let redis_conn = self.get_redis_conn();
         let redis_key = key.into();
 
@@ -130,7 +126,7 @@ impl RedisStore {
             }
         }
 
-        let value = fetch().await?;
+        let value = fetch.await?;
 
         if let Err(err) = redis_conn
             .set_key_with_expiry(&redis_key, value.clone(), ttl_secs)
