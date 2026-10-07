@@ -12,8 +12,6 @@ use tower_http::{
     trace as tower_trace,
 };
 
-#[cfg(feature = "middleware")]
-use crate::middleware as custom_middleware;
 #[cfg(feature = "caching")]
 use crate::storage::caching::Caching;
 use crate::{
@@ -25,6 +23,8 @@ use crate::{
     tenant::GlobalAppState,
     utils,
 };
+#[cfg(feature = "middleware")]
+use crate::{crypto::encryption_manager, middleware as custom_middleware};
 
 #[cfg(feature = "caching")]
 type Storage = Caching<storage::Storage>;
@@ -43,6 +43,9 @@ pub struct TenantAppState {
     pub db: Storage,
     pub config: config::TenantConfig,
     pub api_client: ApiClient,
+    /// Envelope keys in parsed form, derived once per tenant rather than per request.
+    #[cfg(feature = "middleware")]
+    pub jwe_keys: Arc<encryption_manager::managers::jw::JWEncryption>,
 }
 
 #[allow(clippy::expect_used)]
@@ -88,11 +91,31 @@ impl TenantAppState {
         let db = Caching::implement_cache(&global_config.cache)(raw_storage);
         #[cfg(not(feature = "caching"))]
         let db = raw_storage;
+        #[cfg(feature = "middleware")]
+        let jwe_keys = Arc::new(
+            encryption_manager::managers::jw::JWEncryption::new(
+                hyperswitch_masking::PeekInterface::peek(
+                    &tenant_config.locker_secrets.locker_private_key,
+                )
+                .clone(),
+                hyperswitch_masking::PeekInterface::peek(&tenant_config.tenant_secrets.public_key)
+                    .clone(),
+                josekit::jwe::RSA_OAEP,
+                josekit::jwe::RSA_OAEP_256,
+            )
+            .change_context(
+                error::ConfigurationError::InvalidConfigurationValueError(
+                    "failed to parse locker envelope keys".to_string(),
+                ),
+            )?,
+        );
 
         Ok(Self {
             db,
             api_client,
             config: tenant_config,
+            #[cfg(feature = "middleware")]
+            jwe_keys,
         })
     }
 }
