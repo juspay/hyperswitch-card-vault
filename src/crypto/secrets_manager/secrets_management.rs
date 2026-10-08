@@ -1,4 +1,8 @@
-#[cfg(any(feature = "kms-gcp", feature = "kms-hashicorp-vault"))]
+#[cfg(any(
+    feature = "kms-gcp",
+    feature = "kms-hashicorp-vault",
+    feature = "kms-oci"
+))]
 use error_stack::ResultExt;
 use hyperswitch_masking::Secret;
 
@@ -21,7 +25,8 @@ use crate::{
 #[cfg(any(
     feature = "kms-aws",
     feature = "kms-hashicorp-vault",
-    feature = "kms-gcp"
+    feature = "kms-gcp",
+    feature = "kms-oci"
 ))]
 async fn record_secret_manager_duration<Fut, T, E>(
     future: Fut,
@@ -74,6 +79,13 @@ pub enum SecretsManagementConfig {
         gcp_kms: GcpKmsConfig,
     },
 
+    /// OCI Vault KMS configuration
+    #[cfg(feature = "kms-oci")]
+    OciKms {
+        /// OCI KMS config
+        oci_kms: ::oci_kms::OciKmsConfig,
+    },
+
     /// Variant representing no encryption
     #[default]
     NoEncryption,
@@ -86,6 +98,8 @@ enum SecretsManagerClient {
     HashiCorp(Box<HashiCorpVault>),
     #[cfg(feature = "kms-gcp")]
     GcpKms(Box<GcpKmsClient>),
+    #[cfg(feature = "kms-oci")]
+    OciKms(Box<::oci_kms::OciKmsClient>),
     NoEncryption(NoEncryption),
 }
 
@@ -109,6 +123,10 @@ impl SecretManager for SecretsManagerClient {
             Self::GcpKms(config) => {
                 record_secret_manager_duration(config.get_secret(input), "gcp_kms", "decrypt").await
             }
+            #[cfg(feature = "kms-oci")]
+            Self::OciKms(client) => {
+                record_secret_manager_duration(client.get_secret(input), "oci_kms", "decrypt").await
+            }
             Self::NoEncryption(config) => config.get_secret(input).await,
         }
     }
@@ -124,6 +142,10 @@ impl SecretsManagementConfig {
             Self::HashiCorpVault { hashi_corp_vault } => hashi_corp_vault.validate(),
             #[cfg(feature = "kms-gcp")]
             Self::GcpKms { gcp_kms } => gcp_kms.validate(),
+            #[cfg(feature = "kms-oci")]
+            Self::OciKms { oci_kms } => oci_kms.validate().map_err(|reason| {
+                ConfigurationError::InvalidConfigurationValueError(reason.into())
+            }),
             Self::NoEncryption => Ok(()),
         }
     }
@@ -146,6 +168,11 @@ impl SecretsManagementConfig {
                 .await
                 .change_context(SecretsManagementError::ClientCreationFailed)
                 .map(|client| SecretsManagerClient::GcpKms(Box::new(client))),
+            #[cfg(feature = "kms-oci")]
+            Self::OciKms { oci_kms: config } => ::oci_kms::OciKmsClient::new(config)
+                .map_err(error_stack::Report::new)
+                .change_context(SecretsManagementError::ClientCreationFailed)
+                .map(|client| SecretsManagerClient::OciKms(Box::new(client))),
             Self::NoEncryption => Ok(SecretsManagerClient::NoEncryption(NoEncryption)),
         }
     }

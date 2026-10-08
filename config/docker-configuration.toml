@@ -26,6 +26,10 @@ location_id = "global"
 key_ring_id = "my-key-ring"
 key_id = "my-key"
 
+[secrets_management.oci_kms]
+vault_crypto_endpoint = "https://my-vault-crypto.kms.ap-hyderabad-1.oci.oraclecloud.com"
+key_id = "ocid1.key.oc1.ap-hyderabad-1.my-key"
+
 [tls]
 certificate = "cert.pem"
 private_key = "key.pem"
