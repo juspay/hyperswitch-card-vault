@@ -12,6 +12,7 @@ pub(crate) mod serializable_query;
 pub(crate) mod wrapper;
 
 pub use self::scheme::KvState;
+pub(crate) use self::scheme::KvTransitionRejection;
 pub(crate) use self::wrapper::KvBackend;
 #[cfg(feature = "kv")]
 pub(crate) use self::{

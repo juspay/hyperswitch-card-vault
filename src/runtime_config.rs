@@ -3,7 +3,7 @@
 //! [`RuntimeConfigKind`] is the registry — one variant per config. Rust checks
 //! exhaustiveness where a `match` consumes an enum but not where code enumerates its
 //! variants, so enumeration comes from `strum::EnumIter` and the rest is exhaustive
-//! matching. Adding a variant is the trigger; this is how the remaining steps surface:
+//! matching. Adding a variant is the trigger; the rest surfaces like this:
 //!
 //! | step | if forgotten |
 //! |---|---|
@@ -12,11 +12,11 @@
 //! | [`RuntimeConfigEntry`] + [`RuntimeConfigValidate`] impls | compile error — `seed::<T>`'s bound |
 //! | seed field on `RuntimeConfig::Enabled` | compile error — `new`'s struct pattern |
 //! | [`RuntimeConfigSeeds`] field | compile error — `new`'s struct literal |
-//! | [`RuntimeConfigUpdate`] variant | test failure — `every_kind_is_updatable` |
+//! | [`RuntimeConfigUpdate`] variant | **nothing** — the one unchecked link |
 //! | [`RuntimeConfigKind::registered_keys`], `status`, `disabled_status`, cache warming | *nothing — derived* |
 //!
-//! Only registry machinery lives here. Each config's own halves — key binding and
-//! validation — live in a child module: `kv_config`'s in `kv_runtime_config`.
+//! Only registry machinery lives here; each config's key binding and validation live in a
+//! child module — `kv_config`'s in `kv_runtime_config`.
 
 mod kv_runtime_config;
 
@@ -46,23 +46,26 @@ pub enum RuntimeConfigStatusKind {
     Invalid,
 }
 
-/// Validates a requested value against the currently persisted state. No default:
+/// Validates a requested value against the persisted one. No default:
 /// [`RuntimeConfigEntry`] requires it as a supertrait, so no config can skip it.
-pub trait RuntimeConfigValidate {
+pub trait RuntimeConfigValidate: Sized {
+    /// Reject the move from `previous` (persisted) to `self` (requested). `previous` is
+    /// passed in rather than read here, so every check shares one view of the stored state.
+    ///
     /// Desugared rather than `async fn` so the `Send` bound can be stated — axum
     /// handlers require it.
-    fn validate(
+    fn validate_transition(
         &self,
+        previous: &Self,
         store: &storage::Storage,
-        manager: &RuntimeConfigManager,
     ) -> impl Future<Output = Result<(), ContainerError<error::RuntimeConfigError>>> + Send;
 }
 
 /// One runtime config's `configs` row key, bound to its struct at compile time.
 ///
 /// `KEY` is the source of truth: [`RuntimeConfigKind::key`] defers to it, leaving the
-/// `#[serde(rename)]` tag on the [`RuntimeConfigUpdate`] variant as the only other copy —
-/// `update_tag_matches_entry_key` asserts they agree.
+/// `#[serde(rename)]` tag on the [`RuntimeConfigUpdate`] variant as the only other copy,
+/// kept equal by hand.
 pub trait RuntimeConfigEntry:
     RuntimeConfigValidate
     + serde::Serialize
@@ -131,11 +134,13 @@ pub struct RuntimeConfigSeeds {
 
 /// Body of `POST /runtime-config`: `{"key": "<key>", "value": {...}}`.
 ///
-/// serde does the key → struct dispatch, so an unknown key or unknown field in `value` is
-/// rejected before any storage call, and the handler cannot pair a key with the wrong
-/// struct. The `rename` repeats [`RuntimeConfigEntry::KEY`] because serde cannot read an
-/// associated const. This is the one list [`RuntimeConfigKind`] cannot force the compiler
-/// to check — `every_kind_is_updatable` covers it.
+/// `value` is the complete value to store, not a patch: every field is `#[serde(default)]`,
+/// so one the caller omits is written at its default — send every field.
+///
+/// serde does the key → struct dispatch, so an unknown key or field is rejected before any
+/// storage call and the handler cannot pair a key with the wrong struct. The `rename`
+/// repeats [`RuntimeConfigEntry::KEY`] because serde cannot read an associated const — the
+/// one list [`RuntimeConfigKind`] cannot force the compiler to check.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "key", content = "value", deny_unknown_fields)]
 pub enum RuntimeConfigUpdate {
@@ -303,17 +308,26 @@ impl RuntimeConfigManager {
         Ok(())
     }
 
-    /// Apply an update: validate against the persisted state → PG upsert → Redis
-    /// invalidate.
+    /// Validate the requested value against the persisted one, then write it: PG upsert →
+    /// Redis invalidate.
+    ///
+    /// Checks read only the persisted state, so a field's verdict never depends on what
+    /// else the request carries. A missing or unreadable row validates against the default,
+    /// which fails closed. The match is exhaustive, so no registered config lacks a path.
     pub async fn update(
         &self,
         store: &storage::Storage,
         update: RuntimeConfigUpdate,
     ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
         match update {
-            RuntimeConfigUpdate::KvRuntimeConfigValues(value) => {
-                value.validate(store, self).await?;
-                self.put(store, &value).await
+            RuntimeConfigUpdate::KvRuntimeConfigValues(requested) => {
+                let previous = self
+                    .get::<KvRuntimeConfigValues>(store)
+                    .await
+                    .unwrap_or_default();
+
+                requested.validate_transition(&previous, store).await?;
+                self.put(store, &requested).await
             }
         }
     }

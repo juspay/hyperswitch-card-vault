@@ -19,11 +19,13 @@ use crate::{
 /// `POST /runtime-config`
 ///
 /// Body: `{"key": "<config key>", "value": {...}}`. The key selects which runtime config
-/// is written and, with it, the struct `value` must match — both are fixed at compile
-/// time by the `RuntimeConfigUpdate` enum, so an unknown key or an unknown field inside
-/// `value` is rejected during deserialization, before any storage call. Every registered
-/// `RuntimeConfigKind` is covered by a variant there, which `every_kind_is_updatable`
-/// asserts.
+/// is written and, with it, the struct `value` must match — both are fixed at compile time
+/// by the `RuntimeConfigUpdate` enum, so an unknown key or an unknown field inside `value`
+/// is rejected during deserialization, before any storage call.
+///
+/// `value` is the complete value to store, not a patch: an omitted field is written at its
+/// default, so send every field. The change is validated against the persisted value only,
+/// never the rest of the request, so `enable_kv` and `use_replica` move one per request.
 ///
 /// Auth:
 ///   - `x-tenant-id`        → tenant whose config table is updated

@@ -150,6 +150,14 @@ ttl_for_kv = 900                   # TTL for KV entries in Redis (seconds)
 #   {"enable_kv": "disabled" | "enabled" | "soft_kill", "use_replica": true | false}
 #   "enabled"   → write-through Redis (writes → Redis + drainer; reads → Redis-first)
 #   "soft_kill" → gradual rollout (inserts → Postgres, reads → Redis-first)
+#
+# `use_replica` needs KV enabled, and the read path never re-checks that, so both ends
+# are gated against the STORED state — never against the rest of the same request.  The
+# pair therefore moves one step per call, and both at once is refused either way:
+#   - on:   1) enable_kv = "enabled"    2) use_replica = true
+#   - down: 1) use_replica = false      2) enable_kv = "soft_kill"
+# Seeds are written without validation, so a seeded row can still hold the forbidden
+# pair; it stays updatable so it can be repaired.
 
 # Per-tenant `redis_key_prefix` (under `[tenant_secrets.<id>]`) MUST be non-empty
 # and unique across tenants whenever KV is enabled, otherwise the service fails to
@@ -201,7 +209,9 @@ background_metrics_collection_interval_secs = 15 # How often to collect metrics 
 # use_replica = false
 
 # Update a runtime config via (`key` selects which config; `value` must match that
-# config's struct — both are rejected at deserialization if they do not):
+# config's struct — an unknown key or field is rejected at deserialization).  `value` is
+# the COMPLETE value to store, not a patch: every field defaults, so one you leave out is
+# written at its default rather than left alone.  Send every field:
 #   curl -X POST http://<host>:<port>/runtime-config \
 #     -H "x-tenant-id: <tenant>" \
 #     -H "x-internal-api-key: <admin_api_key>" \

@@ -90,6 +90,15 @@ pub enum RuntimeConfigError {
     /// `use_replica: true` was requested but the read replica is unreachable.
     #[error("Cannot enable use_replica: read replica is unreachable")]
     ReplicaUnreachable,
+    /// `use_replica: true` requested while the persisted `enable_kv` was not `enabled`.
+    #[cfg(feature = "kv")]
+    #[error("Cannot enable use_replica: enable_kv must already be `enabled`")]
+    ReplicaRequiresKv,
+    /// `enable_kv` stepped out of `enabled` while the persisted `use_replica` was true,
+    /// which would leave replica reads serving with KV off.
+    #[cfg(feature = "kv")]
+    #[error("Cannot change enable_kv while use_replica is true: disable use_replica first")]
+    ReplicaMustBeDisabledFirst,
     /// The backing store (Postgres/Redis) errored — see attached report.
     #[error("Runtime config storage operation failed")]
     StorageError,

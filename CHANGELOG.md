@@ -15,7 +15,11 @@ All notable changes to hyperswitch-card-vault will be documented here.
   Headers: x-tenant-id: <tenant>, x-internal-api-key: <admin_api_key>
   Body:    {"key": "kv_config", "value": {"use_replica": true, "enable_kv": "enabled"}}
   ```
-  `key` selects which config is written and fixes the struct `value` must match; both are rejected at deserialization. The endpoint validates the request against the persisted state (illegal KV transitions and `use_replica` without a reachable replica are refused), upserts Postgres, then invalidates the tenant's Redis entry (`DEL` — the TTL bounds staleness on failure). No in-process state is applied: every consumer reads the config per operation. `GET /health/runtime-config` remains the read-only check.
+  `key` selects which config is written and fixes the struct `value` must match; an unknown key or an unknown field inside `value` is rejected at deserialization, before any storage call. `value` is the complete value to store rather than a patch: every field is `#[serde(default)]`, so one the caller omits is written at its default — send every field.
+
+  The endpoint validates the requested value against the persisted one, upserts Postgres, then invalidates the tenant's Redis entry (`DEL` — the TTL bounds staleness on failure). No in-process state is applied: every consumer reads the config per operation, so a change takes effect without a refresh. `GET /health/runtime-config` remains the read-only check.
+
+  Validation reads the persisted state only, never the rest of the same request, so each field is judged by where it starts. Illegal `enable_kv` transitions are refused — the allowed moves are `disabled → enabled`, `enabled → soft_kill`, `soft_kill → disabled` and `soft_kill → enabled`, with either move *into* `enabled` requiring a reachable Redis — as is `use_replica` without a reachable replica. Both ends of the replica/KV dependency are gated: `use_replica` can only be switched on while the stored `enable_kv` is already `enabled`, and `enable_kv` can only leave `enabled` while the stored `use_replica` is already false. The pair therefore moves one step per request in both directions — `enable_kv` first going up, `use_replica` first coming down — and sending both at once is refused either way. Together these make `use_replica: true` with `enable_kv` other than `enabled` unreachable through the endpoint, which matters because the read path consults `use_replica` alone.
 
 - - -
 

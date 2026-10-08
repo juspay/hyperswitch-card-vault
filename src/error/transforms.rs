@@ -360,6 +360,14 @@ impl<'a> From<&'a super::RuntimeConfigError> for super::ApiError {
             | super::RuntimeConfigError::ReplicaUnreachable => {
                 Self::BadRequest("Cannot enable use_replica")
             }
+            #[cfg(feature = "kv")]
+            super::RuntimeConfigError::ReplicaRequiresKv => {
+                Self::BadRequest("Cannot enable use_replica: enable_kv must already be `enabled`")
+            }
+            #[cfg(feature = "kv")]
+            super::RuntimeConfigError::ReplicaMustBeDisabledFirst => Self::BadRequest(
+                "Cannot change enable_kv while use_replica is true: disable use_replica first",
+            ),
             super::RuntimeConfigError::StorageError
             | super::RuntimeConfigError::NotFound
             | super::RuntimeConfigError::Duplicate => Self::DatabaseError,
