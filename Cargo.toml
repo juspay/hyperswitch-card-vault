@@ -68,7 +68,7 @@ futures-util = "0.3.30"
 fred = { version = "8.0.6", optional = true, features = ["metrics", "partial-tracing", "subscriber-client"] }
 hyperswitch_redis_interface = { git = "https://github.com/juspay/hyperswitch", tag = "2026.07.17.0", package = "redis_interface", default-features = false, features = ["fred", "metrics"], optional = true }
 # Shared OCI Vault KMS client. Pinned to a commit until it ships in a Hyperswitch release tag.
-oci_kms = { git = "https://github.com/juspay/hyperswitch", rev = "e88d6146708439040f0bbdfce34e623bc7360530", optional = true }
+oci_kms = { git = "https://github.com/juspay/hyperswitch", tag = "2026.10.08.0", optional = true }
 digest = "0.10"
 hyperswitch_masking = { version = "0.0.1", features = ["diesel", "serde"] }
 ring = { version = "0.17.14", features = ["std"] }

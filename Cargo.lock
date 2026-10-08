@@ -4761,7 +4761,7 @@ dependencies = [
 [[package]]
 name = "oci_kms"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?rev=e88d6146708439040f0bbdfce34e623bc7360530#e88d6146708439040f0bbdfce34e623bc7360530"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.10.08.0#a6c91beb532d56a969fd350737ac8368a6d327ce"
 dependencies = [
  "base64 0.22.1",
  "rand 0.8.5",
