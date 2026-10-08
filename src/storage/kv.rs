@@ -12,8 +12,6 @@ pub(crate) mod serializable_query;
 pub(crate) mod wrapper;
 
 pub use self::scheme::KvState;
-pub(crate) use self::scheme::KvTransitionRejection;
-pub(crate) use self::wrapper::KvBackend;
 #[cfg(feature = "kv")]
 pub(crate) use self::{
     partition_key::PartitionKey,
@@ -23,4 +21,5 @@ pub(crate) use self::{
         insert_resource, insert_resource_with_reverse_lookup, update_resource_by_id,
     },
 };
+pub(crate) use self::{scheme::KvTransitionRejection, wrapper::KvBackend};
 pub(crate) use super::scheme::StorageScheme;
