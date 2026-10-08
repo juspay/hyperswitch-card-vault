@@ -31,6 +31,11 @@ pub const REDIS_HEALTH_CHECK_VALUE: &str = "1";
 #[cfg(feature = "redis")]
 pub const REDIS_HEALTH_CHECK_EXPIRY: i64 = 5;
 
+/// TTL (seconds) for the runtime-config Redis cache entry. Bounds staleness when an
+/// invalidate-on-update `DEL` fails (e.g., transient Redis outage).
+#[cfg(feature = "redis")]
+pub const RUNTIME_CONFIG_REDIS_TTL_SECS: i64 = 3600;
+
 /// Default maximum lifetime (seconds) of a pooled DB connection
 pub const DEFAULT_DB_POOL_MAX_LIFETIME_SECS: u64 = 120;
 /// Default minimum number of idle connections maintained in the DB pool
