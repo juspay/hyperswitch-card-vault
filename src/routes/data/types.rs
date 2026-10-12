@@ -214,13 +214,14 @@ impl TryFrom<FingerprintRequest> for FingerprintMode {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct FingerprintResponse {
-    /// Absent on a batched request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fingerprint_id: Option<Secret<String>>,
-    /// Keyed by the caller's label; present only on a batched request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fingerprints: Option<HashMap<String, Secret<String>>>,
+#[serde(untagged)]
+pub enum FingerprintResponse {
+    Single {
+        fingerprint_id: Secret<String>,
+    },
+    Batch {
+        fingerprints: HashMap<String, Secret<String>>,
+    },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]

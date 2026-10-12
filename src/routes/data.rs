@@ -281,9 +281,8 @@ pub async fn get_or_insert_fingerprint(
                 }))
                 .await?;
 
-            types::FingerprintResponse {
-                fingerprint_id: None,
-                fingerprints: Some(fingerprints.into_iter().collect()),
+            types::FingerprintResponse::Batch {
+                fingerprints: fingerprints.into_iter().collect(),
             }
         }
     };
