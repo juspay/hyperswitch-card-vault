@@ -6,6 +6,8 @@ pub mod key_custodian;
 #[cfg(feature = "external_key_manager")]
 pub mod key_migration;
 pub mod routes_v2;
+#[cfg(feature = "redis")]
+pub mod runtime_config;
 
 fn record_expired_data_encountered(resource: crate::observability::metrics::Resource) {
     crate::observability::metrics::TTL_EXPIRED_DATA_ENCOUNTERED_COUNT

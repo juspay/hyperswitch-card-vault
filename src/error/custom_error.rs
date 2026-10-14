@@ -1,3 +1,5 @@
+#[cfg(feature = "redis")]
+use super::RuntimeConfigError;
 use crate::logger;
 
 #[derive(Debug, thiserror::Error)]
@@ -243,4 +245,11 @@ impl_storage_error!(
     duplicate = Duplicate,
     not_found = NotFoundError,
     other = DBError
+);
+#[cfg(feature = "redis")]
+impl_storage_error!(
+    RuntimeConfigError,
+    duplicate = Duplicate,
+    not_found = NotFound,
+    other = StorageError
 );

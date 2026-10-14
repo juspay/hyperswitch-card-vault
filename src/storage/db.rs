@@ -1,7 +1,7 @@
 use async_bb8_diesel::{AsyncConnection, AsyncRunQueryDsl};
 #[cfg(not(feature = "kv"))]
-use diesel::{BoolExpressionMethods, OptionalExtension};
-use diesel::{ExpressionMethods, QueryDsl, associations::HasTable};
+use diesel::BoolExpressionMethods;
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, associations::HasTable};
 #[cfg(not(feature = "kv"))]
 use hyperswitch_masking::ExposeInterface;
 use hyperswitch_masking::Secret;
@@ -691,5 +691,81 @@ impl super::ReverseLookupInterface for Storage {
             .await?;
             Ok(output)
         }
+    }
+}
+
+#[cfg(feature = "redis")]
+impl super::ConfigInterface for Storage {
+    type Error = error::RuntimeConfigError;
+
+    async fn find_config(
+        &self,
+        key: &str,
+    ) -> Result<Option<serde_json::Value>, ContainerError<Self::Error>> {
+        // Config reads always use the primary pool — the value must be current,
+        // and the table is tiny (single-row lookup by PK).
+        let conn = self
+            .get_conn()
+            .await
+            .change_error(error::RuntimeConfigError::StorageError)?;
+
+        let query = types::Config::table().filter(schema::configs::key.eq(key.to_owned()));
+
+        let pool = conn.pool();
+        let operation = DbOperation::FindOne;
+        super::log_db_query::<<types::Config as HasTable>::Table, _>(&query, operation, pool);
+
+        let result =
+            super::record_db_query_optional::<<types::Config as HasTable>::Table, _, _, _>(
+                async {
+                    query
+                        .get_result_async::<types::Config>(conn.get())
+                        .await
+                        .optional()
+                },
+                operation,
+                pool,
+            )
+            .await?;
+
+        Ok(result.map(|config| config.value))
+    }
+
+    async fn upsert_config(
+        &self,
+        key: &str,
+        value: serde_json::Value,
+    ) -> Result<(), ContainerError<Self::Error>> {
+        let conn = self
+            .get_conn()
+            .await
+            .change_error(error::RuntimeConfigError::StorageError)?;
+        let now = crate::utils::date_time::now();
+        let new_config = types::ConfigNew {
+            key: key.to_string(),
+            value,
+            created_at: now,
+            updated_at: now,
+        };
+        let update = types::ConfigUpdate::from(new_config.clone());
+
+        let query = diesel::insert_into(types::Config::table())
+            .values(new_config)
+            .on_conflict(schema::configs::key)
+            .do_update()
+            .set(update);
+
+        let pool = conn.pool();
+        let operation = DbOperation::Insert;
+        super::log_db_query::<<types::Config as HasTable>::Table, _>(&query, operation, pool);
+
+        super::record_db_query_rows::<<types::Config as HasTable>::Table, _, _>(
+            query.execute_async(conn.get()),
+            operation,
+            pool,
+        )
+        .await?;
+
+        Ok(())
     }
 }
