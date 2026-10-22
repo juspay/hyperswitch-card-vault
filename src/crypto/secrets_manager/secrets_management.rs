@@ -83,7 +83,7 @@ pub enum SecretsManagementConfig {
     #[cfg(feature = "kms-oci")]
     OciKms {
         /// OCI KMS config
-        oci_kms: ::oci_kms::OciKmsConfig,
+        oci_kms: cloud_services::kms::oci::OciKmsConfig,
     },
 
     /// Variant representing no encryption
@@ -99,7 +99,7 @@ enum SecretsManagerClient {
     #[cfg(feature = "kms-gcp")]
     GcpKms(Box<GcpKmsClient>),
     #[cfg(feature = "kms-oci")]
-    OciKms(Box<::oci_kms::OciKmsClient>),
+    OciKms(Box<cloud_services::kms::oci::OciKmsClient>),
     NoEncryption(NoEncryption),
 }
 
@@ -169,7 +169,7 @@ impl SecretsManagementConfig {
                 .change_context(SecretsManagementError::ClientCreationFailed)
                 .map(|client| SecretsManagerClient::GcpKms(Box::new(client))),
             #[cfg(feature = "kms-oci")]
-            Self::OciKms { oci_kms: config } => ::oci_kms::OciKmsClient::new(config)
+            Self::OciKms { oci_kms: config } => cloud_services::kms::oci::OciKmsClient::new(config)
                 .map_err(error_stack::Report::new)
                 .change_context(SecretsManagementError::ClientCreationFailed)
                 .map(|client| SecretsManagerClient::OciKms(Box::new(client))),

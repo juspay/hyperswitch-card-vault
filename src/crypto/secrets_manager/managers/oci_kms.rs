@@ -1,10 +1,11 @@
-//! OCI Vault KMS secrets manager, built on the shared `oci_kms` client from the Hyperswitch
-//! repository.
+//! OCI Vault KMS secrets manager, built on the shared OCI client in the Hyperswitch
+//! repository's `cloud_services` crate.
 //!
 //! Authentication (OKE Workload Identity inside Kubernetes, `~/.oci/config` outside it),
 //! request signing, timeouts and retries all live in that crate; this module only adapts it to
 //! [`SecretManager`].
 
+use cloud_services::kms::oci::OciKmsClient;
 use error_stack::{Report, ResultExt};
 use hyperswitch_masking::{PeekInterface, Secret};
 
@@ -14,7 +15,7 @@ use crate::{
 };
 
 #[async_trait::async_trait]
-impl SecretManager for ::oci_kms::OciKmsClient {
+impl SecretManager for OciKmsClient {
     async fn get_secret(
         &self,
         input: Secret<String>,
@@ -35,6 +36,8 @@ impl SecretManager for ::oci_kms::OciKmsClient {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic)]
 
+    use cloud_services::kms::oci::OciKmsConfig;
+
     use super::*;
 
     fn env(name: &str) -> String {
@@ -53,7 +56,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "calls a real OCI Vault"]
     async fn get_secret_decrypts_a_secret() {
-        let client = ::oci_kms::OciKmsClient::new(&::oci_kms::OciKmsConfig {
+        let client = OciKmsClient::new(&OciKmsConfig {
             vault_crypto_endpoint: env("OCI_KMS_TEST_CRYPTO_ENDPOINT"),
             key_id: env("OCI_KMS_TEST_KEY_ID"),
         })

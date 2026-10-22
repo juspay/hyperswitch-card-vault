@@ -1324,6 +1324,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
 
 [[package]]
+name = "cloud_services"
+version = "0.1.0"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.10.22.0#08edf07c3a1cebd3244bbfbd07fc02fb588c17ea"
+dependencies = [
+ "oci_kms",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "clru"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3901,6 +3911,7 @@ dependencies = [
  "bb8",
  "build_info",
  "bytes",
+ "cloud_services",
  "config",
  "console-subscriber",
  "crc32fast",
@@ -3923,7 +3934,6 @@ dependencies = [
  "metrics_utils",
  "moka",
  "nanoid",
- "oci_kms",
  "once_cell",
  "rand 0.8.5",
  "redis_interface",
@@ -4761,7 +4771,7 @@ dependencies = [
 [[package]]
 name = "oci_kms"
 version = "0.1.0"
-source = "git+https://github.com/juspay/hyperswitch?tag=2026.10.08.0#a6c91beb532d56a969fd350737ac8368a6d327ce"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.10.22.0#08edf07c3a1cebd3244bbfbd07fc02fb588c17ea"
 dependencies = [
  "base64 0.22.1",
  "rand 0.8.5",
