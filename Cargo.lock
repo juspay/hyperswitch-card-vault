@@ -394,13 +394,13 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.89"
+version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -1322,6 +1322,16 @@ name = "clap_lex"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
+
+[[package]]
+name = "cloud_services"
+version = "0.1.0"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.10.22.0#08edf07c3a1cebd3244bbfbd07fc02fb588c17ea"
+dependencies = [
+ "oci_kms",
+ "serde",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "clru"
@@ -3901,6 +3911,7 @@ dependencies = [
  "bb8",
  "build_info",
  "bytes",
+ "cloud_services",
  "config",
  "console-subscriber",
  "crc32fast",
@@ -4755,6 +4766,26 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "urlencoding",
+]
+
+[[package]]
+name = "oci_kms"
+version = "0.1.0"
+source = "git+https://github.com/juspay/hyperswitch?tag=2026.10.22.0#08edf07c3a1cebd3244bbfbd07fc02fb588c17ea"
+dependencies = [
+ "base64 0.22.1",
+ "rand 0.8.5",
+ "reqwest 0.12.7",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -6467,9 +6498,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.10.8"
+version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "793db75ad2bcafc3ffa7c68b215fee268f537982cd901d132f89c6343f3a3dc8"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.13",
