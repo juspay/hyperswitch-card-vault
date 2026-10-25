@@ -21,6 +21,9 @@ Thus, if the locker is building normally using the `Dockerfile` included, all of
   ```
 
   This will create the master key and the associated key_custodian keys, (if you are opting out of the `key_custodian` feature, you can pass an extra argument to only generate the master key `-w`)
+
+  Generate a separate master key for each tenant and environment, including local development. With `no_encryption`, set `master_key` to the hexadecimal value after `master key:` (120 characters with custodians, 64 with `-w`).
+
   Now to fulfill the `kms` requirement you would need to kms encrypt the generated master key, but while operating the locker, the instance that it is running on must have sufficient permissions to perform kms decrypt operation. You can use the following command to kms encrypt the master key
 
   ```bash
