@@ -34,14 +34,14 @@ where
     result
 }
 
-/// Whether the caller asked for a plain response on a route that may return one
-fn wants_plain_response(parts: &request::Parts) -> bool {
+/// Whether the caller asked for a signed-only response on the fingerprint route.
+fn wants_jws_response(parts: &request::Parts) -> bool {
     parts.uri.path() == consts::V2_FINGERPRINT_PATH
         && parts
             .headers
             .get(consts::X_FP_RESPONSE_ENCODING)
             .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value == consts::FP_RESPONSE_ENCODING_PLAIN)
+            .is_some_and(|value| value == consts::FP_RESPONSE_ENCODING_JWS)
 }
 
 /// Middleware providing implementation to perform JWE + JWS encryption and decryption around the
@@ -53,7 +53,7 @@ pub async fn middleware(
     next: Next,
 ) -> Result<Response, ContainerError<error::ApiError>> {
     let keys = &state.jwe_keys;
-    let plain_response = wants_plain_response(&parts);
+    let jws_response = wants_jws_response(&parts);
 
     let jwe_decrypted =
         record_jwe_middleware_operation(async { keys.decrypt(jwe_body) }, "request_decrypt")
@@ -76,14 +76,18 @@ pub async fn middleware(
         axum::http::HeaderValue::from_static("application/json"),
     );
 
-    let response = if plain_response {
-        // Echoed so the caller can tell a plain body from an envelope.
+    let response = if jws_response {
+        let jws_payload =
+            record_jwe_middleware_operation(async { keys.sign(&response_body) }, "response_sign")
+                .await?;
+
+        // Echoed so the caller can distinguish a JWS body from a JWE envelope.
         parts.headers.append(
             hyper::header::HeaderName::from_static(consts::X_FP_RESPONSE_ENCODING),
-            axum::http::HeaderValue::from_static(consts::FP_RESPONSE_ENCODING_PLAIN),
+            axum::http::HeaderValue::from_static(consts::FP_RESPONSE_ENCODING_JWS),
         );
 
-        (parts, Body::from(response_body)).into_response()
+        (parts, axum::Json(jws_payload)).into_response()
     } else {
         let jwe_payload = record_jwe_middleware_operation(
             async { keys.encrypt(response_body.to_vec()) },

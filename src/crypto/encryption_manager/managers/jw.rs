@@ -20,6 +20,13 @@ pub struct JWEncryption {
 }
 
 impl JWEncryption {
+    /// Sign a payload without encrypting it, using the cached signing key.
+    pub fn sign(&self, payload: &[u8]) -> Result<JwsBody, ContainerError<error::CryptoError>> {
+        let encoded = jws_sign_payload(payload, &self.signer)?;
+        JwsBody::from_dotted_str(&encoded)
+            .ok_or_else(|| error::CryptoError::InvalidData("JWS encoded data is incomplete").into())
+    }
+
     pub fn new(
         private_key: String,
         public_key: String,
@@ -104,11 +111,7 @@ impl Encryption<Vec<u8>, JweBody> for JWEncryption {
     type ReturnType<'a, T> = Result<T, ContainerError<error::CryptoError>>;
 
     fn encrypt(&self, input: Vec<u8>) -> Self::ReturnType<'_, JweBody> {
-        let payload = input;
-        let jws_encoded = jws_sign_payload(&payload, &self.signer)?;
-        let jws_body = JwsBody::from_dotted_str(&jws_encoded).ok_or(
-            error::CryptoError::InvalidData("JWS encoded data is incomplete"),
-        )?;
+        let jws_body = self.sign(&input)?;
         let jws_payload = serde_json::to_vec(&jws_body).map_err(error::CryptoError::from)?;
         let jwe_encrypted = encrypt_jwe(&jws_payload, &self.encrypter)?;
         let jwe_body = JweBody::from_str(&jwe_encrypted)
