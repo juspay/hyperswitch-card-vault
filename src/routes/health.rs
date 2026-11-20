@@ -28,10 +28,14 @@ where
 /// Function for registering routes that is specifically handling the health apis
 ///
 pub fn serve() -> axum::Router<Arc<GlobalAppState>> {
-    axum::Router::new()
+    let router = axum::Router::new()
         .route("/", get(health))
-        .route("/diagnostics", get(diagnostics))
-        .route("/runtime-config", get(runtime_config_status))
+        .route("/diagnostics", get(diagnostics));
+
+    #[cfg(feature = "redis")]
+    let router = router.route("/runtime-config", get(runtime_config_status));
+
+    router
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -49,6 +53,7 @@ pub async fn health() -> Json<HealthRespPayload> {
 }
 
 /// '/health/runtime-config` API handler`
+#[cfg(feature = "redis")]
 #[tracing::instrument(skip_all)]
 pub async fn runtime_config_status(
     TenantStateResolver(state): TenantStateResolver,

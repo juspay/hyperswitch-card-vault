@@ -1,33 +1,34 @@
-use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
+//! Runtime configuration: a compile-time registry of per-tenant config entries.
+//!
+//! [`RuntimeConfigKind`] is the registry — one variant per config. Rust checks
+//! exhaustiveness where a `match` consumes an enum but not where code enumerates its
+//! variants, so enumeration comes from `strum::EnumIter` and the rest is exhaustive
+//! matching. Adding a variant is the trigger; the rest surfaces like this:
+//!
+//! | step | if forgotten |
+//! |---|---|
+//! | [`RuntimeConfigKind::key`] arm | compile error — non-exhaustive match |
+//! | `seed_all` arm | compile error — non-exhaustive match |
+//! | [`RuntimeConfigEntry`] + [`RuntimeConfigValidate`] impls | compile error — `seed::<T>`'s bound |
+//! | seed field on `RuntimeConfig::Enabled` | compile error — `new`'s struct pattern |
+//! | [`RuntimeConfigSeeds`] field | compile error — `new`'s struct literal |
+//! | [`RuntimeConfigUpdate`] variant | **nothing** — the one unchecked link |
+//! | [`RuntimeConfigKind::registered_keys`], `status`, `disabled_status`, cache warming | *nothing — derived* |
+//!
+//! Only registry machinery lives here; each config's key binding and validation live in a
+//! child module — `kv_config`'s in `kv_runtime_config`.
 
-use error_stack::ResultExt;
-use hyperswitch_masking::{PeekInterface, Secret};
-use tokio::sync::RwLock;
-use tracing::Instrument;
+mod kv_runtime_config;
 
-use crate::{config::RuntimeConfig, error};
+use std::{collections::HashMap, future::Future, time::Instant};
 
-const API_KEY_HEADER_NAME: &str = "X-Internal-Api-Key";
+use hyperswitch_masking::PeekInterface;
+use strum::IntoEnumIterator;
 
-/// Endpoint envelope: `{"key": "...", "value": "<config json string>"}`. Only `value` is used —
-/// it's a JSON string holding the flat config object (`{"enable_kv": "...", ...}`).
-#[derive(serde::Deserialize)]
-struct RuntimeConfigResponse {
-    value: String,
-}
-
-enum RuntimeConfigState {
-    Disabled,
-    Enabled {
-        endpoint_url: String,
-        endpoint_path: String,
-        api_key: Secret<String>,
-        client: reqwest::Client,
-        refresh_interval: Duration,
-        /// Last-known-good config body; `None` until the first successful fetch.
-        cache: RwLock<Option<String>>,
-    },
-}
+use crate::{
+    error::{self, ContainerError},
+    storage::{self, ConfigInterface, KvRuntimeConfigValues, consts},
+};
 
 #[derive(Debug, serde::Serialize)]
 pub struct RuntimeConfigStatus {
@@ -40,281 +41,432 @@ pub struct RuntimeConfigStatus {
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeConfigStatusKind {
     Disabled,
-    NotFetched,
+    NotConfigured,
     Available,
     Invalid,
 }
 
-/// Fetches the runtime-config endpoint on a schedule and serves the last-known-good body.
+/// Validates a requested value against the persisted one. No default:
+/// [`RuntimeConfigEntry`] requires it as a supertrait, so no config can skip it.
+pub trait RuntimeConfigValidate: Sized {
+    /// Reject the move from `previous` (persisted) to `self` (requested). `previous` is
+    /// passed in rather than read here, so every check shares one view of the stored state.
+    ///
+    /// Desugared rather than `async fn` so the `Send` bound can be stated — axum
+    /// handlers require it.
+    fn validate_transition(
+        &self,
+        previous: &Self,
+        store: &storage::Storage,
+    ) -> impl Future<Output = Result<(), ContainerError<error::RuntimeConfigError>>> + Send;
+}
+
+/// One runtime config's `configs` row key, bound to its struct at compile time.
+///
+/// `KEY` is the source of truth: [`RuntimeConfigKind::key`] defers to it, leaving the
+/// `#[serde(rename)]` tag on the [`RuntimeConfigUpdate`] variant as the only other copy,
+/// kept equal by hand.
+pub trait RuntimeConfigEntry:
+    RuntimeConfigValidate
+    + serde::Serialize
+    + serde::de::DeserializeOwned
+    + Default
+    + Clone
+    + std::fmt::Debug
+    + Send
+    + Sync
+    + Sized
+{
+    /// This config's `configs` row key, and its Redis cache key (the per-tenant prefix is
+    /// added by `TenantAwareRedisStore`).
+    const KEY: &'static str;
+}
+
+/// Runtime configuration source.
+///
+/// When enabled, each config lives in its own row of the per-tenant `configs` table, read
+/// through a per-tenant Redis cache. The values here are *seeds* — written at startup only
+/// when the row is absent (see [`RuntimeConfigManager::init`]), never a read-path fallback.
+/// `admin_api_key` guards `POST /runtime-config`.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum RuntimeConfig {
+    #[default]
+    Disabled,
+    Enabled {
+        admin_api_key: hyperswitch_masking::Secret<String>,
+        /// KV master switch and read-replica routing.
+        #[serde(default)]
+        kv_config: KvRuntimeConfigValues,
+    },
+}
+
+/// Every runtime config the binary knows about — the registry itself; the module docs
+/// table lists what adding a variant obliges you to write.
+///
+/// No serde derive: it is never read off the wire ([`RuntimeConfigUpdate`] does that), so
+/// [`Self::key`] can defer to [`RuntimeConfigEntry::KEY`] instead of repeating the string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter)]
+pub enum RuntimeConfigKind {
+    KvConfig,
+}
+
+impl RuntimeConfigKind {
+    /// This kind's `configs` row key.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::KvConfig => KvRuntimeConfigValues::KEY,
+        }
+    }
+
+    /// Every registered key, for [`RuntimeConfigManager::status`] and cache warming.
+    /// Derived from the variants, so a new config needs no edit here.
+    pub fn registered_keys() -> impl Iterator<Item = &'static str> {
+        Self::iter().map(Self::key)
+    }
+}
+
+/// Seed values lifted out of `RuntimeConfig::Enabled` so the manager can hold them.
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeConfigSeeds {
+    pub kv_config: KvRuntimeConfigValues,
+}
+
+/// Body of `POST /runtime-config`: `{"key": "<key>", "value": {...}}`.
+///
+/// `value` is the complete value to store, not a patch: every field is `#[serde(default)]`,
+/// so one the caller omits is written at its default — send every field.
+///
+/// serde does the key → struct dispatch, so an unknown key or field is rejected before any
+/// storage call and the handler cannot pair a key with the wrong struct. The `rename`
+/// repeats [`RuntimeConfigEntry::KEY`] because serde cannot read an associated const — the
+/// one list [`RuntimeConfigKind`] cannot force the compiler to check.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "key", content = "value", deny_unknown_fields)]
+pub enum RuntimeConfigUpdate {
+    #[serde(rename = "kv_config")]
+    KvRuntimeConfigValues(KvRuntimeConfigValues),
+}
+
+impl RuntimeConfig {
+    pub fn is_enabled(&self) -> bool {
+        matches!(self, Self::Enabled { .. })
+    }
+
+    /// Enabled mode needs an admin key to guard the update endpoint and a Redis backend,
+    /// since every read goes through the per-tenant cache. Disabled mode needs neither, so
+    /// both checks hang off the one `Enabled` match.
+    pub fn validate(
+        &self,
+        redis: Option<&hyperswitch_redis_interface::RedisSettings>,
+    ) -> Result<(), crate::error::ConfigurationError> {
+        let Self::Enabled { admin_api_key, .. } = self else {
+            return Ok(());
+        };
+
+        if admin_api_key.peek().trim().is_empty() {
+            return Err(
+                crate::error::ConfigurationError::InvalidConfigurationValueError(
+                    r#"runtime_config.admin_api_key is required when mode is "enabled""#.into(),
+                ),
+            );
+        }
+
+        if redis.is_none() {
+            return Err(
+                crate::error::ConfigurationError::InvalidConfigurationValueError(
+                    "runtime_config is enabled but `[redis]` is not configured".into(),
+                ),
+            );
+        }
+
+        Ok(())
+    }
+}
+
+/// Runtime configuration backed by the per-tenant `configs` table with a read-through
+/// Redis cache. No polling: every `get()` fetches the latest value, and `update()` upserts
+/// to Postgres then invalidates the cache entry.
 pub struct RuntimeConfigManager {
-    state: RuntimeConfigState,
+    admin_api_key: hyperswitch_masking::Secret<String>,
+    seeds: RuntimeConfigSeeds,
 }
 
 impl RuntimeConfigManager {
-    fn build_header_map(
-        headers: &HashMap<String, Secret<String>>,
-    ) -> error_stack::Result<reqwest::header::HeaderMap, error::ConfigurationError> {
-        headers
-            .iter()
-            .map(|(name, value)| {
-                let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                        format!("invalid runtime_config header name `{name}`"),
-                    ))?;
-                let mut header_value = reqwest::header::HeaderValue::from_str(value.peek())
-                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                        format!("invalid runtime_config header value for `{name}`"),
-                    ))?;
-                header_value.set_sensitive(true);
-                Ok((header_name, header_value))
-            })
-            .collect()
+    /// Capture the configured seeds. `None` when runtime config is disabled, so a
+    /// manager's `admin_api_key` is always present. The tenant's `Storage` is passed per
+    /// call; the manager holds no handle of its own.
+    pub fn new(config: &RuntimeConfig) -> Option<Self> {
+        match config {
+            RuntimeConfig::Enabled {
+                admin_api_key,
+                kv_config,
+            } => Some(Self {
+                admin_api_key: admin_api_key.clone(),
+                seeds: RuntimeConfigSeeds {
+                    kv_config: kv_config.clone(),
+                },
+            }),
+            RuntimeConfig::Disabled => None,
+        }
     }
 
-    /// Construct a new runtime config manager.
-    pub fn new(
-        config: &RuntimeConfig,
-        client_idle_timeout: u64,
-        pool_max_idle_per_host: usize,
-    ) -> error_stack::Result<Self, error::ConfigurationError> {
-        Ok(match config {
-            RuntimeConfig::Disabled => Self {
-                state: RuntimeConfigState::Disabled,
-            },
-            RuntimeConfig::Enabled {
-                endpoint,
-                refresh_interval_seconds,
-            } => {
-                let client = reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .pool_idle_timeout(Duration::from_secs(client_idle_timeout))
-                    .pool_max_idle_per_host(pool_max_idle_per_host)
-                    .default_headers(Self::build_header_map(&endpoint.headers)?)
-                    .build()
-                    .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                        "Failed to build HTTP client for runtime config endpoint".into(),
-                    ))?;
+    /// Bootstrap: ensure every registered config has a `configs` row (seeding when
+    /// missing), then warm the Redis cache.
+    ///
+    /// A failed seed read or upsert is fatal — a tenant must not serve with a missing row.
+    /// The warm is best-effort: a failure self-heals on the next read.
+    pub async fn init(
+        &self,
+        store: &storage::Storage,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        self.seed_all(store).await?;
 
-                Self {
-                    state: RuntimeConfigState::Enabled {
-                        endpoint_url: endpoint.base_url.clone(),
-                        endpoint_path: endpoint.path.clone(),
-                        api_key: endpoint.api_key.clone(),
-                        client,
-                        refresh_interval: Duration::from_secs(*refresh_interval_seconds),
-                        cache: RwLock::new(None),
-                    },
+        // Warm the Redis cache (read-through populates Redis on a miss).
+        for key in RuntimeConfigKind::registered_keys() {
+            let _ = self.get_raw(store, key).await;
+        }
+
+        Ok(())
+    }
+
+    /// Seed every registered config whose row is missing.
+    ///
+    /// The match is exhaustive over [`RuntimeConfigKind`], and the arm's [`Self::seed`]
+    /// call is bound on [`RuntimeConfigEntry`] — so a new config cannot be registered
+    /// without both a seed path and its [`RuntimeConfigValidate`] impl.
+    async fn seed_all(
+        &self,
+        store: &storage::Storage,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        for kind in RuntimeConfigKind::iter() {
+            match kind {
+                RuntimeConfigKind::KvConfig => {
+                    self.seed::<KvRuntimeConfigValues>(store, &self.seeds.kv_config)
+                        .await?;
                 }
             }
-        })
+        }
+
+        Ok(())
     }
 
-    /// Deserialize the last-known-good config body into `T`.
+    /// Write the seed value when the config's row is absent, leaving an existing row
+    /// untouched — an upgrade must never reset a tenant's live configuration.
+    async fn seed<T: RuntimeConfigEntry>(
+        &self,
+        store: &storage::Storage,
+        seed: &T,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        let existing = store.find_config(T::KEY).await.inspect_err(|err| {
+            crate::logger::error!(
+                ?err,
+                key = T::KEY,
+                "Failed to read runtime config from Postgres during init"
+            );
+        })?;
+
+        match existing {
+            Some(_) => {
+                crate::logger::debug!(key = T::KEY, "Runtime config already present in Postgres");
+            }
+            None => {
+                let value = serde_json::to_value(seed).map_err(|err| {
+                    ContainerError::from(error::RuntimeConfigError::InvalidValue(err.to_string()))
+                })?;
+                store.upsert_config(T::KEY, value).await.inspect(|_| {
+                    crate::logger::info!(
+                        key = T::KEY,
+                        "Seeded configured runtime config into Postgres"
+                    );
+                })?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Persist a validated config value: PG upsert, then Redis invalidate.
     ///
-    /// Returns `None` when the manager is disabled, no config has been fetched yet, or the
-    /// cached payload cannot be deserialized into `T`.
-    pub async fn get<T: serde::de::DeserializeOwned>(&self) -> Option<T> {
-        let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
-            crate::logger::debug!("Runtime config disabled");
-            return None;
-        };
+    /// The Redis `DEL` failure is logged as a warning (not propagated) because the Redis
+    /// TTL bounds staleness — the next read eventually repopulates from Postgres.
+    async fn put<T: RuntimeConfigEntry>(
+        &self,
+        store: &storage::Storage,
+        value: &T,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        let json = serde_json::to_value(value).map_err(|err| {
+            ContainerError::from(error::RuntimeConfigError::InvalidValue(err.to_string()))
+        })?;
 
-        let guard = cache.read().await;
-        let Some(raw) = guard.as_deref() else {
-            crate::logger::debug!("Runtime config not fetched yet");
-            return None;
-        };
+        store.upsert_config(T::KEY, json).await?;
 
-        match serde_json::from_str::<T>(raw) {
+        if let Some(redis) = store.get_redis_store() {
+            redis.invalidate(T::KEY).await;
+        }
+
+        Ok(())
+    }
+
+    /// Validate the requested value against the persisted one, then write it: PG upsert →
+    /// Redis invalidate.
+    ///
+    /// Checks read only the persisted state, so a field's verdict never depends on what
+    /// else the request carries. A missing or unreadable row validates against the default,
+    /// which fails closed. The match is exhaustive, so no registered config lacks a path.
+    pub async fn update(
+        &self,
+        store: &storage::Storage,
+        update: RuntimeConfigUpdate,
+    ) -> Result<(), ContainerError<error::RuntimeConfigError>> {
+        match update {
+            RuntimeConfigUpdate::KvRuntimeConfigValues(requested) => {
+                let previous = self
+                    .get::<KvRuntimeConfigValues>(store)
+                    .await
+                    .unwrap_or_default();
+
+                requested.validate_transition(&previous, store).await?;
+                self.put(store, &requested).await
+            }
+        }
+    }
+
+    /// Deserialize the latest value of config `T`. The key comes from `T::KEY`, so a
+    /// caller cannot pair a key with the wrong struct.
+    ///
+    /// Read-through: Redis GET → on hit, return immediately; on miss/error, fall back to
+    /// Postgres SELECT and best-effort populate Redis. Returns `None` when no config row
+    /// exists or both stores are unavailable (fail-closed: callers treat `None` as
+    /// KV-disabled / replica-off).
+    pub async fn get<T: RuntimeConfigEntry>(&self, store: &storage::Storage) -> Option<T> {
+        let raw = self.get_raw(store, T::KEY).await?;
+
+        match serde_json::from_str::<T>(&raw) {
             Ok(val) => Some(val),
             Err(error) => {
-                crate::logger::error!(?error, raw, "Failed to deserialize runtime config");
+                crate::logger::error!(
+                    ?error,
+                    raw,
+                    key = T::KEY,
+                    "Failed to deserialize runtime config"
+                );
                 None
             }
         }
     }
 
-    /// Returns the current cached runtime-config status without fetching from the endpoint.
-    pub async fn status(&self) -> RuntimeConfigStatus {
-        let RuntimeConfigState::Enabled { cache, .. } = &self.state else {
-            return RuntimeConfigStatus {
-                status: RuntimeConfigStatusKind::Disabled,
-                config: None,
-            };
+    /// Fetch a config's raw JSON through the read-through Redis cache. The only place a
+    /// key is a string rather than derived from a type — [`Self::status`] spans all keys.
+    async fn get_raw(&self, store: &storage::Storage, key: &str) -> Option<String> {
+        let start = Instant::now();
+        let fetch_from_pg = async {
+            store
+                .find_config(key)
+                .await
+                .inspect_err(|err| {
+                    crate::logger::error!(?err, key, "Failed to read runtime config from Postgres");
+                })
+                .ok()
+                .flatten()
+                .map(|value| value.to_string())
         };
 
-        let guard = cache.read().await;
-        let Some(raw) = guard.as_deref() else {
-            return RuntimeConfigStatus {
-                status: RuntimeConfigStatusKind::NotFetched,
-                config: None,
-            };
-        };
-
-        match serde_json::from_str(raw) {
-            Ok(config) => RuntimeConfigStatus {
-                status: RuntimeConfigStatusKind::Available,
-                config: Some(config),
-            },
-            Err(error) => {
-                crate::logger::error!(?error, raw, "Cached runtime config is invalid");
-                RuntimeConfigStatus {
-                    status: RuntimeConfigStatusKind::Invalid,
-                    config: None,
-                }
+        let (source, result) = match store.get_redis_store() {
+            Some(redis) => {
+                let result = redis
+                    .get_or_populate(key, consts::RUNTIME_CONFIG_REDIS_TTL_SECS, fetch_from_pg)
+                    .await;
+                ("redis", result)
             }
-        }
-    }
-
-    /// Spawn a background task that refreshes the config on an interval. Returns `None` when disabled.
-    pub fn spawn_prefetch_task<F, Fut>(
-        self: &Arc<Self>,
-        on_successful_fetch: F,
-    ) -> Option<tokio::task::JoinHandle<()>>
-    where
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
-        let refresh_interval = match &self.state {
-            RuntimeConfigState::Disabled => return None,
-            RuntimeConfigState::Enabled {
-                refresh_interval, ..
-            } => *refresh_interval,
-        };
-
-        let manager = Arc::clone(self);
-        crate::logger::info!(
-            refresh_interval_secs = refresh_interval.as_secs(),
-            "Spawning runtime config prefetch task"
-        );
-
-        Some(tokio::spawn(
-            async move {
-                if manager.prefetch().await {
-                    on_successful_fetch().await;
-                }
-
-                let mut ticker = tokio::time::interval(refresh_interval);
-                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-
-                loop {
-                    ticker.tick().await;
-                    if manager.prefetch().await {
-                        on_successful_fetch().await;
-                    }
-                }
-            }
-            .in_current_span(),
-        ))
-    }
-
-    async fn prefetch(&self) -> bool {
-        let RuntimeConfigState::Enabled {
-            endpoint_url,
-            endpoint_path,
-            api_key,
-            client,
-            cache,
-            ..
-        } = &self.state
-        else {
-            return false;
-        };
-
-        match Self::fetch_config(endpoint_url, endpoint_path, api_key, client).await {
-            Ok(body) => {
-                crate::logger::info!(config = %body, "Runtime config fetched");
-                *cache.write().await = Some(body);
-                true
-            }
-            Err(e) => {
-                crate::logger::warn!(
-                    error = ?e,
-                    "Failed to prefetch runtime config, keeping last-known-good"
+            None => {
+                crate::logger::debug!(
+                    key,
+                    "Redis not configured, reading runtime config from Postgres"
                 );
-                false
+                ("postgres", fetch_from_pg.await)
             }
-        }
-    }
+        };
 
-    /// Fetch the config endpoint and return the inner config JSON string (the envelope's `value`).
-    /// Validated as JSON so a malformed 2xx response can't overwrite the last-known-good entry.
-    async fn fetch_config(
-        endpoint_url: &str,
-        endpoint_path: &str,
-        api_key: &Secret<String>,
-        client: &reqwest::Client,
-    ) -> error_stack::Result<String, error::ConfigurationError> {
-        let url = format!(
-            "{}/{}",
-            endpoint_url.trim_end_matches('/'),
-            endpoint_path.trim_start_matches('/')
+        crate::observability::metrics::RUNTIME_CONFIG_FETCH_DURATION.record(
+            start.elapsed().as_secs_f64(),
+            metrics_utils::metric_attributes!(
+                ("source", source),
+                (
+                    "outcome",
+                    if result.is_some() { "success" } else { "error" }
+                )
+            ),
         );
 
-        crate::logger::debug!(url = %url, "Fetching runtime config");
+        result
+    }
 
-        let request = client.get(&url).header(API_KEY_HEADER_NAME, api_key.peek());
-        let response = record_runtime_config_fetch_duration(request)
-            .await
-            .change_context(error::ConfigurationError::InvalidConfigurationValueError(
-                "Failed to send runtime config request".into(),
-            ))?;
+    /// Current status of every registered config, keyed by its config key. No side effects.
+    pub async fn status(
+        &self,
+        store: &storage::Storage,
+    ) -> HashMap<&'static str, RuntimeConfigStatus> {
+        let mut statuses = HashMap::with_capacity(RuntimeConfigKind::registered_keys().count());
 
-        if !response.status().is_success() {
-            return Err(error_stack::report!(
-                error::ConfigurationError::InvalidConfigurationValueError(format!(
-                    "Runtime config request returned non-success status ({})",
-                    response.status()
-                ))
-            ));
+        for key in RuntimeConfigKind::registered_keys() {
+            let status = match self.get_raw(store, key).await {
+                None => RuntimeConfigStatus {
+                    status: RuntimeConfigStatusKind::NotConfigured,
+                    config: None,
+                },
+                Some(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+                    Ok(config) => RuntimeConfigStatus {
+                        status: RuntimeConfigStatusKind::Available,
+                        config: Some(config),
+                    },
+                    Err(error) => {
+                        crate::logger::error!(?error, raw, key, "Runtime config is invalid");
+                        RuntimeConfigStatus {
+                            status: RuntimeConfigStatusKind::Invalid,
+                            config: None,
+                        }
+                    }
+                },
+            };
+
+            statuses.insert(key, status);
         }
 
-        let RuntimeConfigResponse { value } = response.json().await.change_context(
-            error::ConfigurationError::InvalidConfigurationValueError(
-                "Failed to parse runtime config response envelope".into(),
-            ),
-        )?;
+        statuses
+    }
 
-        serde_json::from_str::<serde_json::Value>(&value).change_context(
-            error::ConfigurationError::InvalidConfigurationValueError(
-                "Runtime config value is not valid JSON".into(),
-            ),
-        )?;
-
-        Ok(value)
+    /// Constant-time comparison of a candidate API key against the configured admin key.
+    pub fn verify_admin_api_key(&self, candidate: &str) -> bool {
+        let expected_bytes = self.admin_api_key.peek().as_bytes();
+        let candidate_bytes = candidate.as_bytes();
+        constant_time_eq(expected_bytes, candidate_bytes)
     }
 }
 
-async fn record_runtime_config_fetch_duration(
-    request: reqwest::RequestBuilder,
-) -> Result<reqwest::Response, reqwest::Error> {
-    let start = std::time::Instant::now();
-    let result = request.send().await;
-    let duration = start.elapsed();
+/// Status map for a tenant with runtime config disabled: every registered config reports
+/// `disabled`, so the response shape does not depend on the mode.
+pub fn disabled_status() -> HashMap<&'static str, RuntimeConfigStatus> {
+    RuntimeConfigKind::registered_keys()
+        .map(|key| {
+            (
+                key,
+                RuntimeConfigStatus {
+                    status: RuntimeConfigStatusKind::Disabled,
+                    config: None,
+                },
+            )
+        })
+        .collect()
+}
 
-    let (outcome, status_code) = match result.as_ref() {
-        Ok(resp) => {
-            let status = resp.status();
-            let outcome = match status.as_u16() {
-                200..=299 => "success",
-                300..=399 => "redirect",
-                400..=499 => "client_error",
-                500..=599 => "server_error",
-                _ => "unknown",
-            };
-            (outcome, Some(status.as_u16()))
-        }
-        Err(_) => ("transport_error", None),
-    };
-
-    let status_code = status_code
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "UNKNOWN".to_string());
-
-    crate::observability::metrics::RUNTIME_CONFIG_FETCH_DURATION.record(
-        duration.as_secs_f64(),
-        metrics_utils::metric_attributes!(("outcome", outcome), ("status_code", status_code)),
-    );
-
-    result
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
