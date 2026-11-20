@@ -776,4 +776,35 @@ mod tests {
             _ => assert!(false),
         }
     }
+
+    #[cfg(feature = "kms-oci")]
+    #[test]
+    fn test_oci_kms_case() {
+        let data = r#"
+        [secrets_management]
+        secrets_manager = "oci_kms"
+
+        [secrets_management.oci_kms]
+        vault_crypto_endpoint = "https://abc-crypto.kms.ap-hyderabad-1.oci.oraclecloud.com"
+        key_id = "ocid1.key.oc1.ap-hyderabad-1.abc"
+        "#;
+        let parsed: TestDeser = serde_path_to_error::deserialize(
+            config::Config::builder()
+                .add_source(config::File::from_str(data, config::FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+        match parsed.secrets_management {
+            SecretsManagementConfig::OciKms { oci_kms } => {
+                assert!(
+                    oci_kms.vault_crypto_endpoint
+                        == "https://abc-crypto.kms.ap-hyderabad-1.oci.oraclecloud.com"
+                        && oci_kms.key_id == "ocid1.key.oc1.ap-hyderabad-1.abc"
+                )
+            }
+            _ => assert!(false),
+        }
+    }
 }

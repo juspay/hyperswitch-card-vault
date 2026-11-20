@@ -96,7 +96,8 @@ pub fn criterion_jwe_jws(c: &mut Criterion) -> Result<(), Box<dyn std::error::Er
         public_key_pem.to_string(),
         jwe::RSA_OAEP,
         jwe::RSA_OAEP,
-    );
+    )
+    .expect("Failed to derive the JWE envelope keys");
 
     {
         let mut group = c.benchmark_group("jw-encryption");

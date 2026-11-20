@@ -10,7 +10,7 @@ use crate::{
             StorageScheme,
             entity::EntityType,
             impls::reverse_lookup::ReverseLookupPrimaryKey,
-            partition_key::{KvStorePartition, PartitionKey},
+            partition_key::{KvStorePartition, PartitionKey, encode_composite_key},
             resource::{
                 GetPartitionKey, GetReverseLookupPrimaryKey, GetSecondaryKey, KvDeletableResource,
                 KvDeletableWithLookup, KvResource, KvSecondaryLookupResource, ReverseLookupInsert,
@@ -74,7 +74,7 @@ impl GetReverseLookupPrimaryKey for LockerHashLookupKey {
             customer_id,
         } = self;
         ReverseLookupPrimaryKey {
-            lookup_id: format!("locker_{merchant_id}_{customer_id}_{hash_id}"),
+            lookup_id: encode_composite_key("locker", &[merchant_id, customer_id, hash_id]),
         }
     }
 }
@@ -264,3 +264,31 @@ impl KvDeletableResource for Locker {
 }
 
 impl KvDeletableWithLookup for Locker {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn locker_reverse_lookup_keys_do_not_collide() {
+        let first = LockerHashLookupKey {
+            merchant_id: "a_b".to_owned(),
+            customer_id: "c".to_owned(),
+            hash_id: "hash".to_owned(),
+        }
+        .get_reverse_lookup_primary_key();
+        let second = LockerHashLookupKey {
+            merchant_id: "a".to_owned(),
+            customer_id: "b_c".to_owned(),
+            hash_id: "hash".to_owned(),
+        }
+        .get_reverse_lookup_primary_key();
+
+        assert_eq!(first.lookup_id, "locker_3:a_b_1:c_4:hash");
+        assert_eq!(second.lookup_id, "locker_1:a_3:b_c_4:hash");
+        assert_ne!(
+            Locker::data_key(first.get_partition_key(), 1),
+            Locker::data_key(second.get_partition_key(), 1)
+        );
+    }
+}
