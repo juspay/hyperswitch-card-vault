@@ -22,7 +22,7 @@ use std::{
     time::Duration,
 };
 
-use diesel::PgConnection;
+use diesel::{PgConnection, query_builder::QueryBuilder};
 use error_stack::ResultExt;
 use hyperswitch_masking::{PeekInterface, Secret};
 #[cfg(feature = "kv")]
@@ -662,6 +662,31 @@ where
     result
 }
 
+/// Renders a query's SQL with `$1`/`$2` placeholders only, never the bound
+/// values. Unlike `diesel::debug_query`, this has no access to the bind values,
+/// so it cannot leak card references, identifiers or hashes into logs. Rendering
+/// happens lazily in `Display`, so the AST is only walked when the enclosing log
+/// level is enabled.
+///
+/// Safety note: this guarantee holds only because sensitive data is carried as
+/// bind parameters. A query that inlines a value directly into the SQL string
+/// (e.g. `diesel::dsl::sql` / raw `sql_query`) would still have that literal
+/// rendered here — keep user data in binds, not in the SQL text.
+struct SqlShape<'a, Q>(&'a Q);
+
+impl<Q> std::fmt::Display for SqlShape<'_, Q>
+where
+    Q: diesel::query_builder::QueryFragment<diesel::pg::Pg>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut qb = diesel::pg::PgQueryBuilder::new();
+        match self.0.to_sql(&mut qb, &diesel::pg::Pg) {
+            Ok(()) => f.write_str(&qb.finish()),
+            Err(_) => f.write_str("<unavailable>"),
+        }
+    }
+}
+
 #[track_caller]
 fn log_db_query<T, Q>(query: &Q, operation: DbOperation, pool: DbPool)
 where
@@ -674,7 +699,7 @@ where
         .unwrap_or("UNKNOWN");
 
     crate::logger::debug!(
-        query = %diesel::debug_query(query),
+        query = %SqlShape(query),
         table = %table_name,
         operation = %<&'static str>::from(operation),
         pool = %<&'static str>::from(pool),
