@@ -18,6 +18,8 @@ pub struct CreatedEntity {
     pub created_at: time::PrimitiveDateTime,
 }
 
+// `async_trait` boxes the returned future, which clippy (1.99+) flags as a double `must_use`.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait KeyProvider: Send + Sync {
     async fn find_by_entity_id(
@@ -42,6 +44,8 @@ pub trait KeyProvider: Send + Sync {
     ) -> Result<CreatedEntity, ContainerError<error::ApiError>>;
 }
 
+// `async_trait` boxes the returned future, which clippy (1.99+) flags as a double `must_use`.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait CryptoOperationsManager: Send + Sync {
     async fn encrypt_data(
