@@ -3,6 +3,8 @@
 use hyperswitch_masking::Secret;
 
 /// Trait defining the interface for managing application secrets
+// `async_trait` boxes the returned future, which clippy (1.99+) flags as a double `must_use`.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait SecretManager: Send + Sync {
     /// Given an input, decrypt/retrieve the secret
