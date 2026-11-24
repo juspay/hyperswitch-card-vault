@@ -12,6 +12,9 @@ jobs:
   formatting:
     name: Check formatting
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
@@ -31,6 +34,8 @@ jobs:
   check-msrv:
     name: Check compilation on MSRV toolchain
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
 
     steps:
       - name: Checkout repository
@@ -70,6 +75,8 @@ jobs:
   test:
     name: Run tests on stable toolchain
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
 
     steps:
       - name: Checkout repository
@@ -120,6 +127,9 @@ jobs:
   typos:
     name: Spell check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1

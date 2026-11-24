@@ -19,6 +19,9 @@ jobs:
   formatting:
     name: Check formatting
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
+
     steps:
       - name: Generate a token
         if: ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
@@ -73,6 +76,8 @@ jobs:
   check-msrv:
     name: Check compilation on MSRV toolchain
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
 
     steps:
       - name: Checkout repository
@@ -112,6 +117,8 @@ jobs:
   test:
     name: Run tests on stable toolchain
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
 
     steps:
       - name: Generate a token
@@ -194,6 +201,9 @@ jobs:
   typos:
     name: Spell check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1

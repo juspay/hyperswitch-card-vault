@@ -7,6 +7,9 @@ jobs:
   create-release:
     name: Release a new version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout repository
+
     steps:
       - name: Generate a token
         id: generate_token
