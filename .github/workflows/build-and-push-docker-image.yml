@@ -29,9 +29,11 @@ jobs:
       - name: Determine Docker image tag when event is 'workflow_dispatch'
         if: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
         # Docker tag will be the latest commit hash of the branch that triggered the workflow run
         run: |
-          if [[ ${{ github.ref_type }} == 'tag' ]]; then
+          if [[ "${REF_TYPE}" == 'tag' ]]; then
             DOCKER_TAG=$GITHUB_REF_NAME
           else
             DOCKER_TAG=$(git rev-parse --short=7 "$GITHUB_REF_NAME^{commit}")
