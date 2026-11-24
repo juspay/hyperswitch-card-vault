@@ -20,6 +20,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ steps.generate_token.outputs.token }}
+          persist-credentials: false
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -67,9 +68,12 @@ jobs:
       - name: Push created commit and tag
         shell: bash
         if: ${{ env.NEW_TAG != env.PREVIOUS_TAG }}
+        env:
+          PUSH_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
-          git push
-          git push --tags
+          PUSH_URL="https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push "${PUSH_URL}"
+          git push "${PUSH_URL}" --tags
 
       - name: Generate release notes and create GitHub release
         shell: bash

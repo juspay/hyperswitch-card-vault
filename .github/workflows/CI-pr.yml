@@ -35,10 +35,13 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ steps.generate_token.outputs.token }}
+          persist-credentials: false
 
       - name: Checkout repository for fork
         if: ${{ github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name }}
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -54,6 +57,8 @@ jobs:
       - name: Run formatter
         if: ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
         shell: bash
+        env:
+          PUSH_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
           cargo +nightly fmt --all
           if ! git diff --exit-code --quiet -- src; then
@@ -62,7 +67,7 @@ jobs:
             git config --local user.email '148525504+hyperswitch-bot[bot]@users.noreply.github.com'
             git add src
             git commit --message 'chore: run formatter'
-            git push
+            git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD
           fi
 
   check-msrv:
@@ -72,6 +77,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install mold linker
         uses: rui314/setup-mold@v1
@@ -122,10 +129,13 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ steps.generate_token.outputs.token }}
+          persist-credentials: false
 
       - name: Checkout repository for fork
         if: ${{ github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name }}
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install mold linker
         uses: rui314/setup-mold@v1
@@ -160,13 +170,15 @@ jobs:
       - name: Check Cargo.lock changed
         if: ${{ (github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name) }}
         shell: bash
+        env:
+          PUSH_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
           if ! git diff --quiet --exit-code -- Cargo.lock ; then
             git config --local user.name 'hyperswitch-bot[bot]'
             git config --local user.email '148525504+hyperswitch-bot[bot]@users.noreply.github.com'
             git add Cargo.lock
             git commit --message 'chore: update Cargo.lock'
-            git push
+            git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD
           fi
 
       - name: Cargo hack
@@ -185,6 +197,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Spell check
         uses: crate-ci/typos@master

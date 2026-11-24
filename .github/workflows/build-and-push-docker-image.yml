@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Determine Docker image tag when event is 'push'
         if: ${{ github.event_name == 'push' }}
