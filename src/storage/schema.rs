@@ -1,6 +1,16 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    configs (key) {
+        #[max_length = 255]
+        key -> Varchar,
+        value -> Jsonb,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     entity (entity_id) {
         id -> Int4,
         #[max_length = 255]
@@ -90,6 +100,7 @@ diesel::table! {
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
+    configs,
     entity,
     fingerprint,
     hash_table,
