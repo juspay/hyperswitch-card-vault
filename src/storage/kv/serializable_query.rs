@@ -63,7 +63,6 @@ use async_bb8_diesel::AsyncConnection;
 use diesel::{
     Insertable,
     associations::HasTable,
-    debug_query,
     pg::Pg,
     query_builder::{
         InsertStatement, QueryBuilder, QueryFragment, bind_collector::RawBytesBindCollector,
@@ -132,14 +131,14 @@ impl SerializableQuery {
     where
         Q: QueryFragment<Pg> + Send + 'static,
     {
-        debug!(%entity_type, %operation, query = %debug_query::<Pg, _>(&query).to_string());
-
         let mut qb = diesel::pg::PgQueryBuilder::new();
         query
             .to_sql(&mut qb, &Pg)
             .change_context(KvError::SerializationFailed)
             .attach_printable("Failed to construct SQL query")?;
         let sql = qb.finish();
+
+        debug!(%entity_type, %operation, query = %sql);
 
         let safe_to_cache_prepared = query
             .is_safe_to_cache_prepared(&Pg)
